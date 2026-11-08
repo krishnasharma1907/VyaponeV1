@@ -4,6 +4,17 @@ Record implementation changes by task ID. Do not record planned work as complete
 
 ## Unreleased
 
+### [VO-011] — Configure code quality tooling (2026-11-08)
+- Configured ESLint 9 Flat Config (`eslint.config.mjs`) integrating Next.js 15 (`core-web-vitals`, `typescript`) with FlatCompat and strict TypeScript rules (`@typescript-eslint/no-explicit-any: error`, `@typescript-eslint/no-unused-vars: error`, `prefer-const: error`, `no-console: warn`).
+- Configured Prettier 3 (`.prettierrc`) with 2-space indentation, double quotes, semicolons, trailing commas, and LF line endings.
+- Configured `.prettierignore` protecting repository documentation (`docs/`), PRDs (`reference/`), agents/rules, and generated artifacts from reformatting.
+- Configured Vitest 3 (`vitest.config.ts`) with Node environment and `@/*` path alias resolution.
+- Added baseline unit test harness (`tests/unit/baseline.test.ts`) validating test runner execution and integer minor unit arithmetic.
+- Approved trusted build script for `esbuild` in `pnpm-workspace.yaml` under pnpm 11 security policy.
+- Added standard scripts in `package.json`: `dev`, `build`, `start`, `typecheck`, `lint`, `lint:fix`, `format:check`, `format:write`, `test`, and `test:watch`.
+- Verified all quality gates pass: `pnpm install --frozen-lockfile` (clean), `pnpm typecheck` (0 errors), `pnpm lint` (0 errors/warnings), `pnpm format:check` (clean), `pnpm test` (2 tests passing), and `pnpm build` (production build compiled).
+- Updated backlog status for VO-011 to `DONE` and updated progress log.
+
 ### [VO-010] — Initialize or normalize application workspace (2026-11-08)
 - Initialized Git repository at `F:\VyaponeV2` on branch `main`.
 - Created `.gitignore` ignoring dependencies (`node_modules`), build outputs (`.next`, `out`, `dist`), secrets/env files (`.env*`), local databases, logs, and IDE caches.

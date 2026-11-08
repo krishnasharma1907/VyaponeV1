@@ -76,13 +76,13 @@
 
 **Status:** `DONE`
 
-### [ ] VO-011 — Configure code quality tooling
+### [x] VO-011 — Configure code quality tooling
 
 **Scope:** Configure formatter, linting, type checks, test runner, import conventions and scripts.
 
 **Acceptance:** Documented scripts run successfully; CI can call the same scripts.
 
-**Status:** `NOT_STARTED`
+**Status:** `DONE`
 
 ### [ ] VO-012 — Implement design tokens
 

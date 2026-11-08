@@ -1,16 +1,16 @@
 # VyapOne Build Progress
 
 **Current phase:** P1 — Repository, design system and application shell (`IN_PROGRESS`)  
-**Completed tasks:** VO-000, VO-001, VO-002, VO-003, VO-004, VO-005, VO-006, VO-010  
-**Next task:** VO-011 — Configure code quality tooling  
-**Project status:** WORKSPACE INITIALIZED & BASELINE RUNNABLE / IN PHASE P1  
+**Completed tasks:** VO-000, VO-001, VO-002, VO-003, VO-004, VO-005, VO-006, VO-010, VO-011  
+**Next task:** VO-012 — Implement design tokens  
+**Project status:** CODE QUALITY TOOLING CONFIGURED & VERIFIED / IN PHASE P1  
 
 ## Phase status
 
 | Phase | Status | Notes |
 |---|---|---|
 | P0 — Project audit, decisions and architecture | COMPLETE | All tasks VO-000 to VO-006 verified and done; Phase P0 gate passed |
-| P1 — Repository, design system and application shell | IN_PROGRESS | VO-010 done; VO-011 is next |
+| P1 — Repository, design system and application shell | IN_PROGRESS | VO-010 and VO-011 done; VO-012 is next |
 | P2 — Platform identity, authentication and multi-tenancy | NOT_STARTED | |
 | P3 — Niche registry, presets and business onboarding | NOT_STARTED | |
 | P4 — Website engine, templates and publishing | NOT_STARTED | |
@@ -25,47 +25,46 @@
 | P13 — Production hardening, beta validation and GA | NOT_STARTED | |
 | P14 — Post-launch expansion (not a GA blocker) | NOT_STARTED | |
 
-## Task report: VO-010
+## Task report: VO-011
 
-- **Task ID:** VO-010
+- **Task ID:** VO-011
 - **Status:** DONE
-- **Summary:** Initialized and normalized the application workspace at `F:\VyaponeV2` adhering strictly to ADR-001, ADR-022, and the VO-010 backlog acceptance criteria:
-  1. **Git Initialization:** Initialized Git repository on branch `main` at `F:\VyaponeV2/.git/`.
-  2. **Git & Editor Hygiene:** Created comprehensive `.gitignore` (ignoring `node_modules`, `.next`, `.env*`, databases, caches, logs), `.gitattributes` (enforcing LF line endings across all text/markdown/source code files and marking media/fonts as binary), and `.editorconfig` (2-space indent, UTF-8, LF, trim trailing whitespace).
-  3. **Configuration & Secrets Template:** Created sanitized `.env.example` template with dummy development placeholders for NextAuth, PostgreSQL, Redis, S3, Razorpay, and WhatsApp. Verified zero secrets in tracked files.
-  4. **Workspace Scaffolding:** Created `package.json` with Next.js 15.5.29, React 19.3.1, React-DOM 19.3.1, and TypeScript 5.9.3. Configured strict `tsconfig.json` and `next.config.ts`.
-  5. **Baseline Application Shell:** Created minimal, accessible root layout (`src/app/layout.tsx`) with mobile viewport settings and initial landing page (`src/app/page.tsx`).
-  6. **Command Execution & Verification:**
-     - `pnpm install`: Successfully installed all 26 packages in 1m 43s without warnings or errors.
-     - `pnpm build`: Executed `next build` successfully in 13.5s; compiled static routes `/` (127 B) and `/_not-found` (989 B).
-     - `pnpm dev`: Started local development server on `http://localhost:3000` (Ready in 5.7s); verified HTTP request returns `200 OK`.
-  7. **Preservation:** Preserved all existing documentation (`docs/`), source PRDs (`reference/`), and agent configurations (`.agents/`, `AGENTS.md`) without modification or deletion.
+- **Summary:** Configured comprehensive code quality, linting, formatting, type checking, and unit testing tooling:
+  1. **ESLint (`eslint.config.mjs`):** Configured modern ESLint 9 Flat Config with Next.js core web vitals and TypeScript rules (`@typescript-eslint/no-explicit-any: error`, `@typescript-eslint/no-unused-vars: error`, `prefer-const: error`, `no-console: warn`). Set explicit ignore patterns (`.next/`, `node_modules/`, `dist/`, `build/`, `coverage/`, `reference/`).
+  2. **Prettier (`.prettierrc`, `.prettierignore`):** Configured consistent code formatting (2-space indentation, double quotes, trailing commas, LF line endings, `proseWrap: preserve`). Protected existing documentation (`docs/`, `reference/`, root `.md` files) from automated reformatting.
+  3. **TypeScript:** Maintained strict type-checking configuration (`tsc --noEmit`). Verified zero compiler errors.
+  4. **Test Tooling (`vitest.config.ts`):** Configured Vitest test runner with path aliases (`@/*` mapping to `./src/*`). Created baseline test harness in `tests/unit/baseline.test.ts` verifying test execution and integer minor units arithmetic.
+  5. **Package Scripts (`package.json`):** Standardized scripts:
+     - `pnpm dev`: Starts Next.js development server.
+     - `pnpm build`: Compiles production build.
+     - `pnpm typecheck`: Executes `tsc --noEmit`.
+     - `pnpm lint` / `pnpm lint:fix`: Executes ESLint CLI.
+     - `pnpm format:check` / `pnpm format:write`: Executes Prettier.
+     - `pnpm test` / `pnpm test:watch`: Executes Vitest.
+  6. **pnpm Security Policy (`pnpm-workspace.yaml`):** Approved trusted build script for `esbuild` using official pnpm 11+ `allowBuilds` policy.
 - **Files added/modified:**
-  - Added: `.gitignore`
-  - Added: `.gitattributes`
-  - Added: `.editorconfig`
-  - Added: `.env.example`
-  - Added: `package.json`
-  - Added: `pnpm-lock.yaml`
-  - Added: `tsconfig.json`
-  - Added: `next.config.ts`
-  - Added: `src/app/layout.tsx`
-  - Added: `src/app/page.tsx`
-  - Modified: `docs/TASK_BACKLOG.md` (marked VO-010 as DONE)
+  - Added: `eslint.config.mjs`
+  - Added: `.prettierrc`
+  - Added: `.prettierignore`
+  - Added: `vitest.config.ts`
+  - Added: `tests/unit/baseline.test.ts`
+  - Added: `pnpm-workspace.yaml`
+  - Modified: `package.json`
+  - Modified: `pnpm-lock.yaml`
+  - Modified: `docs/TASK_BACKLOG.md` (marked VO-011 as DONE)
   - Modified: `docs/PROGRESS.md`
   - Modified: `docs/CHANGELOG.md`
 - **Commands/tests run:**
-  - `git init -b main`: Initialized repository at `F:\VyaponeV2`.
-  - `git check-ignore node_modules .next .env .env.local`: Confirmed `.gitignore` behaves as intended.
-  - `pnpm install`: Installed baseline dependencies; exit code 0.
-  - `pnpm build`: Next.js production build succeeded; exit code 0.
-  - `pnpm dev` + `Invoke-WebRequest -Uri "http://localhost:3000"`: Returned `StatusCode 200 OK`.
-- **Results:** Application workspace is fully operational, runnable locally, with zero secrets or unvetted dependencies.
+  - `pnpm install --frozen-lockfile`: Exit code 0 (verified lockfile consistency).
+  - `pnpm typecheck`: Exit code 0 (zero TypeScript errors).
+  - `pnpm lint`: Exit code 0 (zero ESLint errors or warnings).
+  - `pnpm format:check`: Exit code 0 (All matched files use Prettier code style).
+  - `pnpm test`: Exit code 0 (1 test file passed, 2 tests passed).
+  - `pnpm build`: Exit code 0 (Next.js production build succeeded in 4.1s).
+- **Results:** Code quality tooling is fully operational, verified, and CI-ready.
 - **Acceptance criteria met:**
-  - [x] Install command (`pnpm install`) works.
-  - [x] Build command (`pnpm build`) works.
-  - [x] Dev command (`pnpm dev`) works and application starts locally (200 OK).
-  - [x] No unrelated files or user work deleted.
-  - [x] Git repository initialized with proper ignore and attribute rules.
-- **Blockers/decisions:** None for VO-010.
-- **Next task ID:** VO-011 — Configure code quality tooling
+  - [x] Documented scripts run successfully.
+  - [x] CI can call the same scripts.
+  - [x] Compatible package versions installed without breaking existing workspace.
+- **Blockers/decisions:** None for VO-011.
+- **Next task ID:** VO-012 — Implement design tokens

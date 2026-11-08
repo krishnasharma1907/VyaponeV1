@@ -1,0 +1,16 @@
+node_modules/
+.next/
+out/
+build/
+dist/
+pnpm-lock.yaml
+*.log
+.pnpm-store/
+coverage/
+reference/
+docs/
+.agents/
+AGENTS.md
+README.md
+ANTIGRAVITY_START_PROMPT.md
+next-env.d.ts
