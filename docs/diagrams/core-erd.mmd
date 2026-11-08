@@ -1,0 +1,422 @@
+erDiagram
+    User ||--o{ UserAuthIdentity : "authenticates_via"
+    User ||--o{ WorkspaceMember : "belongs_to"
+    User ||--o{ BusinessMember : "operates"
+    User ||--o{ AuditLog : "triggers"
+    User ||--o{ AIAction : "initiates"
+
+    Workspace ||--o{ WorkspaceMember : "has"
+    Workspace ||--o{ Business : "manages"
+    Workspace ||--o{ Subscription : "subscribes_to"
+    Workspace ||--o{ PaymentRecord : "billed_for"
+    Workspace ||--o{ ClientInvoice : "issues"
+    Workspace ||--o{ HandoverRequest : "transfer_source"
+    Workspace ||--o{ HandoverRequest : "transfer_target"
+
+    Business ||--o{ BusinessMember : "has"
+    Business ||--o{ Location : "operates_at"
+    Business ||--o{ Site : "owns"
+    Business ||--o{ ModuleInstallation : "enables"
+    Business ||--o{ CatalogueItem : "offers"
+    Business ||--o{ Order : "receives"
+    Business ||--o{ Appointment : "schedules"
+    Business ||--o{ Lead : "captures"
+    Business ||--o{ Customer : "maintains"
+    Business ||--o{ ConsentRecord : "tracks"
+    Business ||--o{ Bill : "issues"
+    Business ||--o{ InvoiceSequence : "allocates_from"
+    Business ||--o{ QRCode : "deploys"
+    Business ||--o{ PaymentRecord : "collects"
+    Business ||--o{ BusinessMemory : "retains"
+    Business ||--o{ Conversation : "engages"
+    Business ||--o{ PendingAction : "queues"
+    Business ||--o{ Integration : "connects"
+    Business ||--o{ AIAction : "scopes"
+    Business ||--o{ ClientInvoice : "billed_by_reseller"
+    Business ||--o{ HandoverRequest : "transferred_via"
+
+    Site ||--o{ SiteVersion : "versions"
+
+    Customer ||--o{ Order : "places"
+    Customer ||--o{ Appointment : "books"
+    Customer ||--o{ Bill : "billed_to"
+    Customer ||--o{ ConsentRecord : "grants"
+    Customer ||--o{ Conversation : "chats"
+
+    Order ||--o| Bill : "invoiced_as"
+    Order ||--o{ OrderItem : "contains"
+    Bill ||--o{ TaxRate : "computes_from"
+    InvoiceSequence ||--o{ Bill : "numbers"
+
+    User {
+        uuid id PK
+        string display_name
+        string email
+        string phone_number
+        string status
+        string preferred_language
+        timestamp created_at
+    }
+
+    UserAuthIdentity {
+        uuid id PK
+        uuid user_id FK
+        string provider
+        string provider_user_id UK
+        string identifier
+        timestamp last_sign_in_at
+        timestamp created_at
+    }
+
+    Workspace {
+        uuid id PK
+        string type
+        string name
+        uuid owner_user_id FK
+        string status
+        timestamp created_at
+    }
+
+    WorkspaceMember {
+        uuid id PK
+        uuid workspace_id FK
+        uuid user_id FK
+        string role
+        string status
+        timestamp created_at
+    }
+
+    Business {
+        uuid id PK
+        uuid workspace_id FK
+        uuid owner_user_id FK
+        string name
+        string slug UK
+        string category
+        jsonb contact_configuration
+        jsonb address_configuration
+        string preferred_language
+        string status
+        timestamp created_at
+        timestamp updated_at
+    }
+
+    BusinessMember {
+        uuid id PK
+        uuid business_id FK
+        uuid user_id FK
+        string role
+        jsonb permissions
+        string pin_hash
+        string status
+    }
+
+    Location {
+        uuid id PK
+        uuid business_id FK
+        string name
+        boolean is_primary
+        jsonb address
+        jsonb coordinates
+        jsonb operating_hours
+        string status
+    }
+
+    HandoverRequest {
+        uuid id PK
+        uuid business_id FK
+        uuid source_workspace_id FK
+        uuid target_workspace_id FK
+        string target_owner_email
+        string target_owner_phone
+        uuid initiated_by_user_id FK
+        string transfer_type
+        string owner_approval_status
+        timestamp owner_approval_verified_at
+        string status
+        string domain_reconnection_status
+        string payment_reconnection_status
+        timestamp expires_at
+        timestamp completed_at
+        timestamp created_at
+    }
+
+    Site {
+        uuid id PK
+        uuid business_id FK
+        string status
+        uuid current_draft_version_id
+        uuid published_version_id
+        string platform_domain UK
+        string custom_domain UK
+        string custom_domain_status
+    }
+
+    SiteVersion {
+        uuid id PK
+        uuid site_id FK
+        integer version_number
+        jsonb structured_configuration
+        uuid created_by FK
+        timestamp created_at
+        timestamp published_at
+    }
+
+    ModuleInstallation {
+        uuid id PK
+        uuid business_id FK
+        string module_key
+        jsonb configuration
+        string status
+    }
+
+    Subscription {
+        uuid id PK
+        uuid workspace_id FK
+        string plan_id
+        string status
+        bigint price_minor
+        string currency_code
+        timestamp current_period_start
+        timestamp current_period_end
+        timestamp grace_period_end
+        string provider_reference
+    }
+
+    PaymentRecord {
+        uuid id PK
+        uuid workspace_id FK
+        uuid business_id FK
+        uuid customer_id FK
+        string purpose
+        string provider
+        string provider_reference UK
+        bigint amount_minor
+        string currency_code
+        string status
+        timestamp verified_at
+    }
+
+    Customer {
+        uuid id PK
+        uuid business_id FK
+        string name
+        string phone_encrypted
+        string phone_hash
+        jsonb tags
+        integer visits_count
+        bigint total_spend_minor
+        integer loyalty_balance
+        bigint udhaar_balance_minor
+        string currency_code
+        timestamp last_order_at
+        date birthday
+        timestamp created_at
+    }
+
+    ConsentRecord {
+        uuid id PK
+        uuid business_id FK
+        uuid customer_id FK
+        string channel
+        string purpose
+        string status
+        string source_evidence
+        timestamp recorded_at
+    }
+
+    CatalogueItem {
+        uuid id PK
+        uuid business_id FK
+        string type
+        string category_id
+        string name
+        text description
+        jsonb price_configuration
+        string availability
+        jsonb media
+    }
+
+    Lead {
+        uuid id PK
+        uuid business_id FK
+        uuid customer_id FK
+        string source
+        string subject_reference
+        jsonb contact_fields
+        string status
+        uuid assigned_user_id FK
+        timestamp next_follow_up_at
+        timestamp created_at
+    }
+
+    Order {
+        uuid id PK
+        uuid business_id FK
+        uuid location_id FK
+        uuid customer_id FK
+        string order_number UK
+        bigint subtotal_minor
+        bigint tax_total_minor
+        bigint final_amount_minor
+        string currency_code
+        string fulfilment_type
+        string order_status
+        string payment_status
+        timestamp created_at
+    }
+
+    OrderItem {
+        uuid id PK
+        uuid order_id FK
+        uuid catalogue_item_id FK
+        string item_name
+        integer quantity
+        bigint unit_price_minor
+        bigint tax_amount_minor
+        bigint total_amount_minor
+        string currency_code
+    }
+
+    Appointment {
+        uuid id PK
+        uuid business_id FK
+        uuid location_id FK
+        uuid customer_id FK
+        uuid service_id FK
+        uuid staff_user_id FK
+        timestamp starts_at
+        timestamp ends_at
+        string status
+    }
+
+    InvoiceSequence {
+        uuid id PK
+        uuid business_id FK
+        string financial_year
+        string series_prefix
+        bigint current_sequence_number
+        timestamp updated_at
+    }
+
+    Bill {
+        uuid id PK
+        uuid business_id FK
+        uuid location_id FK
+        string invoice_number UK
+        string series_prefix
+        bigint sequence_number
+        string financial_year
+        uuid customer_id FK
+        uuid order_id FK
+        string bill_type
+        jsonb line_items
+        bigint total_tax_minor
+        bigint grand_total_minor
+        string currency_code
+        string payment_status
+        string upi_reference
+        string irn
+        timestamp issued_at
+    }
+
+    TaxRate {
+        uuid id PK
+        string country
+        string hsn_sac
+        string description
+        integer rate_basis_points
+        jsonb slab_conditions
+        date effective_from
+        date effective_to
+        string source
+    }
+
+    QRCode {
+        uuid id PK
+        uuid business_id FK
+        string type
+        string public_slug UK
+        jsonb destination_configuration
+        string status
+    }
+
+    AIAction {
+        uuid id PK
+        uuid workspace_id FK
+        uuid business_id FK
+        uuid user_id FK
+        string action_type
+        string model
+        string job_type
+        jsonb tools_called
+        integer latency_ms
+        bigint cost_microrupees
+        string status
+        timestamp created_at
+    }
+
+    BusinessMemory {
+        uuid business_id PK
+        jsonb profile
+        jsonb learned_facts
+        timestamp updated_at
+    }
+
+    Conversation {
+        uuid id PK
+        uuid business_id FK
+        uuid user_id FK
+        uuid customer_id FK
+        string channel
+        text summary
+        timestamp updated_at
+    }
+
+    PendingAction {
+        uuid id PK
+        uuid business_id FK
+        uuid user_id FK
+        string tool
+        jsonb input
+        jsonb preview
+        string idempotency_key UK
+        string status
+        timestamp expires_at
+    }
+
+    Integration {
+        uuid id PK
+        uuid business_id FK
+        string provider_type
+        string status
+        jsonb health_status
+        text credentials_encrypted
+        timestamp connected_at
+    }
+
+    AuditLog {
+        uuid id PK
+        uuid workspace_id FK
+        uuid business_id FK
+        uuid actor_user_id FK
+        string action
+        string target_entity
+        uuid target_id
+        text reason
+        string ip_address
+        timestamp recorded_at
+    }
+
+    ClientInvoice {
+        uuid id PK
+        uuid workspace_id FK
+        uuid business_id FK
+        bigint amount_minor
+        string currency_code
+        date due_date
+        string status
+        string collection_mode
+        bigint platform_fee_minor
+        string provider_reference
+    }

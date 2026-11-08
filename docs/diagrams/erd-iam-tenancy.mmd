@@ -1,0 +1,161 @@
+erDiagram
+    User ||--o{ UserAuthIdentity : "authenticates_via"
+    User ||--o{ WorkspaceMember : "has_membership"
+    User ||--o{ BusinessMember : "operates"
+    User ||--o{ AuditLog : "initiates"
+
+    Workspace ||--o{ WorkspaceMember : "contains"
+    Workspace ||--o{ Business : "manages"
+    Workspace ||--o{ HandoverRequest : "source_workspace"
+    Workspace ||--o{ HandoverRequest : "target_workspace"
+
+    Business ||--o{ BusinessMember : "employs"
+    Business ||--o{ Location : "operates_at"
+    Business ||--o{ HandoverRequest : "undergoes_transfer"
+    Business ||--o{ Site : "owns"
+    Business ||--o{ Integration : "connects"
+    Business ||--o{ AuditLog : "scoped_to"
+
+    Site ||--o{ SiteVersion : "retains"
+
+    User {
+        uuid id PK
+        string display_name
+        string email
+        string phone_number
+        string preferred_language
+        string status
+        timestamp created_at
+        timestamp updated_at
+    }
+
+    UserAuthIdentity {
+        uuid id PK
+        uuid user_id FK
+        string provider
+        string provider_user_id UK
+        string identifier
+        timestamp last_sign_in_at
+        timestamp created_at
+    }
+
+    Workspace {
+        uuid id PK
+        string type
+        string name
+        uuid owner_user_id FK
+        string status
+        timestamp created_at
+        timestamp updated_at
+    }
+
+    WorkspaceMember {
+        uuid id PK
+        uuid workspace_id FK
+        uuid user_id FK
+        string role
+        string status
+        timestamp created_at
+    }
+
+    Business {
+        uuid id PK
+        uuid workspace_id FK
+        uuid owner_user_id FK
+        string name
+        string slug UK
+        string category
+        jsonb contact_configuration
+        jsonb address_configuration
+        string preferred_language
+        string status
+        timestamp created_at
+        timestamp updated_at
+    }
+
+    BusinessMember {
+        uuid id PK
+        uuid business_id FK
+        uuid user_id FK
+        string role
+        jsonb permissions
+        string pin_hash
+        string status
+        timestamp created_at
+    }
+
+    Location {
+        uuid id PK
+        uuid business_id FK
+        string name
+        boolean is_primary
+        jsonb address
+        jsonb coordinates
+        jsonb operating_hours
+        string status
+        timestamp created_at
+    }
+
+    HandoverRequest {
+        uuid id PK
+        uuid business_id FK
+        uuid source_workspace_id FK
+        uuid target_workspace_id FK
+        string target_owner_email
+        string target_owner_phone
+        uuid initiated_by_user_id FK
+        string transfer_type
+        string owner_approval_status
+        timestamp owner_approval_verified_at
+        string status
+        string domain_reconnection_status
+        string payment_reconnection_status
+        timestamp expires_at
+        timestamp completed_at
+        timestamp created_at
+    }
+
+    Site {
+        uuid id PK
+        uuid business_id FK
+        string status
+        uuid current_draft_version_id
+        uuid published_version_id
+        string platform_domain UK
+        string custom_domain UK
+        string custom_domain_status
+        timestamp created_at
+    }
+
+    SiteVersion {
+        uuid id PK
+        uuid site_id FK
+        integer version_number
+        jsonb structured_configuration
+        uuid created_by FK
+        timestamp published_at
+        timestamp created_at
+    }
+
+    Integration {
+        uuid id PK
+        uuid business_id FK
+        string provider_type
+        string status
+        jsonb health_status
+        text credentials_encrypted
+        timestamp connected_at
+    }
+
+    AuditLog {
+        uuid id PK
+        uuid workspace_id FK
+        uuid business_id FK
+        uuid actor_user_id FK
+        string action
+        string target_entity
+        uuid target_id
+        text reason
+        string ip_address
+        timestamp recorded_at
+    }

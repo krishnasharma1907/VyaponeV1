@@ -1,0 +1,211 @@
+erDiagram
+    Business ||--o{ Lead : "captures"
+    Business ||--o{ CatalogueCategory : "organizes"
+    Business ||--o{ CatalogueItem : "offers"
+    Business ||--o{ InventoryStock : "tracks"
+    Business ||--o{ InventoryMovement : "records"
+    Business ||--o{ Appointment : "schedules"
+    Business ||--o{ StaffSchedule : "plans"
+    Business ||--o{ PropertyListing : "lists"
+    Business ||--o{ RestaurantTable : "manages"
+    Business ||--o{ ServiceTicket : "handles"
+    Business ||--o{ CouponOffer : "provides"
+    Business ||--o{ LoyaltyLedger : "maintains"
+
+    CatalogueCategory ||--o{ CatalogueItem : "groups"
+    CatalogueItem ||--o{ InventoryStock : "has_stock"
+    InventoryStock ||--o{ InventoryMovement : "undergoes"
+
+    Customer ||--o{ Lead : "inquires_as"
+    Customer ||--o{ Appointment : "books"
+    Customer ||--o{ SiteVisit : "attends"
+    Customer ||--o{ ServiceTicket : "submits"
+    Customer ||--o{ LoyaltyLedger : "earns_in"
+
+    PropertyListing ||--o{ SiteVisit : "hosts"
+    RestaurantTable ||--o{ KotTicket : "orders_from"
+
+    Lead {
+        uuid id PK
+        uuid business_id FK
+        uuid customer_id FK
+        string source
+        string subject_reference
+        jsonb contact_fields
+        string status
+        uuid assigned_user_id FK
+        timestamp next_follow_up_at
+        timestamp created_at
+    }
+
+    CatalogueCategory {
+        uuid id PK
+        uuid business_id FK
+        string name
+        string slug
+        integer display_order
+        timestamp created_at
+    }
+
+    CatalogueItem {
+        uuid id PK
+        uuid business_id FK
+        uuid category_id FK
+        string type
+        string name
+        text description
+        jsonb price_configuration
+        string availability
+        jsonb media
+        timestamp created_at
+    }
+
+    InventoryStock {
+        uuid id PK
+        uuid business_id FK
+        uuid location_id FK
+        uuid catalogue_item_id FK
+        string sku
+        integer quantity_on_hand
+        integer low_stock_threshold
+        string availability_status
+        timestamp updated_at
+    }
+
+    InventoryMovement {
+        uuid id PK
+        uuid business_id FK
+        uuid stock_id FK
+        string movement_type
+        integer quantity_delta
+        integer balance_after
+        string reason
+        uuid order_id FK
+        uuid actor_user_id FK
+        timestamp created_at
+    }
+
+    Appointment {
+        uuid id PK
+        uuid business_id FK
+        uuid location_id FK
+        uuid customer_id FK
+        uuid service_id FK
+        uuid staff_user_id FK
+        timestamp starts_at
+        timestamp ends_at
+        string status
+        string cancellation_reason
+        timestamp created_at
+    }
+
+    StaffSchedule {
+        uuid id PK
+        uuid business_id FK
+        uuid location_id FK
+        uuid staff_user_id FK
+        date shift_date
+        time start_time
+        time end_time
+        boolean is_blocked
+        string note
+    }
+
+    PropertyListing {
+        uuid id PK
+        uuid business_id FK
+        string listing_type
+        string title
+        text description
+        bigint price_minor
+        string currency_code
+        jsonb property_attributes
+        jsonb media
+        jsonb floor_plans
+        jsonb location_data
+        string availability_state
+        uuid assigned_agent_user_id FK
+        timestamp created_at
+    }
+
+    SiteVisit {
+        uuid id PK
+        uuid business_id FK
+        uuid property_id FK
+        uuid customer_id FK
+        uuid agent_user_id FK
+        timestamp scheduled_at
+        string status
+        text feedback
+        timestamp created_at
+    }
+
+    RestaurantTable {
+        uuid id PK
+        uuid business_id FK
+        uuid location_id FK
+        string table_number
+        integer capacity
+        string floor_section
+        string status
+        uuid active_order_id FK
+    }
+
+    KotTicket {
+        uuid id PK
+        uuid business_id FK
+        uuid location_id FK
+        uuid order_id FK
+        uuid table_id FK
+        integer ticket_sequence
+        jsonb kitchen_items
+        string status
+        timestamp created_at
+    }
+
+    ServiceTicket {
+        uuid id PK
+        uuid business_id FK
+        uuid customer_id FK
+        string ticket_number UK
+        string item_name
+        string issue_description
+        jsonb condition_notes
+        bigint estimated_cost_minor
+        bigint final_cost_minor
+        string currency_code
+        string status
+        uuid assigned_staff_user_id FK
+        timestamp promised_at
+        timestamp completed_at
+        timestamp created_at
+    }
+
+    CouponOffer {
+        uuid id PK
+        uuid business_id FK
+        string code
+        string title
+        text description
+        string discount_type
+        bigint discount_value_minor
+        bigint min_order_minor
+        string currency_code
+        timestamp valid_from
+        timestamp valid_to
+        integer usage_limit_per_customer
+        integer total_usage_count
+        boolean is_active
+        timestamp created_at
+    }
+
+    LoyaltyLedger {
+        uuid id PK
+        uuid business_id FK
+        uuid customer_id FK
+        uuid order_id FK
+        integer points_delta
+        integer balance_after
+        string reason
+        timestamp created_at
+    }

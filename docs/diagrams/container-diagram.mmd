@@ -1,0 +1,50 @@
+%% VyapOne - C4 Container Diagram
+graph TD
+    subgraph "Client Devices & Channels"
+        MOB_WEB["Mobile Web PWA (390px)<br/>(Phone/Tablet/Desktop Browser)"]
+        PUB_SITE["Public Client Storefronts<br/>(*.vyapone.in & Custom Domains)"]
+        WA_CLIENT["WhatsApp Client App<br/>(Customer & Owner WhatsApp)"]
+    end
+
+    subgraph "Edge & Ingress Infrastructure"
+        EDGE["Edge Routing & DNS Middleware<br/>(Vercel / Cloudflare Edge)<br/>• Wildcard SSL & Hostname Rewrite<br/>• Static Asset CDN & Rate Limiting"]
+    end
+
+    subgraph "Application Core (Next.js 15+)"
+        WEB_APP["Next.js App Router (RSC & Server Actions)<br/>• Reseller & Owner Dashboards<br/>• Staff Counter PIN Mode Shell<br/>• Puck Visual Site Editor"]
+        PUB_RENDER["Public Website Renderer<br/>• Shared Multi-Tenant Runtime<br/>• Zero Vya/Admin Bundles<br/>• ISR & Tag-based Cache"]
+        API_GW["Server API Gateway & Handlers<br/>• Zod Schema Validation<br/>• Auth & RBAC Middleware<br/>• Webhook Signature Verifiers"]
+        VYA_ROUTER["Vya AI Orchestrator & Gateway<br/>• Multi-Model Failover Router<br/>• Tool Execution Engine<br/>• Confirm-Before-Act Token Vault"]
+    end
+
+    subgraph "Asynchronous Workers & Queues"
+        BULLMQ["BullMQ Distributed Job Processor<br/>• Transactional Messaging Queue<br/>• Delayed Automations & Quiet Hours<br/>• Timezone-Aware Cron Summaries"]
+    end
+
+    subgraph "Data & Persistence Layer"
+        POSTGRES[("PostgreSQL 16+ Database<br/>• Multi-Tenant Schema<br/>• Native Row-Level Security (RLS)<br/>• Gap-Free Invoice Sequences")]
+        REDIS[("Redis Cluster (In-Memory)<br/>• BullMQ Job Store & Locks<br/>• Rate-Limiting Sliding Windows<br/>• AI Token Budget Counters")]
+        S3[("S3-Compatible Object Storage<br/>(Supabase Storage / AWS S3 Mumbai)<br/>• Presigned Direct Uploads<br/>• Business Path Isolation")]
+    end
+
+    MOB_WEB -->|"HTTPS / WSS"| EDGE
+    PUB_SITE -->|"HTTPS"| EDGE
+    WA_CLIENT -->|"Direct Messaging"| WASP_EXT["WhatsApp Business API"]
+
+    EDGE -->|"Tenant Rewrite"| PUB_RENDER
+    EDGE -->|"App Routes"| WEB_APP
+    EDGE -->|"API / Webhooks"| API_GW
+
+    WEB_APP --> API_GW
+    WEB_APP --> VYA_ROUTER
+    PUB_RENDER -->|"Cached Site Config"| POSTGRES
+
+    API_GW -->|"Sets app.current_business_id"| POSTGRES
+    API_GW -->|"Enqueues events"| BULLMQ
+    API_GW -->|"Presigned Upload URLs"| S3
+
+    VYA_ROUTER -->|"Executes Read-Only Tools"| POSTGRES
+    VYA_ROUTER -->|"Creates PendingAction"| POSTGRES
+
+    BULLMQ -->|"Manages Queues & Locks"| REDIS
+    BULLMQ -->|"Executes Background Writes"| POSTGRES

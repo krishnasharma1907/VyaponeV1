@@ -1,0 +1,47 @@
+%% VyapOne - Ownership & Tenancy Separation Model
+graph TD
+    subgraph "PLATFORM LEVEL (Governance & Licensing)"
+        PLATFORM["VyapOne Platform Core<br/>• Global System Configuration<br/>• Plan Definitions & Master Tax Slabs<br/>• System Audit & Abuse Suspension"]
+    end
+
+    subgraph "RESELLER WORKSPACE LEVEL (Administrative & Agency Scope)"
+        WORKSPACE["Reseller Workspace<br/>• Agency Branding & White-Label Config<br/>• Live Website Slot Quotas<br/>• Client Billing Contracts & Split Payouts<br/>• Reseller Team Members"]
+    end
+
+    subgraph "BUSINESS TENANT LEVEL (Sovereign Data Owner)"
+        BUSINESS["Business (The Sovereign Data Entity)<br/>• Identity, GSTIN, Legal Name, VPA<br/>• Owns Customer Records & Consent Ledger<br/>• Owns Orders, Bookings, Stock & GST Invoices<br/>• Owns Website AST, Media & QR Codes<br/>• Owns AI Memory & Conversations"]
+    end
+
+    subgraph "LOCATION LEVEL (Physical / Virtual Storefront)"
+        LOCATION["Location (Single Site at Launch)<br/>• Operating Hours & Geo-Coordinates<br/>• Physical Address for Delivery/Visits<br/>• Primary Inventory Stock Point"]
+    end
+
+    subgraph "MEMBERSHIP & ACCESS BOUNDARIES"
+        WM["WorkspaceMember<br/>• Role: Owner, Admin, Member<br/>• Administrative Access to Client Sites"]
+        BM["BusinessMember<br/>• Role: Business Owner, Manager, Staff<br/>• Operational Access to Shop Data"]
+        AUTH["UserAuthIdentity<br/>• Delegated Auth Provider Identity<br/>• Zero Passwords in Domain Model"]
+    end
+
+    subgraph "AUDITABLE HANDOVER TRANSFER"
+        HANDOVER["HandoverRequest Record<br/>• Owner Approval (OTP Verified)<br/>• Source Workspace Detachment<br/>• Target Workspace or Direct Binding<br/>• Domain & Payment Reconnection"]
+    end
+
+    PLATFORM -->|"Enforces capacity & statutory rules"| WORKSPACE
+    WORKSPACE -->|"Manages (via membership; not sole owner)"| BUSINESS
+    BUSINESS -->|"Has primary operational"| LOCATION
+
+    WM -.->|"Grants delegated admin access"| WORKSPACE
+    BM -.->|"Grants operational access"| BUSINESS
+    AUTH -.->|"Authenticates"| WM
+    AUTH -.->|"Authenticates"| BM
+
+    BUSINESS -->|"Transfers via"| HANDOVER
+    HANDOVER -->|"Reassigns administrative workspace"| WORKSPACE
+
+    subgraph "SEPARATION OF RESPONSIBILITIES"
+        direction TB
+        SOV["1. DATA OWNERSHIP:<br/>Belongs 100% to the Business.<br/>Survives Reseller departure & handover."]
+        ADMIN_ACC["2. ADMINISTRATIVE ACCESS:<br/>Granted to Reseller via Workspace membership.<br/>Revocable upon auditable client handover."]
+        BILL_RESP["3. BILLING RESPONSIBILITY:<br/>Reseller pays VyapOne for platform slots.<br/>Merchant pays Reseller via Split Settlement.<br/>Decoupled cleanly during handover."]
+        PLAT_OPS["4. PLATFORM ACCESS:<br/>Least-privilege diagnostic access by Platform Admins.<br/>Fully audited in immutable audit logs."]
+    end

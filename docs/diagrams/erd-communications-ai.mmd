@@ -1,0 +1,162 @@
+erDiagram
+    Business ||--o{ Conversation : "engages"
+    Business ||--o{ BusinessMemory : "retains"
+    Business ||--o{ AIAction : "scopes"
+    Business ||--o{ PendingAction : "queues"
+    Business ||--o{ MessageTemplate : "authors"
+    Business ||--o{ Message : "dispatches"
+    Business ||--o{ Broadcast : "executes"
+    Business ||--o{ Automation : "configures"
+    Business ||--o{ QRCode : "deploys"
+    Business ||--o{ AnalyticsEvent : "logs"
+
+    Conversation ||--o{ ConversationTurn : "contains"
+    MessageTemplate ||--o{ Message : "instantiates"
+    MessageTemplate ||--o{ Broadcast : "broadcasts_with"
+    Automation ||--o{ AutomationRun : "triggers"
+
+    Customer ||--o{ Conversation : "participates_in"
+    Customer ||--o{ Message : "receives"
+
+    BusinessMemory {
+        uuid business_id PK
+        jsonb profile
+        jsonb learned_facts
+        timestamp updated_at
+    }
+
+    Conversation {
+        uuid id PK
+        uuid business_id FK
+        uuid user_id FK
+        uuid customer_id FK
+        string channel
+        text summary
+        timestamp last_turn_at
+        timestamp created_at
+    }
+
+    ConversationTurn {
+        uuid id PK
+        uuid conversation_id FK
+        string role
+        text content
+        jsonb tool_calls
+        jsonb tool_results
+        timestamp created_at
+    }
+
+    AIAction {
+        uuid id PK
+        uuid workspace_id FK
+        uuid business_id FK
+        uuid user_id FK
+        string action_type
+        string model
+        string job_type
+        jsonb tools_called
+        integer latency_ms
+        bigint cost_microrupees
+        string confirmation_outcome
+        string feedback
+        string status
+        timestamp created_at
+    }
+
+    PendingAction {
+        uuid id PK
+        uuid business_id FK
+        uuid user_id FK
+        string tool
+        jsonb input
+        jsonb preview
+        string idempotency_key UK
+        string status
+        timestamp expires_at
+        timestamp created_at
+    }
+
+    MessageTemplate {
+        uuid id PK
+        uuid business_id FK
+        string name
+        string category
+        string language
+        text body
+        jsonb variables
+        string meta_status
+        string meta_template_id
+        timestamp created_at
+    }
+
+    Message {
+        uuid id PK
+        uuid business_id FK
+        uuid customer_id FK
+        string direction
+        string channel
+        uuid template_id FK
+        string status
+        bigint cost_minor
+        string currency_code
+        string provider_reference
+        timestamp created_at
+    }
+
+    Broadcast {
+        uuid id PK
+        uuid business_id FK
+        string segment
+        uuid template_id FK
+        integer recipient_count
+        bigint estimated_cost_minor
+        string currency_code
+        timestamp scheduled_at
+        string status
+        uuid approved_by_user_id FK
+        timestamp created_at
+    }
+
+    Automation {
+        uuid id PK
+        uuid business_id FK
+        string name
+        string trigger_type
+        jsonb trigger_config
+        jsonb conditions
+        jsonb actions
+        boolean enabled
+        timestamp created_at
+    }
+
+    AutomationRun {
+        uuid id PK
+        uuid automation_id FK
+        uuid business_id FK
+        string event_id
+        string idempotency_key UK
+        jsonb step_results
+        string status
+        timestamp triggered_at
+        timestamp completed_at
+    }
+
+    QRCode {
+        uuid id PK
+        uuid business_id FK
+        string type
+        string public_slug UK
+        jsonb destination_configuration
+        string status
+        timestamp created_at
+    }
+
+    AnalyticsEvent {
+        uuid id PK
+        uuid business_id FK
+        uuid site_id FK
+        string event_type
+        string source_context
+        jsonb coarse_metadata
+        timestamp occurred_at
+    }

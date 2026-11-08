@@ -1,0 +1,35 @@
+%% VyapOne - C4 System Context Diagram
+graph TD
+    subgraph "Users & Actors"
+        ADMIN["Platform Administrator<br/>(Internal Ops, Support, Finance)"]
+        RESELLER["Reseller / Agency Owner & Team<br/>(Builds & runs client businesses)"]
+        OWNER["Business Owner<br/>(Merchant managing daily ops)"]
+        STAFF["Business Staff<br/>(Counter phone / PIN mode)"]
+        CUSTOMER["Customer / End-User<br/>(Orders, bookings, bills)"]
+    end
+
+    subgraph "VyapOne Platform"
+        VYAPONE["VyapOne Platform<br/>Every business. One platform.<br/>(Web App, Site Engine, Vya AI, Ops Core)"]
+    end
+
+    subgraph "External Integration Services"
+        PG["Licensed Payment Aggregator<br/>(Razorpay / Cashfree)<br/>• Merchant Payments<br/>• Split Settlements"]
+        WASP["WhatsApp Business Platform<br/>(Official BSP / Cloud API)<br/>• Notifications & Broadcasts"]
+        MAPS["Google Cloud & Business Profile<br/>• GBP Sync & Review Engine"]
+        META["Meta Graph Platform<br/>• Instagram & Facebook Posts"]
+        LOGISTICS["Hyperlocal Delivery Partners<br/>• Porter, Borzo, Rapid Parcel"]
+        AI_MODELS["AI Foundation Model Gateway<br/>• Anthropic Claude Sonnet 5.5<br/>• Google Gemini Flash<br/>• Sarvam AI Indian Speech"]
+    end
+
+    ADMIN -->|"System ops & least-privilege admin"| VYAPONE
+    RESELLER -->|"Onboards clients, builds sites, bills clients"| VYAPONE
+    OWNER -->|"Manages stock, bills, CRM, staff"| VYAPONE
+    STAFF -->|"Punches orders, marks bookings, confirms cash/UPI"| VYAPONE
+    CUSTOMER -->|"Visits website, chats on WhatsApp, pays via UPI"| VYAPONE
+
+    VYAPONE -->|"Processes payments & split payouts"| PG
+    VYAPONE -->|"Dispatches order updates & templates"| WASP
+    VYAPONE -->|"Syncs business hours & reviews"| MAPS
+    VYAPONE -->|"Publishes approved social creatives"| META
+    VYAPONE -->|"Dispatches delivery tasks & gets tracking"| LOGISTICS
+    VYAPONE -->|"Generates structured configs & streaming Vya chat"| AI_MODELS

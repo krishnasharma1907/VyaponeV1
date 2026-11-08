@@ -1,0 +1,170 @@
+erDiagram
+    Business ||--o{ Customer : "maintains"
+    Business ||--o{ Order : "receives"
+    Business ||--o{ Bill : "issues"
+    Business ||--o{ InvoiceSequence : "manages_sequences"
+    Business ||--o{ PaymentRecord : "collects"
+    Business ||--o{ ClientInvoice : "billed_by_reseller"
+
+    Workspace ||--o{ Subscription : "subscribes_to"
+    Workspace ||--o{ PaymentRecord : "billed_for"
+    Workspace ||--o{ ClientInvoice : "issues"
+
+    Customer ||--o{ ConsentRecord : "grants"
+    Customer ||--o{ Order : "places"
+    Customer ||--o{ Bill : "billed_to"
+    Customer ||--o{ PaymentRecord : "submits"
+
+    Order ||--o{ OrderItem : "contains"
+    Order ||--o| Bill : "invoiced_as"
+
+    Bill ||--o{ PaymentRecord : "reconciled_with"
+    InvoiceSequence ||--o{ Bill : "allocates_number_to"
+    TaxRate ||--o{ Bill : "referenced_in"
+
+    Customer {
+        uuid id PK
+        uuid business_id FK
+        string name
+        string phone_encrypted
+        string phone_hash
+        jsonb tags
+        integer visits_count
+        bigint total_spend_minor
+        integer loyalty_balance
+        bigint udhaar_balance_minor
+        string currency_code
+        timestamp last_order_at
+        date birthday
+        timestamp created_at
+    }
+
+    ConsentRecord {
+        uuid id PK
+        uuid business_id FK
+        uuid customer_id FK
+        string channel
+        string purpose
+        string status
+        string source_evidence
+        timestamp recorded_at
+    }
+
+    Order {
+        uuid id PK
+        uuid business_id FK
+        uuid location_id FK
+        uuid customer_id FK
+        string order_number UK
+        bigint subtotal_minor
+        bigint tax_total_minor
+        bigint delivery_fee_minor
+        bigint discount_minor
+        bigint final_amount_minor
+        string currency_code
+        string fulfilment_type
+        string order_status
+        string payment_status
+        timestamp created_at
+        timestamp updated_at
+    }
+
+    OrderItem {
+        uuid id PK
+        uuid order_id FK
+        uuid catalogue_item_id FK
+        string item_name
+        integer quantity
+        bigint unit_price_minor
+        bigint tax_amount_minor
+        bigint total_amount_minor
+        string currency_code
+        jsonb selected_options
+    }
+
+    InvoiceSequence {
+        uuid id PK
+        uuid business_id FK
+        string financial_year
+        string series_prefix
+        bigint current_sequence_number
+        timestamp updated_at
+    }
+
+    Bill {
+        uuid id PK
+        uuid business_id FK
+        uuid location_id FK
+        string invoice_number UK
+        string series_prefix
+        bigint sequence_number
+        string financial_year
+        uuid customer_id FK
+        uuid order_id FK
+        string bill_type
+        jsonb line_items
+        bigint total_tax_minor
+        bigint grand_total_minor
+        string currency_code
+        string place_of_supply_state
+        string payment_status
+        string upi_reference
+        string irn
+        timestamp issued_at
+    }
+
+    TaxRate {
+        uuid id PK
+        string country
+        string hsn_sac
+        string description
+        integer rate_basis_points
+        jsonb slab_conditions
+        date effective_from
+        date effective_to
+        string source
+    }
+
+    PaymentRecord {
+        uuid id PK
+        uuid workspace_id FK
+        uuid business_id FK
+        uuid customer_id FK
+        string purpose
+        string provider
+        string provider_reference UK
+        bigint amount_minor
+        string currency_code
+        string status
+        timestamp verified_at
+        timestamp created_at
+    }
+
+    Subscription {
+        uuid id PK
+        uuid workspace_id FK
+        string plan_id
+        string status
+        bigint price_minor
+        string currency_code
+        timestamp current_period_start
+        timestamp current_period_end
+        timestamp grace_period_end
+        string provider_reference
+        timestamp created_at
+    }
+
+    ClientInvoice {
+        uuid id PK
+        uuid workspace_id FK
+        uuid business_id FK
+        string invoice_number UK
+        bigint amount_minor
+        string currency_code
+        date due_date
+        string status
+        string collection_mode
+        bigint platform_fee_minor
+        string provider_reference
+        timestamp created_at
+    }
