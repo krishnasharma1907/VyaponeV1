@@ -4,6 +4,15 @@ Record implementation changes by task ID. Do not record planned work as complete
 
 ## Unreleased
 
+### [VO-012] — Implement design tokens (2026-11-08)
+- Created canonical design token definitions in `src/design-system/tokens.ts` codifying PRD Section 12 Emerald (`#0B6E4F`) + Marigold (`#F5A524`) palette, warm canvas (`#FAF8F3`), card surface (`#FFFFFF`), responsive typography scale (with 16px mobile input minimum to prevent iOS zoom), 4px spacing scale, radii, elevation shadows, restrained glassmorphism (`rgba(255,255,255,0.80)` with 12px blur and opaque fallback), and WCAG 2.2 AA touch targets (`>= 24px` minimum, `44-48px` preferred).
+- Implemented global CSS custom properties in `src/app/globals.css` with baseline reset, accessible `:focus-visible` ring, `.glass-surface` utility, and `@media (prefers-reduced-motion)` preferences.
+- Built mathematical WCAG 2.2 relative luminance and contrast calculation utilities in `src/design-system/contrast.ts`.
+- Created automated Vitest test suite `tests/unit/tokens/contrast.test.ts` (16 tests) verifying White on Emerald (6.25:1), Dark text on Marigold (8.27:1), Dark text on Background (15.9:1), Secondary text on Background (5.31:1), and strictly enforcing failure for White text on Marigold (2.04:1).
+- Refactored `src/app/page.tsx` and `src/app/layout.tsx` to consume design tokens via CSS variables, eliminating all scattered hardcoded colors from the application baseline.
+- Formulated complete design tokens specification in `docs/DESIGN_TOKENS.md`.
+- Updated backlog status for VO-012 to `DONE` and updated progress log.
+
 ### [VO-011] — Configure code quality tooling (2026-11-08)
 - Configured ESLint 9 Flat Config (`eslint.config.mjs`) integrating Next.js 15 (`core-web-vitals`, `typescript`) with FlatCompat and strict TypeScript rules (`@typescript-eslint/no-explicit-any: error`, `@typescript-eslint/no-unused-vars: error`, `prefer-const: error`, `no-console: warn`).
 - Configured Prettier 3 (`.prettierrc`) with 2-space indentation, double quotes, semicolons, trailing commas, and LF line endings.

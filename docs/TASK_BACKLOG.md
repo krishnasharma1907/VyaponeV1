@@ -84,13 +84,13 @@
 
 **Status:** `DONE`
 
-### [ ] VO-012 — Implement design tokens
+### [x] VO-012 — Implement design tokens
 
 **Scope:** Implement FINAL PRD Emerald + Marigold palette, typography, spacing, radii, borders, shadows and focus tokens. Derive missing semantic/dark tokens with contrast checks and document provisional choices.
 
 **Acceptance:** Tokens are centralized; no scattered hard-coded brand colours in core UI; contrast checked.
 
-**Status:** `NOT_STARTED`
+**Status:** `DONE`
 
 ### [ ] VO-013 — Build accessible shared UI primitives
 
