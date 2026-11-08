@@ -13,6 +13,7 @@ Record implementation changes by task ID. Do not record planned work as complete
 - Approved trusted build script for `esbuild` in `pnpm-workspace.yaml` under pnpm 11 security policy.
 - Added standard scripts in `package.json`: `dev`, `build`, `start`, `typecheck`, `lint`, `lint:fix`, `format:check`, `format:write`, `test`, and `test:watch`.
 - Verified all quality gates pass: `pnpm install --frozen-lockfile` (clean), `pnpm typecheck` (0 errors), `pnpm lint` (0 errors/warnings), `pnpm format:check` (clean), `pnpm test` (2 tests passing), and `pnpm build` (production build compiled).
+- Corrected package specifiers for `next` and `eslint-config-next` to `^15.5.29` in `package.json` and `pnpm-lock.yaml`, ensuring consistent lockfile alignment with the verified runtime version `15.5.29`.
 - Updated backlog status for VO-011 to `DONE` and updated progress log.
 
 ### [VO-010] — Initialize or normalize application workspace (2026-11-08)
