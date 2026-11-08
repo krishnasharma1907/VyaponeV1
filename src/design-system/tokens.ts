@@ -2,8 +2,9 @@
  * VyapOne Canonical Design Tokens
  *
  * Brand: VyapOne ("Every business. One platform.")
- * Visual Direction: Light-first glassmorphism, Emerald + Marigold palette
- * Reference: PRD_FINAL_v2_2026-11-03 Section 12
+ * Canonical Brand Palette: Emerald (#0F5132) + Marigold (#D97706)
+ * UI Operational Palette: PRD_FINAL_v2_2026-11-03 Section 12 (Action Emerald #0B6E4F, Accent Marigold #F5A524)
+ * Visual Direction: Light-first glassmorphism
  *
  * All monetary amounts in the UI are formatted in 64-bit integer minor units.
  * All touch targets adhere to WCAG 2.2 AA (>= 24px minimum, 44-48px preferred).
@@ -26,21 +27,33 @@ export interface TypographyToken {
 }
 
 export const brandPalette = {
-  // Primary Emerald family
-  emerald: {
-    primary: "#0B6E4F", // Primary actions, links, active states, logo green
-    hover: "#095C42", // Hover / pressed state of primary actions
-    deep: "#0A3D2E", // Dark hero sections, footers, dark backgrounds
-    forest: "#0F5132", // Deep forest theme color (mobile browser chrome)
-    soft: "#E8F5EE", // Soft emerald tint for selected list items / badges
+  // Canonical Brand Identity Tokens
+  canonical: {
+    emerald: "#0F5132", // Canonical Brand Emerald (brand mark, mobile browser themeColor)
+    emeraldFg: "#FFFFFF", // Accessible white foreground (9.36:1 AAA)
+    marigold: "#D97706", // Canonical Brand Marigold (warm amber brand mark)
+    marigoldFg: "#10201A", // Accessible dark foreground (5.30:1 AA)
   },
-  // Accent Marigold family (rare, high-impact only, ALWAYS paired with dark text #10201A)
+
+  // Emerald family: Action Emerald and supporting shades (PRD §12.2)
+  emerald: {
+    canonical: "#0F5132", // Canonical Brand Emerald
+    primary: "#0B6E4F", // UI Action Emerald: primary actions, selection, links, logo green
+    hover: "#095C42", // Hover / pressed state of primary actions
+    deep: "#0A3D2E", // Dark hero sections, footers, inverted dark backgrounds
+    forest: "#0F5132", // Forest emerald theme color
+    soft: "#E8F5EE", // Soft emerald tint for selected list items / positive badges
+  },
+
+  // Marigold family: Accent Marigold and supporting shades (PRD §12.2)
   marigold: {
-    accent: "#F5A524", // High-priority CTAs (New bill, Join waitlist, primary alerts)
-    hover: "#D97706", // Hover state for marigold CTAs
-    deep: "#B45309", // Deep marigold / warm amber
+    canonical: "#D97706", // Canonical Brand Marigold
+    accent: "#F5A524", // UI Accent Marigold: rare high-priority CTAs (New bill, Join waitlist)
+    hover: "#D97706", // Hover / pressed state for marigold CTAs
+    deep: "#B45309", // Deep amber for warning indicators and borders
     soft: "#FEF3C7", // Soft amber tint for warning / alert banners
   },
+
   // Neutral Canvas & Surface family (warm white foundation)
   neutral: {
     background: "#FAF8F3", // Warm white main canvas (60% volume)
@@ -49,15 +62,17 @@ export const brandPalette = {
     surfaceElevated: "#FFFFFF", // Modals, popovers, dropdowns
     surfaceDark: "#0A3D2E", // Inverted dark canvas sections
   },
+
   // Neutral Content & Typography family
   text: {
-    primary: "#10201A", // Primary body and headings (15.9:1 on warm background)
+    primary: "#10201A", // Primary body and headings (15.91:1 on warm background)
     secondary: "#5B6B63", // Secondary supporting text (5.31:1 on warm background)
     muted: "#788880", // Field placeholders, hints, timestamps
     disabled: "#A3B0A9", // Disabled controls, inactive toggles
     inverse: "#FFFFFF", // Text on primary emerald or dark surfaces
-    onMarigold: "#10201A", // FORCED: Dark text on marigold (8.27:1) - White text forbidden!
+    onMarigold: "#10201A", // FORCED: Dark text on marigold (8.27:1 on #F5A524, 5.30:1 on #D97706)
   },
+
   // Borders and Dividers
   border: {
     default: "#E7E2D6", // Primary boundary for cards, inputs, dividers
@@ -65,24 +80,31 @@ export const brandPalette = {
     strong: "#CBD5CE", // High-contrast control outlines
     focusRing: "#0B6E4F", // Accessible 3px focus ring with 2px offset
   },
+
   // Semantic Feedback States
   status: {
-    success: "#0B6E4F", // Success matches Emerald brand
+    success: "#0B6E4F", // Success matches Action Emerald
     successBg: "#E8F5EE",
     successFg: "#FFFFFF",
-    warning: "#B45309", // Warm amber with 5.6:1 contrast on white
+    warning: "#B45309", // Warm amber with 5.02:1 contrast with white
     warningBg: "#FFFBEB",
     warningFg: "#FFFFFF",
-    danger: "#B52B48", // PRD error crimson with 5.45:1 contrast on white
+    danger: "#B52B48", // PRD error crimson with 6.17:1 contrast with white
     dangerBg: "#FDF2F4",
     dangerFg: "#FFFFFF",
-    info: "#0C5A75", // Restrained slate-teal with 6.1:1 contrast on white
+    info: "#0C5A75", // Restrained slate-teal with 7.68:1 contrast with white
     infoBg: "#F0F9FF",
     infoFg: "#FFFFFF",
   },
 } as const;
 
 export const semanticColors = {
+  // Canonical Brand Tokens
+  colorBrandEmerald: brandPalette.canonical.emerald,
+  colorBrandEmeraldFg: brandPalette.canonical.emeraldFg,
+  colorBrandMarigold: brandPalette.canonical.marigold,
+  colorBrandMarigoldFg: brandPalette.canonical.marigoldFg,
+
   // Backgrounds & Canvas
   colorBackground: brandPalette.neutral.background,
   colorBackgroundSubtle: brandPalette.neutral.backgroundSubtle,
@@ -90,7 +112,7 @@ export const semanticColors = {
   colorSurfaceElevated: brandPalette.neutral.surfaceElevated,
   colorSurfaceDark: brandPalette.neutral.surfaceDark,
 
-  // Brand Actions
+  // Brand Actions (UI Palette)
   colorBrandPrimary: brandPalette.emerald.primary,
   colorBrandPrimaryHover: brandPalette.emerald.hover,
   colorBrandPrimarySoft: brandPalette.emerald.soft,

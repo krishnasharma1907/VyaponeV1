@@ -1,11 +1,12 @@
 /**
  * WCAG 2.2 Relative Luminance and Contrast Ratio Calculation Utilities
  *
- * Reference: W3C Web Content Accessibility Guidelines (WCAG) 2.2, Guideline 1.4.3 & 1.4.11
+ * Reference: W3C Web Content Accessibility Guidelines (WCAG) 2.2, Guidelines 1.4.3, 1.4.6 & 1.4.11
  */
 
 /**
- * Converts a 6-digit or 3-digit hex color string into [R, G, B] values in 0..255.
+ * Converts a 6-digit or 3-digit hexadecimal color string into [R, G, B] channels in 0..255.
+ * Strictly validates hex format and supports both lowercase and uppercase.
  */
 export function hexToRgb(hex: string): [number, number, number] {
   let cleanHex = hex.replace(/^#/, "").trim();
@@ -15,7 +16,7 @@ export function hexToRgb(hex: string): [number, number, number] {
       .map((char) => char + char)
       .join("");
   }
-  if (cleanHex.length !== 6) {
+  if (cleanHex.length !== 6 || !/^[0-9a-fA-F]{6}$/.test(cleanHex)) {
     throw new Error(`Invalid hex color: "${hex}"`);
   }
   const r = parseInt(cleanHex.slice(0, 2), 16);
@@ -26,7 +27,9 @@ export function hexToRgb(hex: string): [number, number, number] {
 
 /**
  * Computes the relative luminance of an sRGB color.
- * Normalized output range: 0.0 (darkest black) to 1.0 (lightest white).
+ * Standard WCAG 2.2 formula:
+ * L = 0.2126 * R_linear + 0.7152 * G_linear + 0.0722 * B_linear
+ * Output range: 0.0 (darkest black #000000) to 1.0 (lightest white #FFFFFF).
  */
 export function calculateRelativeLuminance(hex: string): number {
   const [r8, g8, b8] = hexToRgb(hex);
@@ -44,9 +47,10 @@ export function calculateRelativeLuminance(hex: string): number {
 }
 
 /**
- * Calculates the contrast ratio between two colors.
+ * Calculates the exact contrast ratio between two colors.
  * Formula: (L1 + 0.05) / (L2 + 0.05), where L1 is the lighter color.
- * Output range: 1.0 to 21.0.
+ * Output: Unrounded floating point ratio between 1.0 and 21.0.
+ * NOTE: Values are NOT rounded before threshold comparisons to eliminate rounding bias.
  */
 export function calculateContrastRatio(foregroundHex: string, backgroundHex: string): number {
   const lum1 = calculateRelativeLuminance(foregroundHex);
@@ -55,13 +59,21 @@ export function calculateContrastRatio(foregroundHex: string, backgroundHex: str
   const lighter = Math.max(lum1, lum2);
   const darker = Math.min(lum1, lum2);
 
-  const ratio = (lighter + 0.05) / (darker + 0.05);
-  // Round to two decimal places
-  return Math.round(ratio * 100) / 100;
+  return (lighter + 0.05) / (darker + 0.05);
 }
 
 /**
- * Evaluates whether a contrast ratio passes WCAG 2.2 AA.
+ * Formats a contrast ratio for display rounded to two decimal places (e.g. "6.25:1").
+ */
+export function formatContrastRatio(ratio: number): string {
+  const rounded = Math.round(ratio * 100) / 100;
+  return `${rounded.toFixed(2)}:1`;
+}
+
+/**
+ * Evaluates whether an unrounded contrast ratio passes WCAG 2.2 Level AA.
+ * - Normal text (< 18pt or < 14pt bold): >= 4.5:1
+ * - Large text (>= 18pt or >= 14pt bold) and non-text UI components: >= 3.0:1
  */
 export function passesWcagAA(
   ratio: number,
@@ -70,6 +82,20 @@ export function passesWcagAA(
   if (type === "normalText") {
     return ratio >= 4.5;
   }
-  // Large text (>= 18pt or >= 14pt bold) and non-text UI components/boundaries require >= 3.0:1
   return ratio >= 3.0;
+}
+
+/**
+ * Evaluates whether an unrounded contrast ratio passes WCAG 2.2 Level AAA (enhanced contrast).
+ * - Normal text: >= 7.0:1
+ * - Large text: >= 4.5:1
+ */
+export function passesWcagAAA(
+  ratio: number,
+  type: "normalText" | "largeText" = "normalText",
+): boolean {
+  if (type === "normalText") {
+    return ratio >= 7.0;
+  }
+  return ratio >= 4.5;
 }

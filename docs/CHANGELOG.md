@@ -5,10 +5,11 @@ Record implementation changes by task ID. Do not record planned work as complete
 ## Unreleased
 
 ### [VO-012] — Implement design tokens (2026-11-08)
-- Created canonical design token definitions in `src/design-system/tokens.ts` codifying PRD Section 12 Emerald (`#0B6E4F`) + Marigold (`#F5A524`) palette, warm canvas (`#FAF8F3`), card surface (`#FFFFFF`), responsive typography scale (with 16px mobile input minimum to prevent iOS zoom), 4px spacing scale, radii, elevation shadows, restrained glassmorphism (`rgba(255,255,255,0.80)` with 12px blur and opaque fallback), and WCAG 2.2 AA touch targets (`>= 24px` minimum, `44-48px` preferred).
+- Created canonical design token definitions in `src/design-system/tokens.ts` codifying Canonical Brand Emerald (`#0F5132`) + Canonical Brand Marigold (`#D97706`), PRD Section 12 UI Action Emerald (`#0B6E4F`) + Accent Marigold (`#F5A524`) palette, warm canvas (`#FAF8F3`), card surface (`#FFFFFF`), responsive typography scale (with 16px mobile input minimum to prevent iOS zoom), 4px spacing scale, radii, elevation shadows, restrained glassmorphism (`rgba(255,255,255,0.80)` with 12px blur and opaque fallback), and WCAG 2.2 AA touch targets (`>= 24px` minimum, `44-48px` preferred).
 - Implemented global CSS custom properties in `src/app/globals.css` with baseline reset, accessible `:focus-visible` ring, `.glass-surface` utility, and `@media (prefers-reduced-motion)` preferences.
-- Built mathematical WCAG 2.2 relative luminance and contrast calculation utilities in `src/design-system/contrast.ts`.
-- Created automated Vitest test suite `tests/unit/tokens/contrast.test.ts` (16 tests) verifying White on Emerald (6.25:1), Dark text on Marigold (8.27:1), Dark text on Background (15.9:1), Secondary text on Background (5.31:1), and strictly enforcing failure for White text on Marigold (2.04:1).
+- Built mathematical WCAG 2.2 relative luminance and contrast calculation utilities in `src/design-system/contrast.ts` without pre-rounding.
+- Conducted corrective audit of contrast ratios, establishing exact mathematical figures: Warning Amber (`#B45309`) at 5.02:1 (passes AA) and Info Slate-Teal (`#0C5A75`) at 7.68:1 (passes AAA).
+- Expanded automated Vitest test suite `tests/unit/tokens/contrast.test.ts` to 21 tests, validating unrounded contrast ratios, hex validation, touch targets, and automated parity between `tokens.ts` and `src/app/globals.css`.
 - Refactored `src/app/page.tsx` and `src/app/layout.tsx` to consume design tokens via CSS variables, eliminating all scattered hardcoded colors from the application baseline.
 - Formulated complete design tokens specification in `docs/DESIGN_TOKENS.md`.
 - Updated backlog status for VO-012 to `DONE` and updated progress log.

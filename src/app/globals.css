@@ -7,7 +7,15 @@
 
 :root {
   /* ==========================================================================
-     Color Tokens — Brand Palette
+     Color Tokens — Canonical Brand Identity
+     ========================================================================== */
+  --color-brand-emerald: #0f5132;
+  --color-brand-emerald-fg: #ffffff;
+  --color-brand-marigold: #d97706;
+  --color-brand-marigold-fg: #10201a;
+
+  /* ==========================================================================
+     Color Tokens — UI Action Palette & Supporting Shades (PRD §12.2)
      ========================================================================== */
   --color-emerald-primary: #0b6e4f;
   --color-emerald-hover: #095c42;
