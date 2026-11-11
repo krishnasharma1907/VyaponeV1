@@ -35,7 +35,9 @@ export default function AdminPlansPage() {
             server-side.
           </p>
         </div>
-        <Button variant="primary">Create Plan Tier</Button>
+        <Button variant="primary" disabled>
+          Create Plan Tier (VO-120)
+        </Button>
       </header>
 
       <Card variant="default">
@@ -43,7 +45,11 @@ export default function AdminPlansPage() {
           <EmptyState
             title="Subscription Tiers &amp; Entitlements"
             description="Master plan configurations (Free Starter, Standard Retail, Pro Multi-Location, Enterprise Agency) will be managed here."
-            action={<Button size="sm">Configure Plan Matrix</Button>}
+            action={
+              <Button size="sm" disabled>
+                Plans Offline (VO-120)
+              </Button>
+            }
           />
         </CardContent>
       </Card>

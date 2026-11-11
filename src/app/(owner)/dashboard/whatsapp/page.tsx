@@ -38,7 +38,9 @@ export default function OwnerWhatsAppComponent() {
             Chat with customers, send bill notifications, and manage consent-verified campaigns.
           </p>
         </div>
-        <Button variant="primary">New Broadcast</Button>
+        <Button variant="primary" disabled>
+          New Broadcast (VO-092)
+        </Button>
       </header>
 
       <Card variant="default">
@@ -47,8 +49,8 @@ export default function OwnerWhatsAppComponent() {
             title="Unified Customer Inbox"
             description="Incoming WhatsApp messages, catalogue inquiries, and bill receipts will be managed here with strict opt-out handling."
             action={
-              <Button size="sm" variant="outline">
-                Connect WhatsApp Business Account
+              <Button size="sm" variant="outline" disabled>
+                Connect WhatsApp Account (VO-090)
               </Button>
             }
           />

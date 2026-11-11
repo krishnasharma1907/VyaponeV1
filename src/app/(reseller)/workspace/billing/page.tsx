@@ -6,13 +6,8 @@ import {
   CardTitle,
   CardDescription,
   CardContent,
-  Table,
-  TableContainer,
-  TableHeader,
-  TableRow,
-  TableHead,
-  TableBody,
-  TableCell,
+  Button,
+  EmptyState,
   Badge,
 } from "@/components/ui";
 
@@ -25,15 +20,24 @@ export default function ResellerBillingPage() {
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-6)" }}>
       <header>
-        <h1
+        <div
           style={{
-            fontSize: "var(--font-size-h1)",
-            color: "var(--color-text-primary)",
+            display: "flex",
+            alignItems: "center",
+            gap: "var(--space-2)",
             marginBottom: "var(--space-1)",
           }}
         >
-          Wholesale Billing &amp; Payouts
-        </h1>
+          <h1
+            style={{
+              fontSize: "var(--font-size-h1)",
+              color: "var(--color-text-primary)",
+            }}
+          >
+            Wholesale Billing &amp; Payouts
+          </h1>
+          <Badge variant="info">Billing Shell</Badge>
+        </div>
         <p style={{ color: "var(--color-text-secondary)", fontSize: "var(--font-size-body)" }}>
           Review monthly wholesale platform invoices and split settlement credits.
         </p>
@@ -41,32 +45,19 @@ export default function ResellerBillingPage() {
 
       <Card variant="default">
         <CardHeader>
-          <CardTitle as="h2">Recent Settlement Statements</CardTitle>
-          <CardDescription>Automated monthly Razorpay/Cashfree split payouts</CardDescription>
+          <CardTitle as="h2">Settlement Statements</CardTitle>
+          <CardDescription>Automated monthly split payouts and wholesale invoices</CardDescription>
         </CardHeader>
         <CardContent>
-          <TableContainer aria-label="Settlement statements">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead scope="col">Cycle</TableHead>
-                  <TableHead scope="col">Active Tenants</TableHead>
-                  <TableHead scope="col">Net Commission</TableHead>
-                  <TableHead scope="col">Status</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                <TableRow>
-                  <TableCell>October 2026</TableCell>
-                  <TableCell>12 Stores</TableCell>
-                  <TableCell>₹24,500</TableCell>
-                  <TableCell>
-                    <Badge variant="success">Paid</Badge>
-                  </TableCell>
-                </TableRow>
-              </TableBody>
-            </Table>
-          </TableContainer>
+          <EmptyState
+            title="No Statements Available"
+            description="Monthly wholesale subscription invoices and split settlement reports will appear here once active client businesses are onboarded."
+            action={
+              <Button size="sm" variant="outline" disabled>
+                Statements Offline (Phase P8 / VO-085)
+              </Button>
+            }
+          />
         </CardContent>
       </Card>
     </div>

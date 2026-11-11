@@ -44,25 +44,25 @@ export default function OwnerSettingsPage() {
         <CardContent>
           <form style={{ display: "flex", flexDirection: "column", gap: "var(--space-4)" }}>
             <Field id="biz-name" label="Trade Name" required>
-              <Input defaultValue="Sharma Kirana & Sweets" />
+              <Input placeholder="e.g., Sharma Kirana & Sweets" disabled />
             </Field>
             <Field
               id="biz-gstin"
               label="GSTIN (15-character statutory tax ID)"
-              helperText="Server verified against GST portal"
+              helperText="Server verified against GST portal (Phase P2 / VO-023)"
             >
-              <Input defaultValue="27AAAAA0000A1Z5" />
+              <Input placeholder="e.g., 27AAAAA0000A1Z5" disabled />
             </Field>
             <Field
               id="biz-upi"
               label="UPI VPA (Direct Merchant Bank Settlement)"
-              helperText="Payments settle directly to your verified bank account"
+              helperText="Payments settle directly to your verified bank account (Phase P8 / VO-083)"
             >
-              <Input defaultValue="sharma.kirana@icici" />
+              <Input placeholder="e.g., merchant@bank" disabled />
             </Field>
             <div>
-              <Button type="button" variant="primary">
-                Save Configuration
+              <Button type="button" variant="primary" disabled>
+                Save Configuration (VO-023)
               </Button>
             </div>
           </form>

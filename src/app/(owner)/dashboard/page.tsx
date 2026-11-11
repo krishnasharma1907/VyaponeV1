@@ -25,10 +25,10 @@ export default function BusinessOwnerOverviewPage() {
           <h1 style={{ fontSize: "var(--font-size-h1)", color: "var(--color-text-primary)" }}>
             Daily Business Pulse
           </h1>
-          <Badge variant="success">Store Open</Badge>
+          <Badge variant="info">Owner Shell</Badge>
         </div>
         <p style={{ color: "var(--color-text-secondary)", fontSize: "var(--font-size-body)" }}>
-          Real-time sales, active counter orders, and Vya daily intelligence summary.
+          Real-time sales, active counter orders, and Vya daily intelligence summary placeholders.
         </p>
       </header>
 
@@ -54,17 +54,17 @@ export default function BusinessOwnerOverviewPage() {
           >
             ✨ Vya Morning Briefing
           </strong>
-          <Badge variant="primary">AI Assistant</Badge>
+          <Badge variant="primary">AI Assistant (VO-100)</Badge>
         </div>
         <p
           style={{
             fontSize: "var(--font-size-body-sm)",
-            color: "var(--color-text-primary)",
+            color: "var(--color-text-secondary)",
             margin: 0,
           }}
         >
-          Today is Tuesday. You have 4 online orders pending dispatch, and 2 low-stock grocery items
-          (Aashirvaad Atta, Fortune Oil).
+          Vya daily morning intelligence briefing connects in Phase P10 (VO-100). Aggregated
+          insights will highlight pending dispatches, low stock items, and morning action items.
         </p>
       </section>
 
@@ -79,13 +79,13 @@ export default function BusinessOwnerOverviewPage() {
         <Card variant="elevated">
           <CardHeader>
             <CardDescription>Today&apos;s Sales</CardDescription>
-            <CardTitle as="h2">₹14,250</CardTitle>
+            <CardTitle as="h2">--</CardTitle>
           </CardHeader>
           <CardContent>
             <span
               style={{ fontSize: "var(--font-size-caption)", color: "var(--color-text-secondary)" }}
             >
-              28 bills punched across 2 counters
+              Sales metrics connect in Phase P6 (VO-068)
             </span>
           </CardContent>
         </Card>
@@ -93,7 +93,7 @@ export default function BusinessOwnerOverviewPage() {
         <Card variant="elevated">
           <CardHeader>
             <CardDescription>Online Store Orders</CardDescription>
-            <CardTitle as="h2">4 Pending</CardTitle>
+            <CardTitle as="h2">-- Orders</CardTitle>
           </CardHeader>
           <CardContent>
             <Link href="/dashboard/orders" style={{ textDecoration: "none" }}>
@@ -107,7 +107,7 @@ export default function BusinessOwnerOverviewPage() {
         <Card variant="elevated">
           <CardHeader>
             <CardDescription>Udhaar Outstanding</CardDescription>
-            <CardTitle as="h2">₹6,800</CardTitle>
+            <CardTitle as="h2">-- Khata</CardTitle>
           </CardHeader>
           <CardContent>
             <Link href="/dashboard/customers" style={{ textDecoration: "none" }}>

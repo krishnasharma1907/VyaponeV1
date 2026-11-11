@@ -74,8 +74,15 @@ export default function HomePage() {
           paddingTop: "var(--space-6)",
         }}
       >
-        <div style={{ marginBottom: "var(--space-3)" }}>
-          <Badge variant="primary">Phase P1 &bull; Route Shells Active (VO-014)</Badge>
+        <div
+          style={{
+            marginBottom: "var(--space-3)",
+            display: "flex",
+            gap: "var(--space-2)",
+            flexWrap: "wrap",
+          }}
+        >
+          <Badge variant="info">Developer Route Shell Showcase (Phase P1 / VO-014)</Badge>
         </div>
         <h1
           style={{
@@ -93,9 +100,12 @@ export default function HomePage() {
             color: "var(--color-text-secondary)",
             fontSize: "var(--font-size-body)",
             lineHeight: "var(--line-height-body)",
+            marginBottom: "var(--space-3)",
           }}
         >
-          Every business. One platform. Explore role-aware route shells below.
+          Developer-only navigation navigator to inspect and verify application route shells,
+          layouts, and role-aware navigation. Real server-side authentication (VO-021) and tenant
+          database authorization (VO-024) will protect operational routes.
         </p>
       </header>
 

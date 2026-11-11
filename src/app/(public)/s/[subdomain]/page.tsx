@@ -45,7 +45,7 @@ export default async function SubdomainStorefrontPage({ params }: StorefrontPage
                 Official merchant storefront &bull; Powered by VyapOne
               </CardDescription>
             </div>
-            <Badge variant="success">Open Now</Badge>
+            <Badge variant="info">Storefront Shell</Badge>
           </div>
         </CardHeader>
         <CardContent>
@@ -59,8 +59,12 @@ export default async function SubdomainStorefrontPage({ params }: StorefrontPage
             Storefront subdomain: <code>{subdomain}.vyapone.in</code>
           </p>
           <div style={{ display: "flex", gap: "var(--space-3)", flexWrap: "wrap" }}>
-            <Button variant="primary">Browse Catalogue</Button>
-            <Button variant="secondary">Contact Merchant</Button>
+            <Button variant="primary" disabled>
+              Browse Catalogue (VO-040)
+            </Button>
+            <Button variant="secondary" disabled>
+              Contact Merchant (VO-040)
+            </Button>
           </div>
         </CardContent>
       </Card>

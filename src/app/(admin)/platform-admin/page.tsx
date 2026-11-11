@@ -25,10 +25,11 @@ export default function PlatformAdminOverviewPage() {
           <h1 style={{ fontSize: "var(--font-size-h1)", color: "var(--color-text-primary)" }}>
             Global System Governance
           </h1>
-          <Badge variant="success">All Systems Operational</Badge>
+          <Badge variant="info">Governance Shell</Badge>
         </div>
         <p style={{ color: "var(--color-text-secondary)", fontSize: "var(--font-size-body)" }}>
-          Platform infrastructure health, active multi-tenant metrics, and compliance oversight.
+          Platform infrastructure health, multi-tenant metrics, and compliance oversight
+          placeholders.
         </p>
       </header>
 
@@ -43,7 +44,7 @@ export default function PlatformAdminOverviewPage() {
         <Card variant="elevated">
           <CardHeader>
             <CardDescription>Total Provisioned Tenants</CardDescription>
-            <CardTitle as="h2">1,420 Businesses</CardTitle>
+            <CardTitle as="h2">-- Tenants</CardTitle>
           </CardHeader>
           <CardContent>
             <Link href="/platform-admin/tenants" style={{ textDecoration: "none" }}>
@@ -57,13 +58,13 @@ export default function PlatformAdminOverviewPage() {
         <Card variant="elevated">
           <CardHeader>
             <CardDescription>Reseller Workspaces</CardDescription>
-            <CardTitle as="h2">84 Agencies</CardTitle>
+            <CardTitle as="h2">-- Agencies</CardTitle>
           </CardHeader>
           <CardContent>
             <span
               style={{ fontSize: "var(--font-size-caption)", color: "var(--color-text-secondary)" }}
             >
-              Across 18 Indian states
+              Registry connects in Phase P11 (VO-110)
             </span>
           </CardContent>
         </Card>
@@ -71,10 +72,10 @@ export default function PlatformAdminOverviewPage() {
         <Card variant="elevated">
           <CardHeader>
             <CardDescription>Statutory GST Sequences</CardDescription>
-            <CardTitle as="h2">Zero Gaps Verified</CardTitle>
+            <CardTitle as="h2">-- Sequence Audit</CardTitle>
           </CardHeader>
           <CardContent>
-            <Badge variant="success">Audited (100% Sequence Integrity)</Badge>
+            <Badge variant="default">Audit Offline (VO-081)</Badge>
           </CardContent>
         </Card>
       </div>

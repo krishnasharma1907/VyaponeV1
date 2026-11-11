@@ -33,7 +33,9 @@ export default function ResellerTeamPage() {
             Invite designers, sales reps, and account managers with role-based access.
           </p>
         </div>
-        <Button variant="primary">Invite Team Member</Button>
+        <Button variant="primary" disabled>
+          Invite Team Member (VO-110)
+        </Button>
       </header>
 
       <Card variant="default">
@@ -41,7 +43,11 @@ export default function ResellerTeamPage() {
           <EmptyState
             title="Agency Team Directory"
             description="Team members with their assigned client scopes and permissions will appear here."
-            action={<Button size="sm">Send Invitation Link</Button>}
+            action={
+              <Button size="sm" disabled>
+                Invitations Offline (VO-110)
+              </Button>
+            }
           />
         </CardContent>
       </Card>

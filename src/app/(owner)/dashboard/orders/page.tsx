@@ -41,8 +41,8 @@ export default function OwnerOrdersPage() {
             title="Order Fulfillment Kanban"
             description="Live orders with statuses (Claimed, Received, Verified Paid, Dispatched) will appear here."
             action={
-              <Button size="sm" variant="secondary">
-                Refresh Orders
+              <Button size="sm" variant="secondary" disabled>
+                Orders Pipeline Offline (VO-062)
               </Button>
             }
           />

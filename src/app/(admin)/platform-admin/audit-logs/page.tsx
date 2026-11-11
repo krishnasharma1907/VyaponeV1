@@ -32,8 +32,8 @@ export default function AdminAuditLogsPage() {
             title="Global Security Audit Stream"
             description="Immutable audit events with actor ID, IP origin, tenant boundary, and before/after state hashes will be displayed here."
             action={
-              <Button size="sm" variant="outline">
-                Filter Security Events
+              <Button size="sm" variant="outline" disabled>
+                Audit Stream Offline (VO-120)
               </Button>
             }
           />

@@ -50,7 +50,7 @@ export default function ResellerWorkspaceLayout({ children }: { children: React.
                 fontWeight: "var(--font-weight-bold)",
               }}
             >
-              Apex Digital Agency
+              Agency Workspace
             </Link>
             <Badge variant="primary">Reseller Portal</Badge>
           </div>

@@ -36,8 +36,8 @@ export default function AdminAbusePage() {
             title="Flagged Broadcasts &amp; Rate-Limit Incidents"
             description="Broadcast campaigns paused due to high STOP opt-out frequency or quiet-hour restrictions will appear here for review."
             action={
-              <Button size="sm" variant="destructive">
-                Inspect Flagged Campaigns
+              <Button size="sm" variant="destructive" disabled>
+                Abuse Queue Offline (VO-093)
               </Button>
             }
           />

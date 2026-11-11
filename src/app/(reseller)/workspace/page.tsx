@@ -14,15 +14,24 @@ export default function ResellerOverviewPage() {
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-6)" }}>
       <header>
-        <h1
+        <div
           style={{
-            fontSize: "var(--font-size-h1)",
-            color: "var(--color-text-primary)",
+            display: "flex",
+            alignItems: "center",
+            gap: "var(--space-2)",
             marginBottom: "var(--space-2)",
           }}
         >
-          Agency Workspace Overview
-        </h1>
+          <h1
+            style={{
+              fontSize: "var(--font-size-h1)",
+              color: "var(--color-text-primary)",
+            }}
+          >
+            Agency Workspace Overview
+          </h1>
+          <Badge variant="info">Reseller Shell</Badge>
+        </div>
         <p style={{ color: "var(--color-text-secondary)", fontSize: "var(--font-size-body)" }}>
           Manage onboarded merchants, provision new websites, and review recurring commission
           settlements.
@@ -40,7 +49,7 @@ export default function ResellerOverviewPage() {
         <Card variant="elevated">
           <CardHeader>
             <CardDescription>Managed Businesses</CardDescription>
-            <CardTitle as="h2">12 Active Stores</CardTitle>
+            <CardTitle as="h2">-- Active Stores</CardTitle>
           </CardHeader>
           <CardContent>
             <Link href="/workspace/clients" style={{ textDecoration: "none" }}>
@@ -54,7 +63,7 @@ export default function ResellerOverviewPage() {
         <Card variant="elevated">
           <CardHeader>
             <CardDescription>Wholesale Commission</CardDescription>
-            <CardTitle as="h2">₹24,500 / mo</CardTitle>
+            <CardTitle as="h2">-- / mo</CardTitle>
           </CardHeader>
           <CardContent>
             <Link href="/workspace/billing" style={{ textDecoration: "none" }}>
@@ -68,10 +77,10 @@ export default function ResellerOverviewPage() {
         <Card variant="elevated">
           <CardHeader>
             <CardDescription>Agency Domain</CardDescription>
-            <CardTitle as="h2">agency.vyapone.in</CardTitle>
+            <CardTitle as="h2">-- (Offline)</CardTitle>
           </CardHeader>
           <CardContent>
-            <Badge variant="success">Custom Domain Connected</Badge>
+            <Badge variant="default">CNAME Not Configured</Badge>
           </CardContent>
         </Card>
       </div>
@@ -79,11 +88,17 @@ export default function ResellerOverviewPage() {
       <Card variant="default">
         <CardHeader>
           <CardTitle as="h3">Quick Actions</CardTitle>
-          <CardDescription>Fast onboarding shortcuts for agency field staff</CardDescription>
+          <CardDescription>
+            Agency onboarding and staffing actions connect in Phase P11
+          </CardDescription>
         </CardHeader>
         <CardContent style={{ display: "flex", gap: "var(--space-3)", flexWrap: "wrap" }}>
-          <Button variant="primary">Provision New Client Business</Button>
-          <Button variant="secondary">Invite Agency Staff</Button>
+          <Button variant="primary" disabled>
+            Provision Client Business (VO-110)
+          </Button>
+          <Button variant="secondary" disabled>
+            Invite Agency Staff (VO-110)
+          </Button>
         </CardContent>
       </Card>
     </div>

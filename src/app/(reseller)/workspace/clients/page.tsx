@@ -33,7 +33,9 @@ export default function ResellerClientsPage() {
             Manage merchant stores, access delegated administration, and configure plans.
           </p>
         </div>
-        <Button variant="primary">Add New Client</Button>
+        <Button variant="primary" disabled>
+          Add New Client (VO-110)
+        </Button>
       </header>
 
       <Card variant="default">
@@ -41,7 +43,11 @@ export default function ResellerClientsPage() {
           <EmptyState
             title="Managed Client Directory"
             description="Client business roster with delegated access switches and status indicators will be listed here."
-            action={<Button size="sm">Provision First Merchant</Button>}
+            action={
+              <Button size="sm" disabled>
+                Provisioning Offline (VO-110)
+              </Button>
+            }
           />
         </CardContent>
       </Card>

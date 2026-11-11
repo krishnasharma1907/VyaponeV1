@@ -31,14 +31,16 @@ export default function OwnerWebsitePage() {
             <h1 style={{ fontSize: "var(--font-size-h1)", color: "var(--color-text-primary)" }}>
               Storefront Website Builder
             </h1>
-            <Badge variant="success">Published (Live)</Badge>
+            <Badge variant="info">Builder Shell (Phase P4)</Badge>
           </div>
           <p style={{ color: "var(--color-text-secondary)", fontSize: "var(--font-size-body)" }}>
             Customize your storefront using approved JSON blocks, brand themes, and AI draft
             generation.
           </p>
         </div>
-        <Button variant="primary">Launch Visual Editor</Button>
+        <Button variant="primary" disabled>
+          Launch Editor (VO-040)
+        </Button>
       </header>
 
       <Card variant="default">
@@ -46,7 +48,11 @@ export default function OwnerWebsitePage() {
           <EmptyState
             title="Website Pages &amp; Puck Blocks"
             description="Visual block editor workspace with live preview, mobile breakpoint controls, and publishing revisions will appear here."
-            action={<Button size="sm">Edit Storefront Blocks</Button>}
+            action={
+              <Button size="sm" disabled>
+                Editor Offline (Phase P4 / VO-040)
+              </Button>
+            }
           />
         </CardContent>
       </Card>

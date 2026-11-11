@@ -34,7 +34,9 @@ export default function OwnerCataloguePage() {
             Configure item prices, stock thresholds, variants, and HSN/SAC statutory tax slabs.
           </p>
         </div>
-        <Button variant="primary">Add Product</Button>
+        <Button variant="primary" disabled>
+          Add Product (VO-060)
+        </Button>
       </header>
 
       <Card variant="default">
@@ -42,7 +44,11 @@ export default function OwnerCataloguePage() {
           <EmptyState
             title="Catalogue Directory"
             description="Products, barcode SKU assignments, and service package tables will be managed here."
-            action={<Button size="sm">Create First Item</Button>}
+            action={
+              <Button size="sm" disabled>
+                Catalogue Offline (VO-060)
+              </Button>
+            }
           />
         </CardContent>
       </Card>

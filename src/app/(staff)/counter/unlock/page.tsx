@@ -32,10 +32,11 @@ export default function StaffCounterUnlockPage() {
                 maxLength={6}
                 placeholder="&bull;&bull;&bull;&bull;"
                 style={{ textAlign: "center", fontSize: "1.5rem", letterSpacing: "0.5rem" }}
+                disabled
               />
             </Field>
-            <Button type="button" variant="primary" style={{ width: "100%" }}>
-              Unlock Station
+            <Button type="button" variant="primary" style={{ width: "100%" }} disabled>
+              Unlock Station (Connects in VO-110)
             </Button>
           </form>
         </CardContent>

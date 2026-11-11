@@ -32,14 +32,16 @@ export default function OwnerBillingPage() {
             <h1 style={{ fontSize: "var(--font-size-h1)", color: "var(--color-text-primary)" }}>
               GST Invoices &amp; Bills
             </h1>
-            <Badge variant="success">FY 2026-27 Active</Badge>
+            <Badge variant="info">Billing Shell</Badge>
           </div>
           <p style={{ color: "var(--color-text-secondary)", fontSize: "var(--font-size-body)" }}>
             Generate gap-free sequential invoices per Indian statutory rules with verified payment
             status.
           </p>
         </div>
-        <Button variant="accent">Generate New Invoice</Button>
+        <Button variant="accent" disabled>
+          Generate Invoice (VO-081)
+        </Button>
       </header>
 
       <Card variant="default">
@@ -47,7 +49,11 @@ export default function OwnerBillingPage() {
           <EmptyState
             title="Invoice History &amp; Sequences"
             description="Sequential tax invoices, credit notes, and GSTR-1 monthly sales summaries will be managed here."
-            action={<Button size="sm">Punch Bill INV-2627-0001</Button>}
+            action={
+              <Button size="sm" disabled>
+                Invoice Sequencing Offline (VO-081)
+              </Button>
+            }
           />
         </CardContent>
       </Card>

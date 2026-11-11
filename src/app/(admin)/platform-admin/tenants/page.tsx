@@ -31,7 +31,11 @@ export default function AdminTenantsPage() {
           <EmptyState
             title="Multi-Tenant Registry"
             description="Tenant lookup by sovereign business ID, GSTIN, or owning reseller workspace will be rendered here."
-            action={<Button size="sm">Search Tenants</Button>}
+            action={
+              <Button size="sm" disabled>
+                Search Offline (VO-023)
+              </Button>
+            }
           />
         </CardContent>
       </Card>

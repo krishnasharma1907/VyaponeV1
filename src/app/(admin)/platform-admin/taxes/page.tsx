@@ -36,11 +36,11 @@ export default function AdminTaxesPage() {
           <h1 style={{ fontSize: "var(--font-size-h1)", color: "var(--color-text-primary)" }}>
             Statutory GST Rate Master Tables
           </h1>
-          <Badge variant="success">CBIC Tax Schedules 2026-27</Badge>
+          <Badge variant="info">Statutory Reference Schedule</Badge>
         </div>
         <p style={{ color: "var(--color-text-secondary)", fontSize: "var(--font-size-body)" }}>
           Server-owned master statutory tables. AI assistants and client code must never invent or
-          calculate GST rates independently.
+          calculate GST rates independently (Master DB sync in VO-081).
         </p>
       </header>
 

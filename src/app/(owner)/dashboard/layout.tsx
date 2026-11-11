@@ -63,7 +63,7 @@ export default function BusinessOwnerLayout({ children }: { children: React.Reac
                 fontWeight: "var(--font-weight-bold)",
               }}
             >
-              Sharma Kirana &amp; Sweets
+              Merchant Dashboard
             </Link>
             <Badge variant="accent">Owner Portal</Badge>
           </div>

@@ -35,7 +35,9 @@ export default function OwnerCustomersPage() {
             consent.
           </p>
         </div>
-        <Button variant="primary">Add Customer</Button>
+        <Button variant="primary" disabled>
+          Add Customer (VO-080)
+        </Button>
       </header>
 
       <Card variant="default">
@@ -43,7 +45,11 @@ export default function OwnerCustomersPage() {
           <EmptyState
             title="Customer Directory"
             description="Customers with verified mobile numbers, Udhaar ledgers, and WhatsApp consent flags will be displayed here."
-            action={<Button size="sm">Add Customer Profile</Button>}
+            action={
+              <Button size="sm" disabled>
+                Directory Offline (VO-080)
+              </Button>
+            }
           />
         </CardContent>
       </Card>

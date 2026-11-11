@@ -18,7 +18,7 @@ Track each unresolved decision here. Do not treat a suggested vendor, price, dea
 | ADR-012 | Domain, subdomain and white-label policy | Domain and rules TBD | DNS/brand/trademark review | PENDING | VO-042, VO-049, VO-111 |
 | ADR-013 | Grace period, downgrade and expiry | Must not silently delete live data | Product and legal policy | PENDING | VO-026, VO-087 |
 | ADR-014 | GST bill/tax/e-invoice rules | Must be verified; CA review required | Chartered accountant and GSP/IRP partner | BLOCKING_FOR_LIVE_GST | VO-081, VO-082 |
-| ADR-015 | DPDP, retention and grievance policies | Legal review required | Legal counsel / privacy owner | BLOCKING_FOR_GA | VO-024, VO-124, VO-137 |
+| ADR-015 | DPDP, retention and grievance policies | Legal review required. Route `/privacy` is a draft architectural placeholder | Legal counsel / privacy owner | BLOCKING_FOR_GA | VO-014, VO-024, VO-124, VO-137 |
 | ADR-016 | Final launch language set and voice | English + Indian languages; PRD language review required | Translation and speech quality review | PENDING | VO-105, VO-106 |
 | ADR-017 | Google Business Profile API access | Approval/access required | Google project/app review owner | PENDING_EXTERNAL_APPROVAL | VO-113 |
 | ADR-018 | Meta app/business approvals and templates | Required for certain WhatsApp/social capabilities | Meta business verification and template approval | PENDING_EXTERNAL_APPROVAL | VO-091, VO-114 |

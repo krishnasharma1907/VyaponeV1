@@ -44,21 +44,21 @@ export default function ResellerSettingsPage() {
         <CardContent>
           <form style={{ display: "flex", flexDirection: "column", gap: "var(--space-4)" }}>
             <Field id="agency-name" label="Agency Display Name">
-              <Input defaultValue="Apex Digital Agency" />
+              <Input placeholder="e.g., Apex Digital Agency" disabled />
             </Field>
             <Field
               id="agency-domain"
               label="Custom Portal Domain"
-              helperText="Point your CNAME to cname.vyapone.in"
+              helperText="Point your CNAME to cname.vyapone.in (Phase P11)"
             >
-              <Input defaultValue="portal.apexdigital.in" />
+              <Input placeholder="e.g., portal.apexdigital.in" disabled />
             </Field>
             <Field id="agency-support" label="Support Contact Phone/Email">
-              <Input defaultValue="support@apexdigital.in" />
+              <Input placeholder="e.g., support@apexdigital.in" disabled />
             </Field>
             <div>
-              <Button type="button" variant="primary">
-                Save Changes
+              <Button type="button" variant="primary" disabled>
+                Save Changes (VO-110)
               </Button>
             </div>
           </form>

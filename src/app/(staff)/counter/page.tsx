@@ -25,10 +25,10 @@ export default function StaffCounterHomePage() {
           <h1 style={{ fontSize: "var(--font-size-h1)", color: "var(--color-text-primary)" }}>
             Counter POS Station
           </h1>
-          <Badge variant="success">Station Unlocked</Badge>
+          <Badge variant="info">Counter Station Shell</Badge>
         </div>
         <p style={{ color: "var(--color-text-secondary)", fontSize: "var(--font-size-body)" }}>
-          Active shift cashier: <strong>Ramesh K.</strong> &bull; Location: Main Bazaar Store
+          Shift sessions, clerk PIN authentication, and terminal lock connect in Phase P11 (VO-110).
         </p>
       </header>
 

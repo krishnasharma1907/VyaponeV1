@@ -14,7 +14,9 @@ export default function StaffCounterPOSPage() {
         <h1 style={{ fontSize: "var(--font-size-h2)", color: "var(--color-text-primary)" }}>
           Fast Billing Terminal
         </h1>
-        <Button variant="accent">Print Bill (F2)</Button>
+        <Button variant="accent" disabled>
+          Print Bill (F2) (VO-110)
+        </Button>
       </header>
 
       <Card variant="default">
@@ -22,7 +24,11 @@ export default function StaffCounterPOSPage() {
           <EmptyState
             title="Active Bill Cart &amp; SKU Scanner"
             description="Numeric keypad, barcode scanning listener, and dynamic dynamic UPI QR generation will be mounted here."
-            action={<Button size="sm">Add Quick Item</Button>}
+            action={
+              <Button size="sm" disabled>
+                POS Offline (VO-110)
+              </Button>
+            }
           />
         </CardContent>
       </Card>

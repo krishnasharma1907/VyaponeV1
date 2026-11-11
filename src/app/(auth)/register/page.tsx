@@ -26,33 +26,34 @@ export default function RegisterPage() {
       <CardHeader>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
           <CardTitle as="h1">Get Started</CardTitle>
-          <Badge variant="primary">New Account</Badge>
+          <Badge variant="info">Registration (Shell)</Badge>
         </div>
         <CardDescription>
-          Join VyapOne as an independent business owner or authorized reseller agency.
+          Onboarding entry shell for merchants and reseller agencies. Account creation connects in
+          Phase P2 (VO-021).
         </CardDescription>
       </CardHeader>
       <CardContent>
         <form style={{ display: "flex", flexDirection: "column", gap: "var(--space-4)" }}>
           <Field id="account-type" label="Account Type" required>
-            <Select defaultValue="owner">
+            <Select defaultValue="owner" disabled>
               <option value="owner">Business Owner (Single/Multi-Location)</option>
               <option value="reseller">Reseller Agency (Manage Multiple Clients)</option>
             </Select>
           </Field>
           <Field id="reg-business-name" label="Business or Agency Name" required>
-            <Input placeholder="e.g., Sharma General Store" />
+            <Input placeholder="e.g., Sharma General Store" disabled />
           </Field>
           <Field
             id="reg-phone"
             label="Mobile Number"
             required
-            helperText="Your primary login identifier"
+            helperText="Primary identifier (connects in Phase P2)"
           >
-            <Input type="tel" placeholder="98765 43210" autoComplete="tel" />
+            <Input type="tel" placeholder="98765 43210" autoComplete="tel" disabled />
           </Field>
-          <Button type="button" variant="primary" style={{ width: "100%" }}>
-            Continue to Verification &rarr;
+          <Button type="button" variant="primary" style={{ width: "100%" }} disabled>
+            Continue to Verification (Connects in VO-021)
           </Button>
         </form>
       </CardContent>

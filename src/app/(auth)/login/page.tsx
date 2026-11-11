@@ -25,10 +25,11 @@ export default function LoginPage() {
       <CardHeader>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
           <CardTitle as="h1">Sign In</CardTitle>
-          <Badge variant="info">OTP Login</Badge>
+          <Badge variant="info">OTP Login (Shell)</Badge>
         </div>
         <CardDescription>
-          Enter your 10-digit mobile number to receive a secure one-time passcode.
+          Enter your 10-digit mobile number. Authentication workflows will be connected in Phase P2
+          (VO-021).
         </CardDescription>
       </CardHeader>
       <CardContent>
@@ -37,12 +38,12 @@ export default function LoginPage() {
             id="login-phone"
             label="Mobile Number"
             required
-            helperText="We will send a 6-digit OTP"
+            helperText="6-digit SMS OTP delivery connects in Phase P2"
           >
-            <Input type="tel" placeholder="98765 43210" autoComplete="tel" />
+            <Input type="tel" placeholder="98765 43210" autoComplete="tel" disabled />
           </Field>
-          <Button type="button" variant="primary" style={{ width: "100%" }}>
-            Send OTP &rarr;
+          <Button type="button" variant="primary" style={{ width: "100%" }} disabled>
+            Send OTP (Connects in VO-021)
           </Button>
         </form>
       </CardContent>

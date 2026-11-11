@@ -31,8 +31,8 @@ export default function OwnerAnalyticsPage() {
             title="Performance Trends"
             description="Aggregated GMV charts, category breakdown, and repeat customer ratios will be rendered here."
             action={
-              <Button size="sm" variant="outline">
-                Export Monthly Report
+              <Button size="sm" variant="outline" disabled>
+                Report Export Offline (VO-068)
               </Button>
             }
           />
