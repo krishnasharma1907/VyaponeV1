@@ -92,13 +92,13 @@
 
 **Status:** `DONE`
 
-### [ ] VO-013 — Build accessible shared UI primitives
+### [x] VO-013 — Build accessible shared UI primitives
 
 **Scope:** Create buttons, fields, cards, dialogs, drawers, tabs, tables, badges, empty states, skeletons, toasts and navigation primitives.
 
 **Acceptance:** Primitives have keyboard, focus, labels, loading, disabled and error states; unit/component tests exist.
 
-**Status:** `NOT_STARTED`
+**Status:** `DONE`
 
 ### [ ] VO-014 — Create application route shells
 

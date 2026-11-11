@@ -5,7 +5,12 @@ export default defineConfig({
   test: {
     environment: "node",
     globals: true,
-    include: ["tests/**/*.test.ts", "tests/**/*.spec.ts"],
+    include: [
+      "tests/**/*.test.ts",
+      "tests/**/*.test.tsx",
+      "tests/**/*.spec.ts",
+      "tests/**/*.spec.tsx",
+    ],
     exclude: ["node_modules", ".next", "dist"],
   },
   resolve: {

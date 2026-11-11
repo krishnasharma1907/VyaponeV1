@@ -1,16 +1,16 @@
 # VyapOne Build Progress
 
 **Current phase:** P1 — Repository, design system and application shell (`IN_PROGRESS`)  
-**Completed tasks:** VO-000, VO-001, VO-002, VO-003, VO-004, VO-005, VO-006, VO-010, VO-011, VO-012  
-**Next task:** VO-013 — Build accessible shared UI primitives  
-**Project status:** DESIGN TOKENS IMPLEMENTED & CONTRAST VERIFIED / IN PHASE P1  
+**Completed tasks:** VO-000, VO-001, VO-002, VO-003, VO-004, VO-005, VO-006, VO-010, VO-011, VO-012, VO-013  
+**Next task:** VO-014 — Create application route shells  
+**Project status:** SHARED ACCESSIBLE UI PRIMITIVES IMPLEMENTED & VERIFIED / IN PHASE P1  
 
 ## Phase status
 
 | Phase | Status | Notes |
 |---|---|---|
 | P0 — Project audit, decisions and architecture | COMPLETE | All tasks VO-000 to VO-006 verified and done; Phase P0 gate passed |
-| P1 — Repository, design system and application shell | IN_PROGRESS | VO-010, VO-011, VO-012 done; VO-013 is next |
+| P1 — Repository, design system and application shell | IN_PROGRESS | VO-010, VO-011, VO-012, VO-013 done; VO-014 is next |
 | P2 — Platform identity, authentication and multi-tenancy | NOT_STARTED | |
 | P3 — Niche registry, presets and business onboarding | NOT_STARTED | |
 | P4 — Website engine, templates and publishing | NOT_STARTED | |
@@ -24,6 +24,60 @@
 | P12 — Platform administration, analytics and support | NOT_STARTED | |
 | P13 — Production hardening, beta validation and GA | NOT_STARTED | |
 | P14 — Post-launch expansion (not a GA blocker) | NOT_STARTED | |
+
+## Task report: VO-013
+
+- **Task ID:** VO-013
+- **Status:** DONE
+- **Summary:** Built complete suite of 12 accessible shared UI component primitives adhering to WCAG 2.2 AA, PRD Section 12, `docs/DESIGN_TOKENS.md`, and `docs/PROJECT_STRUCTURE.md`:
+  1. **Button Primitive (`src/components/ui/button`):** Variants (`primary`, `secondary`, `outline`, `ghost`, `destructive`, `accent`), sizes (`sm`, `md`, `lg`), `isLoading` state with spinner and `aria-busy`, prevents duplicate submissions when disabled/loading, accessible touch targets (`>= 44px` for md/lg).
+  2. **Form Field Family (`src/components/ui/field`):** `Field`, `Input`, `Textarea`, `Select`, `Checkbox` with explicit `htmlFor` / `id` linking, `aria-required`, `aria-invalid`, `aria-describedby` linking helper and error IDs, `role="alert"` on errors, 16px minimum text preventing iOS Safari auto-zoom.
+  3. **Card Primitive (`src/components/ui/card`):** `Card`, `CardHeader`, `CardTitle`, `CardDescription`, `CardContent`, `CardFooter`, `CardAction` supporting `default`, `elevated`, `glass`, and `subtle` variants with configurable heading tags.
+  4. **Dialog Primitive (`src/components/ui/dialog`):** Accessible modal dialog with `role="dialog"`, `aria-modal="true"`, `aria-labelledby`, `aria-describedby`, focus trapping, Escape key dismiss, backdrop click dismiss, focus restoration to trigger, and body scroll locking.
+  5. **Drawer / Bottom-Sheet Primitive (`src/components/ui/drawer`):** Mobile-first sheet designed for 390px viewports and counter POS usage with visual drag handle, focus management, Escape dismiss, and body scroll locking.
+  6. **Tabs Primitive (`src/components/ui/tabs`):** WAI-ARIA tabs with `role="tablist"`, `role="tab"`, `role="tabpanel"`, `aria-selected`, `aria-controls`, `aria-labelledby`, and keyboard navigation (ArrowLeft/Right, ArrowUp/Down, Home, End).
+  7. **Table Primitive (`src/components/ui/table`):** Semantic `table`, `caption`, `thead`, `tbody`, `tfoot`, `tr`, `th` (with `scope="col"`), `td`, wrapped in a keyboard-accessible responsive scroll container (`role="region"`, `tabindex="0"`).
+  8. **Badge Primitive (`src/components/ui/badge`):** Status indicators (`default`, `primary`, `accent`, `success`, `warning`, `danger`, `info`) with visible text (never color alone) and optional decorative icons (`aria-hidden="true"`).
+  9. **Empty State Primitive (`src/components/ui/empty-state`):** Standardized empty state with `role="region"`, decorative icon, title, description, and primary/secondary action slots.
+  10. **Skeleton Primitive (`src/components/ui/skeleton`):** Placeholder loader with `aria-hidden="true"`, pulse animation, reduced-motion override, and `text`, `circular`, `rectangular` variants.
+  11. **Toast Notification Primitive (`src/components/ui/toast`):** Live region notifications (`polite` for info/success/warning, `assertive` with `role="alert"` for error) with accessible close button and non-premature error dismissal.
+  12. **Navigation Landmark Primitive (`src/components/ui/navigation`):** Landmark `<nav>` with required `aria-label`, list structure, and links with `aria-current="page"`.
+  13. **Central Barrel Export (`src/components/ui/index.ts`):** Clean export of all primitives and types.
+  14. **CSS Tokens Consumption (`src/app/globals.css`):** Fully styled primitives consuming existing design token variables without any hardcoded colors or arbitrary values.
+  15. **Unit Test Suite (`tests/unit/components/primitives.test.tsx`):** Added 26 unit tests verifying static server markup, ARIA states, roles, keyboard attributes, disabled states, error alerts, and styling hooks.
+- **Files added/modified:**
+  - Added: `src/components/ui/button/index.tsx`
+  - Added: `src/components/ui/field/index.tsx`
+  - Added: `src/components/ui/card/index.tsx`
+  - Added: `src/components/ui/dialog/index.tsx`
+  - Added: `src/components/ui/drawer/index.tsx`
+  - Added: `src/components/ui/tabs/index.tsx`
+  - Added: `src/components/ui/table/index.tsx`
+  - Added: `src/components/ui/badge/index.tsx`
+  - Added: `src/components/ui/empty-state/index.tsx`
+  - Added: `src/components/ui/skeleton/index.tsx`
+  - Added: `src/components/ui/toast/index.tsx`
+  - Added: `src/components/ui/navigation/index.tsx`
+  - Added: `src/components/ui/index.ts`
+  - Added: `tests/unit/components/primitives.test.tsx`
+  - Modified: `src/app/globals.css` (appended primitive classes)
+  - Modified: `vitest.config.ts` (added `.tsx` test patterns)
+  - Modified: `docs/TASK_BACKLOG.md` (marked VO-013 as DONE)
+  - Modified: `docs/PROGRESS.md`
+  - Modified: `docs/CHANGELOG.md`
+- **Commands/tests run:**
+  - `pnpm typecheck`: Exit code 0 (zero TypeScript errors).
+  - `pnpm lint`: Exit code 0 (zero ESLint errors or warnings).
+  - `pnpm format:check`: Exit code 0 (All matched files use Prettier code style).
+  - `pnpm test`: Exit code 0 (3 test files, 49 tests passing).
+  - `pnpm build`: Exit code 0 (Next.js production build compiled successfully).
+- **Results:** Shared UI primitives are fully accessible, tested, and ready for route shells.
+- **Acceptance criteria met:**
+  - [x] Primitives have keyboard, focus, labels, loading, disabled and error states.
+  - [x] Unit/component tests exist and pass (26 tests in `primitives.test.tsx`, 49 total).
+  - [x] All 12 primitives implemented and exported via `src/components/ui/index.ts`.
+- **Blockers/decisions:** None. All work remains local.
+- **Next task ID:** VO-014 — Create application route shells
 
 ## Task report: VO-012
 

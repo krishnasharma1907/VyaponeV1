@@ -4,6 +4,27 @@ Record implementation changes by task ID. Do not record planned work as complete
 
 ## Unreleased
 
+### [VO-013] — Build accessible shared UI primitives (2026-11-11)
+- Implemented 12 accessible shared UI component primitives adhering to WCAG 2.2 AA and PRD Section 12 design specifications:
+  - `Button` (`src/components/ui/button`): Variants (`primary`, `secondary`, `outline`, `ghost`, `destructive`, `accent`), sizes (`sm`, `md`, `lg`), `isLoading` with spinner, `aria-busy`, disabled state preventing duplicate submissions, and accessible touch targets.
+  - `Field`, `Input`, `Textarea`, `Select`, `Checkbox` (`src/components/ui/field`): Accessible form family with explicit `htmlFor` / `id` association, `aria-required`, `aria-invalid`, `aria-describedby` linking helper and error IDs, 16px minimum text preventing iOS Safari zoom, and `role="alert"` for error messages.
+  - `Card`, `CardHeader`, `CardTitle`, `CardDescription`, `CardContent`, `CardFooter`, `CardAction` (`src/components/ui/card`): Semantic card surfaces supporting `default`, `elevated`, `glass`, and `subtle` styles with configurable heading levels.
+  - `Dialog` (`src/components/ui/dialog`): Accessible modal dialog with focus trapping, Escape dismiss, backdrop dismiss, focus restoration, and body scroll lock.
+  - `Drawer` (`src/components/ui/drawer`): Accessible mobile-first bottom sheet with drag handle, focus management, and body scroll lock.
+  - `Tabs` (`src/components/ui/tabs`): Accessible tab panels with `role="tablist"`, `role="tab"`, `role="tabpanel"`, and keyboard navigation (Arrow keys, Home, End).
+  - `Table` (`src/components/ui/table`): Responsive table container with `role="region"` and `tabIndex={0}`, standard HTML table semantics, and explicit `scope="col"`.
+  - `Badge` (`src/components/ui/badge`): Semantic status tags with visible text (not color alone) and optional decorative icons.
+  - `EmptyState` (`src/components/ui/empty-state`): Standardized zero-data state with `role="region"`, decorative icon, heading, description, and action buttons.
+  - `Skeleton` (`src/components/ui/skeleton`): Loading placeholders with `aria-hidden="true"`, pulse animation, and reduced-motion support.
+  - `Toast` (`src/components/ui/toast`): Notification toast system with live regions (`polite` for info/success/warning, `assertive` for errors) and accessible dismissal.
+  - `Navigation` (`src/components/ui/navigation`): Semantic `<nav>` landmark with required `aria-label`, list structure, and links with `aria-current="page"`.
+- Created central barrel export at `src/components/ui/index.ts`.
+- Appended component styling rules to `src/app/globals.css` consuming existing design tokens (`--color-*`, `--space-*`, `--radius-*`, `--shadow-*`, `--target-*`).
+- Authored 26 comprehensive unit tests in `tests/unit/components/primitives.test.tsx` verifying static HTML rendering, ARIA attributes, semantic roles, loading states, and error alerts. Total test count reached 49 across 3 test files.
+- Configured `vitest.config.ts` to include `.tsx` test patterns.
+- Verified all quality gates pass: `pnpm typecheck` (0 errors), `pnpm lint` (0 errors/warnings), `pnpm format:check` (clean), `pnpm test` (49 tests pass), and `pnpm build` (Next.js production build compiled).
+- Updated backlog status for VO-013 to `DONE` and updated progress log.
+
 ### [VO-012] — Implement design tokens (2026-11-08)
 - Created canonical design token definitions in `src/design-system/tokens.ts` codifying Canonical Brand Emerald (`#0F5132`) + Canonical Brand Marigold (`#D97706`), PRD Section 12 UI Action Emerald (`#0B6E4F`) + Accent Marigold (`#F5A524`) palette, warm canvas (`#FAF8F3`), card surface (`#FFFFFF`), responsive typography scale (with 16px mobile input minimum to prevent iOS zoom), 4px spacing scale, radii, elevation shadows, restrained glassmorphism (`rgba(255,255,255,0.80)` with 12px blur and opaque fallback), and WCAG 2.2 AA touch targets (`>= 24px` minimum, `44-48px` preferred).
 - Implemented global CSS custom properties in `src/app/globals.css` with baseline reset, accessible `:focus-visible` ring, `.glass-surface` utility, and `@media (prefers-reduced-motion)` preferences.
