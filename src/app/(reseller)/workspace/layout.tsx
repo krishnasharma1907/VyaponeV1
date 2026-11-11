@@ -12,8 +12,8 @@ export const metadata: Metadata = {
 export default function ResellerWorkspaceLayout({ children }: { children: React.ReactNode }) {
   return (
     <div
+      className="min-h-screen-safe"
       style={{
-        minHeight: "100vh",
         display: "flex",
         flexDirection: "column",
         backgroundColor: "var(--color-background)",
@@ -21,12 +21,11 @@ export default function ResellerWorkspaceLayout({ children }: { children: React.
     >
       {/* Reseller Shell Header */}
       <header
-        className="glass-surface"
+        className="glass-surface app-header"
         style={{
           position: "sticky",
           top: 0,
           zIndex: "var(--z-glass-nav)",
-          padding: "var(--space-3) var(--page-gutter-mobile)",
         }}
       >
         <div
@@ -56,7 +55,11 @@ export default function ResellerWorkspaceLayout({ children }: { children: React.
           </div>
 
           {/* Role-Aware Navigation: Strictly Agency Scoped */}
-          <Nav aria-label="Reseller Workspace Navigation" variant="horizontal">
+          <Nav
+            aria-label="Reseller Workspace Navigation"
+            variant="horizontal"
+            className="ui-nav-scrollable"
+          >
             <NavList>
               <NavItem>
                 <NavLink href="/workspace">Overview</NavLink>
@@ -81,12 +84,13 @@ export default function ResellerWorkspaceLayout({ children }: { children: React.
       {/* Main Reseller Content */}
       <main
         id="main-content"
+        className="app-container"
         style={{
           flex: 1,
           maxWidth: "1200px",
-          width: "100%",
           margin: "0 auto",
-          padding: "var(--space-6) var(--page-gutter-mobile)",
+          paddingTop: "var(--space-6)",
+          paddingBottom: "var(--space-8)",
         }}
       >
         {children}

@@ -321,6 +321,19 @@ export const breakpoints = {
   xl: "1440px", // Wide display
 } as const;
 
+export const safeAreaInsets = {
+  top: "env(safe-area-inset-top, 0px)",
+  right: "env(safe-area-inset-right, 0px)",
+  bottom: "env(safe-area-inset-bottom, 0px)",
+  left: "env(safe-area-inset-left, 0px)",
+} as const;
+
+export const pageGutters = {
+  mobile: "16px", // 320px & 390px baseline
+  tablet: "24px", // 768px tablet
+  desktop: "32px", // 1024px & 1440px desktop
+} as const;
+
 export const motion = {
   duration: {
     fast: "120ms", // Hover, active, micro-press states
@@ -356,6 +369,8 @@ export const designTokens = {
   shadows,
   touchTargets,
   breakpoints,
+  safeAreaInsets,
+  pageGutters,
   motion,
   zIndex,
 } as const;

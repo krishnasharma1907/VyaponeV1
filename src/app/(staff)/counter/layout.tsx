@@ -11,8 +11,8 @@ export const metadata: Metadata = {
 export default function StaffCounterLayout({ children }: { children: React.ReactNode }) {
   return (
     <div
+      className="min-h-screen-safe"
       style={{
-        minHeight: "100vh",
         display: "flex",
         flexDirection: "column",
         backgroundColor: "var(--color-surface)", // Clean white high-contrast background for POS
@@ -20,9 +20,9 @@ export default function StaffCounterLayout({ children }: { children: React.React
     >
       {/* High-Contrast POS Header */}
       <header
+        className="app-header"
         style={{
           borderBottom: "2px solid var(--color-border)",
-          padding: "var(--space-2) var(--page-gutter-mobile)",
           backgroundColor: "var(--color-background-subtle)",
         }}
       >
@@ -53,7 +53,11 @@ export default function StaffCounterLayout({ children }: { children: React.React
           </div>
 
           {/* Role-Aware Navigation: Zero Settings/Bank VPAs/Analytics */}
-          <Nav aria-label="Staff Counter Navigation" variant="horizontal">
+          <Nav
+            aria-label="Staff Counter Navigation"
+            variant="horizontal"
+            className="ui-nav-scrollable"
+          >
             <NavList>
               <NavItem>
                 <NavLink href="/counter">Station Home</NavLink>
@@ -72,12 +76,13 @@ export default function StaffCounterLayout({ children }: { children: React.React
       {/* Main Counter POS Content */}
       <main
         id="main-content"
+        className="app-container"
         style={{
           flex: 1,
           maxWidth: "1440px",
-          width: "100%",
           margin: "0 auto",
-          padding: "var(--space-4) var(--page-gutter-mobile)",
+          paddingTop: "var(--space-4)",
+          paddingBottom: "var(--space-6)",
         }}
       >
         {children}

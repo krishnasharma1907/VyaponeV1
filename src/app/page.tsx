@@ -59,14 +59,15 @@ export default function HomePage() {
   return (
     <main
       id="main-content"
+      className="min-h-screen-safe app-container"
       style={{
-        padding: "var(--page-gutter-mobile)",
         maxWidth: "768px",
         margin: "0 auto",
-        minHeight: "100vh",
         display: "flex",
         flexDirection: "column",
         gap: "var(--space-6)",
+        paddingTop: "max(var(--space-6), env(safe-area-inset-top, 0px))",
+        paddingBottom: "max(var(--space-8), env(safe-area-inset-bottom, 0px))",
       }}
     >
       <header

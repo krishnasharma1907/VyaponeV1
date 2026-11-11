@@ -10,13 +10,14 @@ export const metadata: Metadata = {
 export default function AuthLayout({ children }: { children: React.ReactNode }) {
   return (
     <div
+      className="min-h-screen-safe app-container"
       style={{
-        minHeight: "100vh",
         display: "flex",
         flexDirection: "column",
         alignItems: "center",
         justifyContent: "center",
-        padding: "var(--page-gutter-mobile)",
+        paddingTop: "max(var(--space-8), env(safe-area-inset-top, 0px))",
+        paddingBottom: "max(var(--space-8), env(safe-area-inset-bottom, 0px))",
         backgroundColor: "var(--color-background)",
       }}
     >

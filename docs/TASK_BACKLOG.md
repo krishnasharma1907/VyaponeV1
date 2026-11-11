@@ -108,13 +108,13 @@
 
 **Status:** `DONE`
 
-### [ ] VO-015 — Create responsive layout and mobile interaction foundation
+### [x] VO-015 — Create responsive layout and mobile interaction foundation
 
 **Scope:** Support PRD viewports 320, 390, 768, 1024 and 1440 px; safe areas, keyboard, touch targets and reduced motion.
 
 **Acceptance:** No unintended horizontal overflow; primary tasks are usable at 390 px; reduced motion works.
 
-**Status:** `NOT_STARTED`
+**Status:** `DONE`
 
 ### [ ] VO-016 — Implement application configuration and environment handling
 

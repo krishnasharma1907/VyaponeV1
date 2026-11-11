@@ -24,22 +24,20 @@ const ownerNavItems = [
 export default function BusinessOwnerLayout({ children }: { children: React.ReactNode }) {
   return (
     <div
+      className="min-h-screen-safe"
       style={{
-        minHeight: "100vh",
         display: "flex",
         flexDirection: "column",
         backgroundColor: "var(--color-background)",
-        paddingBottom: "4rem", // ensure content is not hidden by mobile bottom bar
       }}
     >
       {/* Business Owner Header */}
       <header
-        className="glass-surface"
+        className="glass-surface app-header"
         style={{
           position: "sticky",
           top: 0,
           zIndex: "var(--z-glass-nav)",
-          padding: "var(--space-3) var(--page-gutter-mobile)",
         }}
       >
         <div
@@ -88,12 +86,12 @@ export default function BusinessOwnerLayout({ children }: { children: React.Reac
       {/* Main Content */}
       <main
         id="main-content"
+        className="app-container has-bottom-bar"
         style={{
           flex: 1,
           maxWidth: "1280px",
-          width: "100%",
           margin: "0 auto",
-          padding: "var(--space-6) var(--page-gutter-mobile)",
+          paddingTop: "var(--space-6)",
         }}
       >
         {children}

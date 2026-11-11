@@ -4,6 +4,27 @@ Record implementation changes by task ID. Do not record planned work as complete
 
 ## Unreleased
 
+### [VO-015] — Create responsive layout and mobile interaction foundation (2026-11-11)
+- Implemented complete responsive layout foundation and mobile interactions across all 6 application route shells and root portal:
+  - Responsive Design Tokens (`src/design-system/tokens.ts`): Exported canonical breakpoints (`xs: 320px`, `sm: 390px`, `md: 768px`, `lg: 1024px`, `xl: 1440px`), safe-area insets (`env(safe-area-inset-*, 0px)`), dynamic page gutters (`mobile: 16px`, `tablet: 24px`, `desktop: 32px`), and WCAG 2.2 AA compliant touch target constants.
+  - Root Viewport Configuration (`src/app/layout.tsx`): Added `viewportFit: "cover"` to Next.js `Viewport` object to enable notch and home indicator safe area calculation across iOS and Android devices.
+  - Global Responsive Utilities (`src/app/globals.css`):
+    - Added CSS custom properties `--safe-area-top/right/bottom/left` with `0px` fallbacks.
+    - Added responsive `--page-gutter` scaling via `@media (min-width: 768px)` and `(min-width: 1024px)`.
+    - Added `.app-container` and `.app-header` container utilities integrating safe-area insets and gutters.
+    - Added dynamic viewport height utility `.min-h-screen-safe` (`100vh` + `100dvh`) protecting full-height layouts against mobile virtual keyboard popping.
+    - Enforced 16px (`1rem`) minimum font size on form controls to permanently prevent iOS Safari auto-zoom.
+    - Added responsive navigation rules: mobile bottom bar (`.ui-nav-bottom-bar`) hidden on desktop (`>= 769px`); desktop owner navigation (`.owner-desktop-nav`) hidden on mobile (`<= 768px`).
+    - Added `.has-bottom-bar` utility ensuring page content is never obscured by the fixed bottom navigation bar.
+    - Added `.ui-nav-scrollable` horizontal momentum scroll utility with hidden scrollbars for multi-tab mobile headers.
+    - Added `.ui-table-container` allowing keyboard-accessible table horizontal scrolling without breaking root page viewport containment.
+  - Layout Normalization: Upgraded all route group layouts (`(auth)`, `(public)`, `(reseller)`, `(owner)`, `(staff)`, `(admin)`) and root `src/app/page.tsx` with responsive layout classes and safe-area padding.
+  - Unit Tests (`tests/unit/responsive/responsive-foundation.test.ts`): Authored 14 automated unit tests verifying token parity, safe-area variables, gutter scaling, touch targets, reduced motion queries, and viewport metadata. Total test count reached 122 passing tests across 6 files.
+  - Automated Browser Validation (`scripts/validate-responsive.mjs`): Built Playwright test runner executing 35 checks across 7 core routes (`/login`, `/s/demo-store`, `/workspace`, `/dashboard`, `/dashboard/billing`, `/counter/pos`, `/platform-admin`) at 5 viewports (`320x568`, `390x844`, `768x1024`, `1024x768`, `1440x900`). Confirmed 100% pass rate with zero horizontal overflow (`docScrollWidth <= winInnerWidth`). Captured 35 screenshot artifacts to `docs/evidence/screenshots/`.
+  - Architecture Documentation: Authored `docs/RESPONSIVE_DESIGN.md` detailing responsive philosophy, breakpoint definitions, safe area ergonomics, touch targets, and browser test results.
+  - Verified all quality gates pass: `pnpm typecheck` (0 errors), `pnpm lint` (0 errors), `pnpm format:check` (clean), `pnpm test` (122 tests pass), `pnpm build` (30/30 pages compiled), and `pnpm test:responsive` (35/35 checks pass).
+  - Updated backlog status for VO-015 to `DONE` and updated progress log.
+
 ### [VO-014] — Create application route shells (2026-11-11)
 - Implemented comprehensive Next.js 15 App Router route shells and role-aware navigation hierarchy across 28 authored application routes (27 static page files + 1 dynamic route `/s/[subdomain]`) without URL collisions:
   - `(auth)` Route Group: Dedicated layout and placeholder authentication entry points for `/login` and `/register`.

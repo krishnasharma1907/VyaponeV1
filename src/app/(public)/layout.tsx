@@ -5,8 +5,8 @@ import { Nav, NavList, NavItem, NavLink } from "@/components/ui";
 export default function PublicStorefrontLayout({ children }: { children: React.ReactNode }) {
   return (
     <div
+      className="min-h-screen-safe"
       style={{
-        minHeight: "100vh",
         display: "flex",
         flexDirection: "column",
         backgroundColor: "var(--color-background)",
@@ -14,12 +14,11 @@ export default function PublicStorefrontLayout({ children }: { children: React.R
     >
       {/* Public Storefront Header */}
       <header
-        className="glass-surface"
+        className="glass-surface app-header"
         style={{
           position: "sticky",
           top: 0,
           zIndex: "var(--z-glass-nav)",
-          padding: "var(--space-3) var(--page-gutter-mobile)",
         }}
       >
         <div
@@ -44,7 +43,11 @@ export default function PublicStorefrontLayout({ children }: { children: React.R
             Storefront
           </Link>
 
-          <Nav aria-label="Storefront Navigation" variant="horizontal">
+          <Nav
+            aria-label="Storefront Navigation"
+            variant="horizontal"
+            className="ui-nav-scrollable"
+          >
             <NavList>
               <NavItem>
                 <NavLink href="/s/demo-store" isActive={true}>
@@ -65,12 +68,13 @@ export default function PublicStorefrontLayout({ children }: { children: React.R
       {/* Main Public Content */}
       <main
         id="main-content"
+        className="app-container"
         style={{
           flex: 1,
           maxWidth: "1024px",
-          width: "100%",
           margin: "0 auto",
-          padding: "var(--space-6) var(--page-gutter-mobile)",
+          paddingTop: "var(--space-6)",
+          paddingBottom: "var(--space-8)",
         }}
       >
         {children}
@@ -78,10 +82,12 @@ export default function PublicStorefrontLayout({ children }: { children: React.R
 
       {/* Public Footer */}
       <footer
+        className="app-container"
         style={{
           backgroundColor: "var(--color-surface)",
           borderTop: "1px solid var(--color-border)",
-          padding: "var(--space-6) var(--page-gutter-mobile)",
+          paddingTop: "var(--space-6)",
+          paddingBottom: "max(var(--space-6), env(safe-area-inset-bottom, 0px))",
           marginTop: "auto",
         }}
       >

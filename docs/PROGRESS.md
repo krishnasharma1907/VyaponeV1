@@ -1,17 +1,66 @@
 # VyapOne Build Progress
 
 **Current phase:** P1 — Repository, design system and application shell (`IN_PROGRESS`)  
-**Completed tasks:** VO-000, VO-001, VO-002, VO-003, VO-004, VO-005, VO-006, VO-010, VO-011, VO-012, VO-013, VO-014  
-**Next task:** VO-015 — Create responsive layout and mobile interaction foundation  
-**Project status:** APPLICATION ROUTE SHELLS & ROLE-AWARE NAVIGATION IMPLEMENTED & VERIFIED / IN PHASE P1  
+**Completed tasks:** VO-000, VO-001, VO-002, VO-003, VO-004, VO-005, VO-006, VO-010, VO-011, VO-012, VO-013, VO-014, VO-015  
+**Next task:** VO-016 — Implement application configuration and environment handling  
+**Project status:** RESPONSIVE LAYOUT & MOBILE INTERACTION FOUNDATION IMPLEMENTED & VERIFIED / IN PHASE P1  
 
 ## Phase status
 
 | Phase | Status | Notes |
 |---|---|---|
 | P0 — Project audit, decisions and architecture | COMPLETE | All tasks VO-000 to VO-006 verified and done; Phase P0 gate passed |
-| P1 — Repository, design system and application shell | IN_PROGRESS | VO-010, VO-011, VO-012, VO-013, VO-014 done; VO-015 is next |
+| P1 — Repository, design system and application shell | IN_PROGRESS | VO-010, VO-011, VO-012, VO-013, VO-014, VO-015 done; VO-016 is next |
 | P2 — Platform identity, authentication and multi-tenancy | NOT_STARTED | |
+
+## Task report: VO-015
+
+- **Task ID:** VO-015
+- **Status:** DONE
+- **Summary:** Built, tested, and validated responsive layout and mobile interaction foundation across all 6 application route shells and root portal:
+  1. **Responsive Tokens Parity (`src/design-system/tokens.ts`):** Defined canonical breakpoints (`320px`, `390px`, `768px`, `1024px`, `1440px`), safe-area inset definitions (`env(safe-area-inset-*, 0px)`), responsive page gutters (`mobile: 16px`, `tablet: 24px`, `desktop: 32px`), and WCAG 2.2 AA compliant touch targets (min interactive `24px`, standard control `44px`, mobile preferred `48px`).
+  2. **Viewport & Safe Area Configuration (`src/app/layout.tsx`):** Added `viewportFit: "cover"` to Next.js `Viewport` export, enabling notch, dynamic island, and gesture bar accommodation on modern mobile devices.
+  3. **Global Responsive Utilities (`src/app/globals.css`):**
+     - Implemented dynamic safe-area CSS variables (`--safe-area-top`, `--safe-area-bottom`, `--safe-area-left`, `--safe-area-right`) with 0px fallbacks.
+     - Implemented responsive page gutter scaling (`--page-gutter`) dynamically at 768px and 1024px.
+     - Implemented dynamic viewport height utility (`.min-h-screen-safe` supporting `100vh` and `100dvh`) protecting layouts against mobile virtual keyboard popping.
+     - Enforced 16px minimum font size on inputs to permanently eliminate mobile iOS Safari auto-zooming.
+     - Implemented responsive navigation separation: `.owner-desktop-nav` hidden on mobile (`<= 768px`), `.ui-nav-bottom-bar` hidden on desktop (`>= 769px`).
+     - Added `.has-bottom-bar` utility guaranteeing main content is never obscured by the fixed mobile bottom bar.
+     - Implemented `.ui-nav-scrollable` horizontal momentum scroll utility with hidden scrollbars for multi-tab mobile headers.
+     - Implemented `.ui-table-container` allowing keyboard-accessible table horizontal scrolling without breaking root page viewport containment.
+  4. **Layout Normalization:** Applied responsive utilities (`.min-h-screen-safe`, `.app-header`, `.app-container`, `.ui-nav-scrollable`, `.has-bottom-bar`) across all 6 route group layouts (`(auth)`, `(public)`, `(reseller)`, `(owner)`, `(staff)`, `(admin)`) and root `src/app/page.tsx`.
+  5. **Responsive Invariants Unit Tests (`tests/unit/responsive/responsive-foundation.test.ts`):** 14 automated unit tests verifying token values, safe-area variables, gutter scaling, touch targets, reduced motion queries, and viewport metadata.
+  6. **Automated Headless Browser Viewport Validation (`scripts/validate-responsive.mjs`):** Executed 35 browser-level matrix checks across all 7 core representative routes (`/login`, `/s/demo-store`, `/workspace`, `/dashboard`, `/dashboard/billing`, `/counter/pos`, `/platform-admin`) at 5 target viewports (`320x568`, `390x844`, `768x1024`, `1024x768`, `1440x900`). Confirmed 100% pass rate with zero horizontal overflow (`docScrollWidth <= winInnerWidth`). Captured 35 screenshot artifacts to `docs/evidence/screenshots/`.
+  7. **Comprehensive Architecture Documentation (`docs/RESPONSIVE_DESIGN.md`):** Authored full reference documentation covering design philosophy, breakpoint matrix, safe area ergonomics, touch targets, and browser test results.
+- **Files added/modified:**
+  - Added: `docs/RESPONSIVE_DESIGN.md`
+  - Added: `tests/unit/responsive/responsive-foundation.test.ts`
+  - Added: `scripts/validate-responsive.mjs`
+  - Added: `docs/evidence/responsive_viewport_results.json`
+  - Added: `docs/evidence/screenshots/*.png` (35 screenshot files)
+  - Modified: `src/design-system/tokens.ts`
+  - Modified: `src/app/globals.css`
+  - Modified: `src/app/layout.tsx`
+  - Modified: `src/app/page.tsx`
+  - Modified: `src/app/(owner)/dashboard/layout.tsx`
+  - Modified: `src/app/(admin)/platform-admin/layout.tsx`
+  - Modified: `src/app/(reseller)/workspace/layout.tsx`
+  - Modified: `src/app/(staff)/counter/layout.tsx`
+  - Modified: `src/app/(public)/layout.tsx`
+  - Modified: `src/app/(auth)/layout.tsx`
+  - Modified: `package.json`
+  - Modified: `docs/TASK_BACKLOG.md`
+  - Modified: `docs/PROGRESS.md`
+  - Modified: `docs/CHANGELOG.md`
+- **Verification commands run:**
+  - `pnpm vitest run tests/unit/responsive/responsive-foundation.test.ts`: 14/14 tests passed (100%)
+  - `pnpm test`: 6/6 test files passed, 122/122 tests passed (100%)
+  - `pnpm typecheck`: Clean TypeScript compilation (0 errors)
+  - `pnpm build`: Clean Next.js 15.5.29 production build (30/30 static pages)
+  - `pnpm test:responsive`: 35/35 browser viewport checks passed (100%)
+- **Blocked/deferred:** None. Ready for VO-016.
+- **Next task:** VO-016 — Implement application configuration and environment handling
 | P3 — Niche registry, presets and business onboarding | NOT_STARTED | |
 | P4 — Website engine, templates and publishing | NOT_STARTED | |
 | P5 — Vya AI gateway and website builder | NOT_STARTED | |

@@ -21,8 +21,8 @@ const adminNavItems = [
 export default function PlatformAdminLayout({ children }: { children: React.ReactNode }) {
   return (
     <div
+      className="min-h-screen-safe"
       style={{
-        minHeight: "100vh",
         display: "flex",
         flexDirection: "column",
         backgroundColor: "var(--color-background)",
@@ -30,10 +30,10 @@ export default function PlatformAdminLayout({ children }: { children: React.Reac
     >
       {/* Super-Admin Platform Header */}
       <header
+        className="app-header"
         style={{
           borderBottom: "2px solid var(--color-danger)",
           backgroundColor: "var(--color-surface)",
-          padding: "var(--space-3) var(--page-gutter-mobile)",
         }}
       >
         <div
@@ -63,8 +63,12 @@ export default function PlatformAdminLayout({ children }: { children: React.Reac
           </div>
 
           {/* Role-Aware Governance Navigation */}
-          <Nav aria-label="Platform Administration Navigation" variant="horizontal">
-            <NavList style={{ flexWrap: "wrap" }}>
+          <Nav
+            aria-label="Platform Administration Navigation"
+            variant="horizontal"
+            className="ui-nav-scrollable"
+          >
+            <NavList>
               {adminNavItems.map((item) => (
                 <NavItem key={item.href}>
                   <NavLink href={item.href}>{item.label}</NavLink>
@@ -78,12 +82,13 @@ export default function PlatformAdminLayout({ children }: { children: React.Reac
       {/* Main Admin Content */}
       <main
         id="main-content"
+        className="app-container"
         style={{
           flex: 1,
           maxWidth: "1440px",
-          width: "100%",
           margin: "0 auto",
-          padding: "var(--space-6) var(--page-gutter-mobile)",
+          paddingTop: "var(--space-6)",
+          paddingBottom: "var(--space-8)",
         }}
       >
         {children}
