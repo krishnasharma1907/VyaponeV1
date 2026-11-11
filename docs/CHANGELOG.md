@@ -4,6 +4,23 @@ Record implementation changes by task ID. Do not record planned work as complete
 
 ## Unreleased
 
+### [VO-014] — Create application route shells (2026-11-11)
+- Implemented comprehensive Next.js 15 App Router route shells and role-aware navigation hierarchy across 30 routes without URL collisions:
+  - `(auth)` Route Group: Dedicated layout and placeholder authentication entry points for `/login` and `/register`.
+  - `(public)` Route Group: Customer-facing touchpoints including dynamic merchant subdomain storefronts `/s/[subdomain]` and statutory DPDP grievance privacy policy page `/privacy`.
+  - `(reseller)` Route Group: Multi-client agency portal with persistent navigation for `/workspace`, `/workspace/clients`, `/workspace/billing`, `/workspace/team`, and `/workspace/settings`.
+  - `(owner)` Route Group: Sovereign merchant business operations portal with desktop navigation and mobile bottom bar (44px+ touch targets) covering `/dashboard`, `/dashboard/catalogue`, `/dashboard/orders`, `/dashboard/billing`, `/dashboard/customers`, `/dashboard/whatsapp`, `/dashboard/website`, `/dashboard/analytics`, and `/dashboard/settings`.
+  - `(staff)` Route Group: Distraction-free, high-contrast staff counter terminal for in-store clerks covering `/counter`, `/counter/pos`, and `/counter/unlock`.
+  - `(admin)` Route Group: Global platform administration and compliance console covering `/platform-admin`, `/platform-admin/tenants`, `/platform-admin/plans`, `/platform-admin/taxes`, `/platform-admin/audit-logs`, and `/platform-admin/abuse`.
+- Cleaned root layout `src/app/layout.tsx` to serve as a pure HTML/body shell, eliminating nested `<main>` landmark collisions.
+- Created discovery portal showcase at `src/app/page.tsx` with role navigation cards, status badges, and architecture guarantees.
+- Fixed React Server Component serialization boundaries in UI primitives by marking `Button` and `Field` with `"use client";`, resolving event handler serialization and React Context (`createContext`) errors during production build.
+- Authored architecture reference `docs/ROUTE_ARCHITECTURE.md` documenting route-to-role mappings, layout trees, client vs server component boundaries, and security delineation.
+- Authored 34 unit tests in `tests/unit/routing/route-shells.test.tsx` verifying route rendering, ARIA navigation landmarks, accessible link targets, and role navigation isolation.
+- Total test count reached 108 passing tests across 5 test files with 100% test pass rate.
+- Verified all quality gates pass: `pnpm typecheck` (0 errors), `pnpm lint` (0 errors), `pnpm format:check` (clean), `pnpm test` (108 tests pass), and `pnpm build` (30/30 routes successfully generated).
+- Updated backlog status for VO-014 to `DONE` and updated progress log.
+
 ### [VO-013] — Build accessible shared UI primitives (2026-11-11)
 - Implemented 12 accessible shared UI component primitives adhering to WCAG 2.2 AA and PRD Section 12 design specifications:
   - `Button` (`src/components/ui/button`): Variants (`primary`, `secondary`, `outline`, `ghost`, `destructive`, `accent`), sizes (`sm`, `md`, `lg`), `isLoading` with spinner, `aria-busy`, disabled state preventing duplicate submissions, and accessible touch targets.

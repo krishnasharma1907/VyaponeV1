@@ -1,9 +1,67 @@
+import React from "react";
+import Link from "next/link";
+import {
+  Badge,
+  Button,
+  Card,
+  CardHeader,
+  CardTitle,
+  CardDescription,
+  CardContent,
+} from "@/components/ui";
+
 export default function HomePage() {
+  const portals = [
+    {
+      title: "Business Owner Dashboard",
+      path: "/dashboard",
+      badge: "Sovereign Owner",
+      badgeVariant: "accent" as const,
+      desc: "Daily pulse, catalogue, orders, sequential GST billing, customers, WhatsApp, and website builder.",
+    },
+    {
+      title: "Staff Counter Terminal",
+      path: "/counter",
+      badge: "Staff POS",
+      badgeVariant: "warning" as const,
+      desc: "High-contrast fast order punching, instant receipts, and station PIN unlock.",
+    },
+    {
+      title: "Reseller Agency Workspace",
+      path: "/workspace",
+      badge: "Reseller Agency",
+      badgeVariant: "primary" as const,
+      desc: "Client business roster, wholesale billing, agency team, and white-label branding.",
+    },
+    {
+      title: "Platform Administration",
+      path: "/platform-admin",
+      badge: "Super-Admin",
+      badgeVariant: "danger" as const,
+      desc: "Global system health, tenant inspector, statutory GST master tables, and audit trail.",
+    },
+    {
+      title: "Public Storefront Touchpoint",
+      path: "/s/demo-store",
+      badge: "Customer Storefront",
+      badgeVariant: "default" as const,
+      desc: "Responsive public storefront home for merchant customers (*.vyapone.in).",
+    },
+    {
+      title: "Authentication Portal",
+      path: "/login",
+      badge: "Auth Entry",
+      badgeVariant: "info" as const,
+      desc: "Phone OTP and email login for merchants, agency staff, and platform operators.",
+    },
+  ];
+
   return (
-    <div
+    <main
+      id="main-content"
       style={{
         padding: "var(--page-gutter-mobile)",
-        maxWidth: "640px",
+        maxWidth: "768px",
         margin: "0 auto",
         minHeight: "100vh",
         display: "flex",
@@ -16,20 +74,8 @@ export default function HomePage() {
           paddingTop: "var(--space-6)",
         }}
       >
-        <div
-          style={{
-            display: "inline-block",
-            padding: "var(--space-1) var(--space-3)",
-            backgroundColor: "var(--color-brand-primary-soft)",
-            color: "var(--color-brand-primary)",
-            borderRadius: "var(--radius-full)",
-            fontSize: "var(--font-size-caption)",
-            fontWeight: "var(--font-weight-semibold)",
-            letterSpacing: "var(--letter-spacing-caption)",
-            marginBottom: "var(--space-3)",
-          }}
-        >
-          Phase P1 &bull; Design Tokens Verified
+        <div style={{ marginBottom: "var(--space-3)" }}>
+          <Badge variant="primary">Phase P1 &bull; Route Shells Active (VO-014)</Badge>
         </div>
         <h1
           style={{
@@ -49,116 +95,92 @@ export default function HomePage() {
             lineHeight: "var(--line-height-body)",
           }}
         >
-          Every business. One platform.
+          Every business. One platform. Explore role-aware route shells below.
         </p>
       </header>
 
-      {/* Surface Card Example */}
-      <section
-        style={{
-          padding: "var(--space-5)",
-          backgroundColor: "var(--color-surface)",
-          border: "1px solid var(--color-border)",
-          borderRadius: "var(--radius-lg)",
-          boxShadow: "var(--shadow-sm)",
-        }}
-      >
+      {/* Application Route Shell Portals */}
+      <section aria-labelledby="portals-heading">
         <h2
+          id="portals-heading"
           style={{
-            fontSize: "var(--font-size-h3)",
-            lineHeight: "var(--line-height-h3)",
+            fontSize: "var(--font-size-h2)",
             color: "var(--color-text-primary)",
-            marginBottom: "var(--space-2)",
-          }}
-        >
-          Design System &amp; Semantic Tokens
-        </h2>
-        <p
-          style={{
-            fontSize: "var(--font-size-body-sm)",
-            lineHeight: "var(--line-height-body-sm)",
-            color: "var(--color-text-secondary)",
             marginBottom: "var(--space-4)",
           }}
         >
-          Tokens are centralized in <code>tokens.ts</code> and <code>globals.css</code>. Zero
-          scattered hardcoded brand colors.
-        </p>
+          Application Portals &amp; Route Shells
+        </h2>
 
-        {/* Action Pairings adhering to WCAG 2.2 AA Contrast */}
         <div
           style={{
-            display: "flex",
-            flexWrap: "wrap",
-            gap: "var(--space-3)",
+            display: "grid",
+            gridTemplateColumns: "1fr",
+            gap: "var(--space-4)",
           }}
         >
-          {/* Primary CTA (White on Emerald: 6.25:1) */}
-          <button
-            type="button"
-            style={{
-              minHeight: "var(--target-control-height)",
-              padding: "0 var(--space-4)",
-              backgroundColor: "var(--color-brand-primary)",
-              color: "var(--color-brand-primary-fg)",
-              border: "none",
-              borderRadius: "var(--radius-md)",
-              fontSize: "var(--font-size-body-sm)",
-              fontWeight: "var(--font-weight-medium)",
-              cursor: "pointer",
-            }}
-          >
-            Primary Action
-          </button>
-
-          {/* Accent CTA (Dark Text on Marigold: 8.27:1) */}
-          <button
-            type="button"
-            style={{
-              minHeight: "var(--target-control-height)",
-              padding: "0 var(--space-4)",
-              backgroundColor: "var(--color-brand-accent)",
-              color: "var(--color-brand-accent-fg)",
-              border: "none",
-              borderRadius: "var(--radius-md)",
-              fontSize: "var(--font-size-body-sm)",
-              fontWeight: "var(--font-weight-semibold)",
-              cursor: "pointer",
-            }}
-          >
-            New Bill (Accent)
-          </button>
+          {portals.map((portal) => (
+            <Card key={portal.path} variant="default">
+              <CardHeader>
+                <div
+                  style={{
+                    display: "flex",
+                    justifyContent: "space-between",
+                    alignItems: "flex-start",
+                    gap: "var(--space-2)",
+                  }}
+                >
+                  <CardTitle as="h3">{portal.title}</CardTitle>
+                  <Badge variant={portal.badgeVariant}>{portal.badge}</Badge>
+                </div>
+                <CardDescription>{portal.desc}</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <Link href={portal.path} style={{ textDecoration: "none" }}>
+                  <Button variant="outline" size="sm">
+                    Open {portal.title} &rarr;
+                  </Button>
+                </Link>
+              </CardContent>
+            </Card>
+          ))}
         </div>
       </section>
 
-      {/* Glassmorphism Navigation Shell Preview */}
-      <section
+      {/* Design System Glassmorphism Badge */}
+      <footer
         className="glass-surface"
         style={{
           padding: "var(--space-4)",
           borderRadius: "var(--radius-lg)",
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "center",
+          flexWrap: "wrap",
+          gap: "var(--space-2)",
+          marginTop: "auto",
         }}
       >
-        <h3
+        <span
           style={{
-            fontSize: "var(--font-size-h4)",
-            lineHeight: "var(--line-height-h4)",
-            color: "var(--color-text-primary)",
-            marginBottom: "var(--space-1)",
-          }}
-        >
-          Restrained Glass Surface
-        </h3>
-        <p
-          style={{
-            fontSize: "var(--font-size-body-sm)",
+            fontSize: "var(--font-size-caption)",
             color: "var(--color-text-secondary)",
-            margin: 0,
           }}
         >
-          80% white opacity with 12px backdrop blur and opaque fallback.
-        </p>
-      </section>
-    </div>
+          Canonical Emerald (#0F5132) &amp; Marigold (#D97706) &bull; WCAG 2.2 AA
+        </span>
+        <Link
+          href="/privacy"
+          style={{
+            fontSize: "var(--font-size-caption)",
+            color: "var(--color-brand-primary)",
+            fontWeight: "var(--font-weight-medium)",
+            textDecoration: "none",
+          }}
+        >
+          Privacy Policy &amp; Grievance Redressal
+        </Link>
+      </footer>
+    </main>
   );
 }

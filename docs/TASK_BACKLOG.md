@@ -100,13 +100,13 @@
 
 **Status:** `DONE`
 
-### [ ] VO-014 — Create application route shells
+### [x] VO-014 — Create application route shells
 
 **Scope:** Create distinct public, reseller, business-owner, staff and platform-admin shells with role-aware navigation placeholders.
 
 **Acceptance:** All shells render responsively; no role sees navigation for a module it cannot access.
 
-**Status:** `NOT_STARTED`
+**Status:** `DONE`
 
 ### [ ] VO-015 — Create responsive layout and mobile interaction foundation
 

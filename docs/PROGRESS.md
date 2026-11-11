@@ -1,16 +1,90 @@
 # VyapOne Build Progress
 
 **Current phase:** P1 — Repository, design system and application shell (`IN_PROGRESS`)  
-**Completed tasks:** VO-000, VO-001, VO-002, VO-003, VO-004, VO-005, VO-006, VO-010, VO-011, VO-012, VO-013  
-**Next task:** VO-014 — Create application route shells  
-**Project status:** SHARED ACCESSIBLE UI PRIMITIVES IMPLEMENTED & VERIFIED / IN PHASE P1  
+**Completed tasks:** VO-000, VO-001, VO-002, VO-003, VO-004, VO-005, VO-006, VO-010, VO-011, VO-012, VO-013, VO-014  
+**Next task:** VO-015 — Create responsive layout and mobile interaction foundation  
+**Project status:** APPLICATION ROUTE SHELLS & ROLE-AWARE NAVIGATION IMPLEMENTED & VERIFIED / IN PHASE P1  
 
 ## Phase status
 
 | Phase | Status | Notes |
 |---|---|---|
 | P0 — Project audit, decisions and architecture | COMPLETE | All tasks VO-000 to VO-006 verified and done; Phase P0 gate passed |
-| P1 — Repository, design system and application shell | IN_PROGRESS | VO-010, VO-011, VO-012, VO-013 done; VO-014 is next |
+| P1 — Repository, design system and application shell | IN_PROGRESS | VO-010, VO-011, VO-012, VO-013, VO-014 done; VO-015 is next |
+| P2 — Platform identity, authentication and multi-tenancy | NOT_STARTED | |
+| P3 — Niche registry, presets and business onboarding | NOT_STARTED | |
+| P4 — Website engine, templates and publishing | NOT_STARTED | |
+| P5 — Vya AI gateway and website builder | NOT_STARTED | |
+| P6 — Shared business operations engine | NOT_STARTED | |
+| P7 — Niche operational experiences | NOT_STARTED | |
+| P8 — Customers, GST billing, payments and reseller money flows | NOT_STARTED | |
+| P9 — WhatsApp, messaging and automation | NOT_STARTED | |
+| P10 — Vya daily assistant, voice and languages | NOT_STARTED | |
+| P11 — Reseller ecosystem, integrations, staff and PWA | NOT_STARTED | |
+| P12 — Platform administration, analytics and support | NOT_STARTED | |
+| P13 — Production hardening, beta validation and GA | NOT_STARTED | |
+| P14 — Post-launch expansion (not a GA blocker) | NOT_STARTED | |
+
+## Task report: VO-014
+
+- **Task ID:** VO-014
+- **Status:** DONE
+- **Summary:** Built complete application route shells with role-aware navigation and layout hierarchy using Next.js 15 App Router route groups:
+  1. **Documentation Architecture (`docs/ROUTE_ARCHITECTURE.md`):** Complete route mapping matrix across 30 routes, visual ASCII layout hierarchy tree, role navigation isolation matrix, client vs server component boundaries, and security delineation confirming hard authorization lives at middleware/RLS layers (P2 / VO-021, VO-024).
+  2. **Clean Root Layout Normalization (`src/app/layout.tsx`):** Simplified root layout to a clean HTML/body envelope containing only global styles, fonts, and `{children}`, eliminating nested `<main>` landmark issues.
+  3. **Role-Aware Portal Showcase (`src/app/page.tsx`):** Interactive discovery hub linking all 5 distinct route groups with status badges, descriptions, and architectural isolation guarantees.
+  4. **Authentication Route Group `(auth)`:** Dedicated minimalist layout and placeholder screens for `/login` (with credential inputs, OTP action, recovery link) and `/register` (with phone/GSTIN inputs, role-based onboarding).
+  5. **Public Storefront Route Group `(public)`:** Customer-facing touchpoint shell with dynamic subdomain route `/s/[subdomain]` (previewing catalog, cart drawer trigger, verified UPI badges) and statutory privacy policy touchpoint `/privacy` (mandated DPDP 2023 compliance with Data Protection Officer contact details and grievance filing).
+  6. **Reseller Agency Workspace `(reseller)`:** Multi-client agency portal with persistent top header navigation and routes for overview (`/workspace`), client business roster (`/workspace/clients`), wholesale billing and payouts (`/workspace/billing`), agency staff team (`/workspace/team`), and agency white-label settings (`/workspace/settings`). Zero platform admin or business-specific operational clutter.
+  7. **Business Owner Operations Dashboard `(owner)`:** Sovereign merchant portal with desktop header navigation and a dedicated mobile bottom bar (44px+ touch targets) covering `/dashboard` (daily pulse), `/dashboard/catalogue` (products & inventory), `/dashboard/orders` (online & counter pickups), `/dashboard/billing` (sequential GST invoices), `/dashboard/customers` (Udhaar khata & DPDP consent), `/dashboard/whatsapp` (Meta Cloud marketing & quiet hours), `/dashboard/website` (constrained block builder), `/dashboard/analytics` (offline-first insights), and `/dashboard/settings` (business profile, bank VPA, GSTIN).
+  8. **Staff Counter POS Terminal `(staff)`:** Dedicated high-contrast, distraction-free point-of-sale shell for store clerks with rapid switching between counter overview (`/counter`), fast item punch & QR billing (`/counter/pos`), and station PIN lock/unlock (`/counter/unlock`). Strict role isolation hides business profit margins, bank configuration, and wholesale data.
+  9. **Platform Governance Console `(admin)`:** Internal super-admin console with alert badges and global overview (`/platform-admin`), tenant inspector (`/platform-admin/tenants`), plan tiers & quotas (`/platform-admin/plans`), statutory GST HSN/SAC master tables (`/platform-admin/taxes`), immutable audit trail (`/platform-admin/audit-logs`), and TRAI/Meta abuse & quiet-hour defense (`/platform-admin/abuse`).
+  10. **Client Component Boundary Fixes:** Marked `Button` and `Field` primitives with `"use client";` to ensure event handlers (`onClick`, `onChange`, `createContext`) cleanly bridge the React Server Component serialization boundary in Next.js 15 production builds.
+  11. **Comprehensive Route Shell Unit Tests (`tests/unit/routing/route-shells.test.tsx`):** Added 34 tests validating route mounting, semantic landmarks (`role="main"`, `role="navigation"`), accessible labels, navigation href targets, and strict role navigation isolation (e.g. storefront has no back-office links, staff POS has no business bank settings, owner has no wholesale reseller controls, reseller has no platform tax table controls).
+  12. **Next.js Production Build Verification:** Verified all 30 static and dynamic routes compile cleanly with zero collisions (`pnpm build`).
+- **Files added/modified:**
+  - Added: `docs/ROUTE_ARCHITECTURE.md`
+  - Added: `src/app/(auth)/layout.tsx`
+  - Added: `src/app/(auth)/login/page.tsx`
+  - Added: `src/app/(auth)/register/page.tsx`
+  - Added: `src/app/(public)/layout.tsx`
+  - Added: `src/app/(public)/s/[subdomain]/page.tsx`
+  - Added: `src/app/(public)/privacy/page.tsx`
+  - Added: `src/app/(reseller)/workspace/layout.tsx`
+  - Added: `src/app/(reseller)/workspace/page.tsx`
+  - Added: `src/app/(reseller)/workspace/clients/page.tsx`
+  - Added: `src/app/(reseller)/workspace/billing/page.tsx`
+  - Added: `src/app/(reseller)/workspace/team/page.tsx`
+  - Added: `src/app/(reseller)/workspace/settings/page.tsx`
+  - Added: `src/app/(owner)/dashboard/layout.tsx`
+  - Added: `src/app/(owner)/dashboard/page.tsx`
+  - Added: `src/app/(owner)/dashboard/catalogue/page.tsx`
+  - Added: `src/app/(owner)/dashboard/orders/page.tsx`
+  - Added: `src/app/(owner)/dashboard/billing/page.tsx`
+  - Added: `src/app/(owner)/dashboard/customers/page.tsx`
+  - Added: `src/app/(owner)/dashboard/whatsapp/page.tsx`
+  - Added: `src/app/(owner)/dashboard/website/page.tsx`
+  - Added: `src/app/(owner)/dashboard/analytics/page.tsx`
+  - Added: `src/app/(owner)/dashboard/settings/page.tsx`
+  - Added: `src/app/(staff)/counter/layout.tsx`
+  - Added: `src/app/(staff)/counter/page.tsx`
+  - Added: `src/app/(staff)/counter/pos/page.tsx`
+  - Added: `src/app/(staff)/counter/unlock/page.tsx`
+  - Added: `src/app/(admin)/platform-admin/layout.tsx`
+  - Added: `src/app/(admin)/platform-admin/page.tsx`
+  - Added: `src/app/(admin)/platform-admin/tenants/page.tsx`
+  - Added: `src/app/(admin)/platform-admin/plans/page.tsx`
+  - Added: `src/app/(admin)/platform-admin/taxes/page.tsx`
+  - Added: `src/app/(admin)/platform-admin/audit-logs/page.tsx`
+  - Added: `src/app/(admin)/platform-admin/abuse/page.tsx`
+  - Added: `tests/unit/routing/route-shells.test.tsx`
+  - Modified: `src/app/layout.tsx`
+  - Modified: `src/app/page.tsx`
+  - Modified: `src/components/ui/button/index.tsx`
+  - Modified: `src/components/ui/field/index.tsx`
+  - Modified: `docs/TASK_BACKLOG.md`
+  - Modified: `docs/PROGRESS.md`
+  - Modified: `docs/CHANGELOG.md`
 | P2 — Platform identity, authentication and multi-tenancy | NOT_STARTED | |
 | P3 — Niche registry, presets and business onboarding | NOT_STARTED | |
 | P4 — Website engine, templates and publishing | NOT_STARTED | |
