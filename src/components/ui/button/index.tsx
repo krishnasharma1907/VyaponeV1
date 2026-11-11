@@ -35,11 +35,21 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
       type = "button",
       className = "",
       style,
+      onClick,
       ...props
     },
     ref,
   ) => {
     const isDisabled = disabled || isLoading;
+
+    const handleClick = (e: React.MouseEvent<HTMLButtonElement>) => {
+      if (isDisabled) {
+        e.preventDefault();
+        e.stopPropagation();
+        return;
+      }
+      onClick?.(e);
+    };
 
     return (
       <button
@@ -48,6 +58,7 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
         disabled={isDisabled}
         aria-disabled={isDisabled ? "true" : undefined}
         aria-busy={isLoading ? "true" : undefined}
+        onClick={handleClick}
         className={`ui-btn ui-btn-${variant} ui-btn-${size} ${isLoading ? "ui-btn-loading" : ""} ${className}`.trim()}
         style={style}
         {...props}

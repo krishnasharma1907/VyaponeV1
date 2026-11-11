@@ -97,7 +97,9 @@ export const TabsList = forwardRef<HTMLDivElement, TabsListProps>(
       );
       if (tabs.length === 0) return;
 
-      const currentIndex = tabs.findIndex((tab) => tab === document.activeElement);
+      const currentIndex = tabs.findIndex(
+        (tab) => tab === document.activeElement || tab.contains(document.activeElement),
+      );
       if (currentIndex === -1) return;
 
       const isHorizontal = orientation === "horizontal";

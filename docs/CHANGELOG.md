@@ -20,9 +20,11 @@ Record implementation changes by task ID. Do not record planned work as complete
   - `Navigation` (`src/components/ui/navigation`): Semantic `<nav>` landmark with required `aria-label`, list structure, and links with `aria-current="page"`.
 - Created central barrel export at `src/components/ui/index.ts`.
 - Appended component styling rules to `src/app/globals.css` consuming existing design tokens (`--color-*`, `--space-*`, `--radius-*`, `--shadow-*`, `--target-*`).
-- Authored 26 comprehensive unit tests in `tests/unit/components/primitives.test.tsx` verifying static HTML rendering, ARIA attributes, semantic roles, loading states, and error alerts. Total test count reached 49 across 3 test files.
-- Configured `vitest.config.ts` to include `.tsx` test patterns.
-- Verified all quality gates pass: `pnpm typecheck` (0 errors), `pnpm lint` (0 errors/warnings), `pnpm format:check` (clean), `pnpm test` (49 tests pass), and `pnpm build` (Next.js production build compiled).
+- Authored 26 static structure unit tests in `tests/unit/components/primitives.test.tsx` verifying static HTML rendering, ARIA attributes, semantic roles, loading states, and error alerts.
+- Conducted interactive accessibility audit and authored 25 real user interaction tests in `tests/unit/components/interactions.test.tsx` covering mouse/keyboard activation, double-submission protection, label focus linking, native required states, dialog & drawer focus traps with Escape dismiss, focus return to triggers, body scroll locking/restoration, tabs arrow navigation, mobile table scroll regions, and live-region toasts.
+- Installed `@testing-library/react`, `@testing-library/user-event`, and `jsdom` (with React 19 compatibility) and configured `environment: "jsdom"` in `vitest.config.ts`.
+- Total test count reached 74 passed tests across 4 test files.
+- Verified all quality gates pass: `pnpm typecheck` (0 errors), `pnpm lint` (0 errors/warnings), `pnpm format:check` (clean), `pnpm test` (74 tests pass), and `pnpm build` (Next.js production build compiled).
 - Updated backlog status for VO-013 to `DONE` and updated progress log.
 
 ### [VO-012] — Implement design tokens (2026-11-08)

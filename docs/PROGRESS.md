@@ -45,6 +45,7 @@
   13. **Central Barrel Export (`src/components/ui/index.ts`):** Clean export of all primitives and types.
   14. **CSS Tokens Consumption (`src/app/globals.css`):** Fully styled primitives consuming existing design token variables without any hardcoded colors or arbitrary values.
   15. **Unit Test Suite (`tests/unit/components/primitives.test.tsx`):** Added 26 unit tests verifying static server markup, ARIA states, roles, keyboard attributes, disabled states, error alerts, and styling hooks.
+  16. **Interaction & Accessibility Test Suite (`tests/unit/components/interactions.test.tsx`):** Conducted interaction audit and added 25 automated interaction tests using `@testing-library/react` and `jsdom`: mouse/keyboard button activation, loading/disabled double-submit prevention, explicit button type enforcement, icon-only accessible names, form field label focus and native required validation, error description connection with `role="alert"`, checkbox toggle, dialog and drawer focus trapping and escape dismissal, focus restoration to triggers, body scroll locking and cleanup, horizontal and vertical tabs arrow/home/end navigation, mobile scrollable table regions, live region toast announcements and dismissals, and navigation landmark keyboard links.
 - **Files added/modified:**
   - Added: `src/components/ui/button/index.tsx`
   - Added: `src/components/ui/field/index.tsx`
@@ -60,8 +61,10 @@
   - Added: `src/components/ui/navigation/index.tsx`
   - Added: `src/components/ui/index.ts`
   - Added: `tests/unit/components/primitives.test.tsx`
+  - Added: `tests/unit/components/interactions.test.tsx`
   - Modified: `src/app/globals.css` (appended primitive classes)
-  - Modified: `vitest.config.ts` (added `.tsx` test patterns)
+  - Modified: `vitest.config.ts` (configured jsdom environment and `.tsx` test patterns)
+  - Modified: `package.json` & `pnpm-lock.yaml` (installed `@testing-library/react`, `@testing-library/user-event`, `jsdom`, `@types/jsdom`)
   - Modified: `docs/TASK_BACKLOG.md` (marked VO-013 as DONE)
   - Modified: `docs/PROGRESS.md`
   - Modified: `docs/CHANGELOG.md`
@@ -69,12 +72,12 @@
   - `pnpm typecheck`: Exit code 0 (zero TypeScript errors).
   - `pnpm lint`: Exit code 0 (zero ESLint errors or warnings).
   - `pnpm format:check`: Exit code 0 (All matched files use Prettier code style).
-  - `pnpm test`: Exit code 0 (3 test files, 49 tests passing).
+  - `pnpm test`: Exit code 0 (4 test files, 74 tests passing: 25 interaction tests, 26 structure tests, 21 contrast tests, 2 baseline tests).
   - `pnpm build`: Exit code 0 (Next.js production build compiled successfully).
-- **Results:** Shared UI primitives are fully accessible, tested, and ready for route shells.
+- **Results:** Shared UI primitives are fully accessible, interaction-verified, and ready for route shells.
 - **Acceptance criteria met:**
-  - [x] Primitives have keyboard, focus, labels, loading, disabled and error states.
-  - [x] Unit/component tests exist and pass (26 tests in `primitives.test.tsx`, 49 total).
+  - [x] Primitives have keyboard, focus, labels, loading, disabled and error states verified through real user interaction tests.
+  - [x] Unit and interaction tests exist and pass (51 tests in `primitives.test.tsx` and `interactions.test.tsx`, 74 total across workspace).
   - [x] All 12 primitives implemented and exported via `src/components/ui/index.ts`.
 - **Blockers/decisions:** None. All work remains local.
 - **Next task ID:** VO-014 — Create application route shells

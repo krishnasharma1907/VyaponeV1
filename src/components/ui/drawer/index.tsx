@@ -131,7 +131,7 @@ export const DrawerContent = forwardRef<HTMLDivElement, DrawerContentProps>(
     useEffect(() => {
       if (!open) return;
 
-      const triggerNode = triggerRef.current;
+      const triggerNode = (triggerRef.current || document.activeElement) as HTMLElement | null;
 
       const handleKeyDown = (e: KeyboardEvent) => {
         if (closeOnEscape && e.key === "Escape") {
@@ -142,15 +142,24 @@ export const DrawerContent = forwardRef<HTMLDivElement, DrawerContentProps>(
 
         // Focus trap
         if (e.key === "Tab" && contentRef.current) {
-          const focusable = contentRef.current.querySelectorAll<HTMLElement>(
-            'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])',
+          const focusable = Array.from(
+            contentRef.current.querySelectorAll<HTMLElement>(
+              'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
+            ),
           );
-          if (focusable.length === 0) return;
+          if (focusable.length === 0) {
+            e.preventDefault();
+            contentRef.current.focus();
+            return;
+          }
 
           const first = focusable[0];
           const last = focusable[focusable.length - 1];
 
-          if (e.shiftKey && document.activeElement === first) {
+          if (!contentRef.current.contains(document.activeElement)) {
+            e.preventDefault();
+            first.focus();
+          } else if (e.shiftKey && document.activeElement === first) {
             e.preventDefault();
             last.focus();
           } else if (!e.shiftKey && document.activeElement === last) {
@@ -164,15 +173,20 @@ export const DrawerContent = forwardRef<HTMLDivElement, DrawerContentProps>(
       const prevOverflow = document.body.style.overflow;
       document.body.style.overflow = "hidden";
 
-      const timer = setTimeout(() => {
-        if (contentRef.current) {
-          const focusable = contentRef.current.querySelectorAll<HTMLElement>(
-            'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])',
-          );
-          if (focusable.length > 0) focusable[0].focus();
-          else contentRef.current.focus();
+      const focusInitial = () => {
+        if (!contentRef.current) return;
+        const focusable = contentRef.current.querySelectorAll<HTMLElement>(
+          'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
+        );
+        if (focusable.length > 0) {
+          focusable[0].focus();
+        } else {
+          contentRef.current.focus();
         }
-      }, 20);
+      };
+
+      focusInitial();
+      const timer = setTimeout(focusInitial, 0);
 
       return () => {
         document.removeEventListener("keydown", handleKeyDown);
