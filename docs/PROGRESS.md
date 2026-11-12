@@ -1,17 +1,72 @@
 # VyapOne Build Progress
 
 **Current phase:** P1 — Repository, design system and application shell (`IN_PROGRESS`)  
-**Completed tasks:** VO-000, VO-001, VO-002, VO-003, VO-004, VO-005, VO-006, VO-010, VO-011, VO-012, VO-013, VO-014, VO-015  
-**Next task:** VO-016 — Implement application configuration and environment handling  
-**Project status:** RESPONSIVE LAYOUT & MOBILE INTERACTION FOUNDATION IMPLEMENTED & VERIFIED / IN PHASE P1  
+**Completed tasks:** VO-000, VO-001, VO-002, VO-003, VO-004, VO-005, VO-006, VO-010, VO-011, VO-012, VO-013, VO-014, VO-015, VO-016  
+**Next task:** VO-017 — Add structured logging and error handling  
+**Project status:** APPLICATION CONFIGURATION & ENVIRONMENT HANDLING FOUNDATION IMPLEMENTED & VERIFIED / IN PHASE P1  
 
 ## Phase status
 
 | Phase | Status | Notes |
 |---|---|---|
 | P0 — Project audit, decisions and architecture | COMPLETE | All tasks VO-000 to VO-006 verified and done; Phase P0 gate passed |
-| P1 — Repository, design system and application shell | IN_PROGRESS | VO-010, VO-011, VO-012, VO-013, VO-014, VO-015 done; VO-016 is next |
+| P1 — Repository, design system and application shell | IN_PROGRESS | VO-010 to VO-016 done; VO-017 is next |
 | P2 — Platform identity, authentication and multi-tenancy | NOT_STARTED | |
+
+## Task report: VO-016
+
+- **Task ID:** VO-016
+- **Status:** DONE
+- **Summary:** Built, tested, and verified a typed, security-isolated application configuration and environment-variable handling foundation:
+  1. **Public vs. Server-Only Separation:**
+     - Client-Safe Public Configuration (`src/config/public.ts`): Strict allowlist extracting only `NEXT_PUBLIC_*` variables (`NEXT_PUBLIC_APP_ENV`, `NEXT_PUBLIC_APP_URL`, `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`). Safe to import in React Client Components (`"use client"`).
+     - Server-Only Privileged Configuration (`src/config/server.ts`): Enforced compile-time and runtime protection via Next.js `import "server-only"`. Encapsulates database connection strings, Supabase service-role keys, session encryption secrets, and integration credentials.
+     - Central Barrel Export (`src/config/index.ts`): Exports `publicConfig`, validation schemas, and validator utilities. Deliberately excludes direct `serverConfig` exports to prevent inadvertent bundling into client components.
+  2. **Validation Engine (`src/config/env.ts`):**
+     - Built comprehensive Zod schemas (`publicEnvSchema`, `serverCoreEnvSchema`, `optionalIntegrationsEnvSchema`) validating URLs, port numbers, enum modes, and database connection strings.
+     - Dedicated `ConfigurationError` class aggregating missing/malformed configuration and enforcing the **zero-leak rule**: actual secret values, passwords, or tokens are NEVER printed in error messages or logs.
+     - Production Invariants: Enforces that `DATABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `SESSION_SECRET` (min 32 chars and not dev placeholder), and Supabase public credentials are strictly present in `production` mode, throwing immediately on startup if absent.
+     - Graceful Local Development: Absence of optional third-party integrations (payments, WhatsApp, AI, storage, redis) defaults cleanly with `isConfigured: false` without breaking local app execution.
+     - Cloudflare Runtime Context Support: `validateEnvironment(rawEnv?)` accepts explicit runtime dictionary bindings (e.g. `context.env` from Cloudflare Pages/Workers) with fallback to `process.env`.
+  3. **Updated Environment Template (`.env.example`):**
+     - Fully structured into Public, Server-Only Core, and Optional Integration sections with detailed instructions for local `.env.local` and Cloudflare `.dev.vars` / Dashboard Secrets.
+     - Sanitized placeholder values only; zero working credentials.
+     - Updated `.gitignore` to explicitly ignore `.dev.vars` and `.dev.vars.local`.
+  4. **Updated Project Decisions (`docs/DECISION_REGISTER.md`):**
+     - Recorded approved project direction for ADR-003 (Supabase selected as full backend platform: Auth, PostgreSQL DB with RLS, Storage) and ADR-004 (Cloudflare selected as hosting direction: Pages/Workers edge runtime).
+  5. **Architecture Documentation (`docs/CONFIGURATION.md`):**
+     - Created comprehensive reference detailing the configuration architecture, variable matrix, Cloudflare runtime guidance, Supabase credentials distinction, and secret-management rules.
+  6. **Automated Unit Tests (`tests/unit/config/`):**
+     - `tests/unit/config/env.test.ts`: 15 tests covering valid dev/prod configuration, missing required production credentials, format validation, optional integrations absence, public allowlisting, secret redaction, and Cloudflare context evaluation.
+     - `tests/unit/config/server.test.ts`: 3 tests verifying server configuration loading, memoization, and custom env re-evaluation.
+     - `tests/unit/config/client-boundary.test.ts`: 1 test verifying that loading `server-only` in client/JSDOM runtime actively throws an error.
+     - Total project test count reached 141 passing tests across 9 test files (100% pass rate).
+- **Files added/modified:**
+  - Added: `src/config/env.ts`
+  - Added: `src/config/public.ts`
+  - Added: `src/config/server.ts`
+  - Added: `src/config/index.ts`
+  - Added: `docs/CONFIGURATION.md`
+  - Added: `tests/unit/config/env.test.ts`
+  - Added: `tests/unit/config/server.test.ts`
+  - Added: `tests/unit/config/client-boundary.test.ts`
+  - Modified: `.env.example`
+  - Modified: `.gitignore`
+  - Modified: `package.json` (installed `zod` and `server-only`)
+  - Modified: `pnpm-lock.yaml`
+  - Modified: `docs/DECISION_REGISTER.md`
+  - Modified: `docs/TASK_BACKLOG.md`
+  - Modified: `docs/PROGRESS.md`
+  - Modified: `docs/CHANGELOG.md`
+- **Verification commands run:**
+  - `pnpm vitest run tests/unit/config/`: 19/19 tests passed (100%)
+  - `pnpm test`: 9/9 test files passed, 141/141 tests passed (100%)
+  - `pnpm typecheck`: Clean TypeScript compilation (0 errors)
+  - `pnpm lint`: Clean ESLint check (0 errors, 0 warnings)
+  - `pnpm format:check`: Clean Prettier check (All files formatted)
+  - `pnpm build`: Clean Next.js 15.5.29 production build (30/30 static pages)
+- **Blocked/deferred:** None. Ready for VO-017.
+- **Next task:** VO-017 — Add structured logging and error handling
 
 ## Task report: VO-015
 

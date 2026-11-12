@@ -116,13 +116,13 @@
 
 **Status:** `DONE`
 
-### [ ] VO-016 — Implement application configuration and environment handling
+### [x] VO-016 — Implement application configuration and environment handling
 
 **Scope:** Add validated environment configuration, .env.example, safe defaults and server/client separation. Never commit secrets.
 
 **Acceptance:** App refuses to start with missing required server configuration; public bundle contains no secrets.
 
-**Status:** `NOT_STARTED`
+**Status:** `DONE`
 
 ### [ ] VO-017 — Add structured logging and error handling
 

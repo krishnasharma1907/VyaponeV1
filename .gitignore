@@ -19,6 +19,8 @@ dist/
 .env.development
 .env.test
 .env.production
+.dev.vars
+.dev.vars.local
 *.pem
 *.key
 *.cert

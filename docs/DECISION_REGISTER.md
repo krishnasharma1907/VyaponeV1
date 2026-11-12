@@ -5,9 +5,9 @@ Track each unresolved decision here. Do not treat a suggested vendor, price, dea
 | ID | Decision | Current source guidance / candidates | Required owner or evidence | Status | Tasks affected |
 |---|---|---|---|---|---|
 | ADR-001 | Frontend/backend application stack | FINAL recommends Next.js + TypeScript | Product/technical owner approval | PROVISIONAL | VO-003, VO-010+ |
-| ADR-002 | Database | PostgreSQL recommended | Technical owner; region/backup assessment | PENDING | VO-003, VO-020+ |
-| ADR-003 | Auth and storage | Supabase is a candidate | Technical owner; RLS/security review | PENDING | VO-003, VO-021+ |
-| ADR-004 | Hosting and client-site runtime | Vercel or Cloudflare candidates | Cost, domains, edge cache, India performance | PENDING | VO-003, VO-042, VO-049 |
+| ADR-002 | Database | PostgreSQL (Supabase managed PostgreSQL 16+ with RLS) | Technical owner; region/backup assessment | PROVISIONAL | VO-003, VO-020+ |
+| ADR-003 | Auth, database & storage | Supabase selected as full backend platform (Auth, DB, Storage) | Technical owner; RLS/security review | ACCEPTED_DIRECTION | VO-003, VO-016, VO-021+ |
+| ADR-004 | Hosting and client-site runtime | Cloudflare selected as hosting direction (Pages/Workers edge runtime) | Technical owner; cost, edge routing, India performance | ACCEPTED_DIRECTION | VO-003, VO-016, VO-042, VO-049 |
 | ADR-005 | Visual editor | Puck candidate, constrained to approved blocks | Prototype and mobile usability review | PENDING | VO-003, VO-044 |
 | ADR-006 | Queue and cache | Redis/BullMQ or managed queue | Hosting and operations decision | PENDING | VO-003, VO-093, VO-097, VO-102 |
 | ADR-007 | AI model routing and plan budgets | FINAL describes primary/fallback/small-task routing; budgets still open | Provider availability, price, quality and privacy review | PENDING | VO-050+ |

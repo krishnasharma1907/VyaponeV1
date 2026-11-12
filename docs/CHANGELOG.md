@@ -4,6 +4,24 @@ Record implementation changes by task ID. Do not record planned work as complete
 
 ## Unreleased
 
+### [VO-016] — Implement application configuration and environment handling (2026-11-12)
+- Implemented secure, typed, validated application configuration foundation with strict server vs. client runtime isolation:
+  - Validation Engine (`src/config/env.ts`): Built Zod schemas (`publicEnvSchema`, `serverCoreEnvSchema`, `optionalIntegrationsEnvSchema`) validating environment variables, port ranges, URL formatting, and PostgreSQL connection protocols.
+  - Secret Protection & Error Sanitization: Created `ConfigurationError` class enforcing the zero-leak rule; error messages report invalid paths and expected formats without printing actual secrets or partial passwords.
+  - Public Client Configuration (`src/config/public.ts`): Established an allowlisted client-safe configuration object extracting only `NEXT_PUBLIC_*` variables (`NEXT_PUBLIC_APP_ENV`, `NEXT_PUBLIC_APP_URL`, `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`), safe for import in React Client Components.
+  - Server-Only Privileged Configuration (`src/config/server.ts`): Enforced compile-time and runtime isolation using Next.js `import "server-only"`; encapsulates database connection strings, Supabase service-role keys, session encryption secrets, and third-party integration credentials.
+  - Central Barrel Export (`src/config/index.ts`): Clean barrel export providing public config, schemas, and validator utilities, excluding direct server secret exports to prevent accidental client bundling.
+  - Production Invariants: Enforced that `DATABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `SESSION_SECRET` (min 32 chars), and Supabase public credentials are strictly required when `NODE_ENV === "production"`.
+  - Optional Integrations Resilience: Enabled safe defaults with `isConfigured: false` for unconfigured optional integrations (payments, WhatsApp, AI, storage, Redis) so local development can run without live third-party accounts.
+  - Cloudflare Runtime Context Support: Designed `validateEnvironment(rawEnv?)` to accept explicit runtime dictionary bindings (e.g., `context.env` in Cloudflare Pages/Workers) with fallback to `process.env`.
+  - Updated Configuration Template (`.env.example`): Restructured into Public, Server Core, and Optional Integration sections with local development instructions and Cloudflare secret guidance.
+  - Git Protection (`.gitignore`): Added `.dev.vars` and `.dev.vars.local` to prevent accidental staging of Cloudflare local secret files.
+  - Decision Register (`docs/DECISION_REGISTER.md`): Updated ADR-003 (Supabase full backend platform) and ADR-004 (Cloudflare hosting direction) reflecting approved project directions.
+  - Architecture Documentation (`docs/CONFIGURATION.md`): Authored comprehensive configuration architecture reference covering variable classification, Cloudflare runtime context, Supabase credential separation, and secret-management rules.
+  - Automated Unit Tests: Authored 19 tests across `tests/unit/config/env.test.ts`, `tests/unit/config/server.test.ts`, and `tests/unit/config/client-boundary.test.ts` validating dev/prod parsing, missing production credentials, format validation, secret redaction, Cloudflare context evaluation, and client-boundary errors. Total test suite reached 141 passing tests across 9 files (100% pass rate).
+  - Verified all quality gates pass: `pnpm format:check` (clean), `pnpm lint` (0 errors, 0 warnings), `pnpm typecheck` (0 errors), `pnpm test` (141 tests pass), and `pnpm build` (30/30 pages compiled).
+  - Updated backlog status for VO-016 to `DONE` and updated progress log.
+
 ### [VO-015] — Create responsive layout and mobile interaction foundation (2026-11-11)
 - Implemented complete responsive layout foundation and mobile interactions across all 6 application route shells and root portal:
   - Responsive Design Tokens (`src/design-system/tokens.ts`): Exported canonical breakpoints (`xs: 320px`, `sm: 390px`, `md: 768px`, `lg: 1024px`, `xl: 1440px`), safe-area insets (`env(safe-area-inset-*, 0px)`), dynamic page gutters (`mobile: 16px`, `tablet: 24px`, `desktop: 32px`), and WCAG 2.2 AA compliant touch target constants.
