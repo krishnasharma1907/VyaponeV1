@@ -28,12 +28,13 @@
   2. **Security Hardening & Action Pinning:**
      - Global least-privilege permissions locked to `contents: read`. No write or deployment tokens.
      - `persist-credentials: false` in checkout prevents leaked git tokens on runner disks.
-     - All third-party actions pinned to full 40-character commit SHAs with version comments:
-       - `actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2`
-       - `pnpm/action-setup@fe02b34f77f8bc703788d5817da081398fad5dd2 # v4.0.0`
-       - `actions/setup-node@1d0ff469b62b6d0ad9b0af0fb3b1e40be53ce9b9 # v4.2.0`
+     - All third-party actions pinned to full 40-character commit SHAs with version comments running natively on Node 24 (`runs.using: 'node24'`):
+       - `actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0`
+       - `pnpm/action-setup@fc06bc1257f339d1d5d8b3a19a8cae5388b55320 # v5.0.0`
+       - `actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0`
   3. **Reproducible Environment:**
-     - Added `.nvmrc` (`20`) fixing the Node.js 20 LTS version.
+     - Added `.nvmrc` (`24`) fixing the Node.js 24 LTS version.
+     - Aligned `package.json` `"engines": { "node": ">=24.0.0" }`.
      - Added `"packageManager": "pnpm@11.21.0"` to `package.json`.
      - Dependency installation locked via `pnpm install --frozen-lockfile` with pnpm store caching via `actions/setup-node`.
   4. **Zero Secrets in CI:**

@@ -51,12 +51,12 @@ describe("CI & Pull-Request Validation Architecture [VO-018]", () => {
     }
 
     // Specific verified actions
-    expect(content).toContain("actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2");
+    expect(content).toContain("actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0");
     expect(content).toContain(
-      "pnpm/action-setup@fe02b34f77f8bc703788d5817da081398fad5dd2 # v4.0.0",
+      "pnpm/action-setup@fc06bc1257f339d1d5d8b3a19a8cae5388b55320 # v5.0.0",
     );
     expect(content).toContain(
-      "actions/setup-node@1d0ff469b62b6d0ad9b0af0fb3b1e40be53ce9b9 # v4.2.0",
+      "actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0",
     );
     expect(content).toContain("persist-credentials: false");
   });
@@ -88,10 +88,10 @@ describe("CI & Pull-Request Validation Architecture [VO-018]", () => {
   it("verifies reproducible Node.js and pnpm version configuration", () => {
     expect(fs.existsSync(nvmrcPath)).toBe(true);
     const nvmrcContent = fs.readFileSync(nvmrcPath, "utf8").trim();
-    expect(nvmrcContent).toBe("20");
+    expect(nvmrcContent).toBe("24");
 
     const packageJson = JSON.parse(fs.readFileSync(packageJsonPath, "utf8"));
     expect(packageJson.packageManager).toBe("pnpm@11.21.0");
-    expect(packageJson.engines.node).toBe(">=20.0.0");
+    expect(packageJson.engines.node).toBe(">=24.0.0");
   });
 });

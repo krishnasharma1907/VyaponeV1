@@ -23,7 +23,7 @@ The CI pipeline runs via GitHub Actions (`.github/workflows/ci.yml`) and is stru
 │         Job 1: Quality Checks (`quality-checks`) [Timeout: 15 min]           │
 │   1. Checkout repository (`actions/checkout` pinned SHA)                    │
 │   2. Setup pnpm (`pnpm/action-setup` pinned SHA)                            │
-│   3. Setup Node.js 20 LTS (`actions/setup-node` pinned SHA, cached pnpm)    │
+│   3. Setup Node.js 24 LTS (`actions/setup-node` pinned SHA, cached pnpm)    │
 │   4. Reproducible install: `pnpm install --frozen-lockfile`                 │
 │   5. Format Check: `pnpm format:check` (Prettier)                           │
 │   6. Lint Check: `pnpm lint` (ESLint 9 Flat Config)                         │
@@ -44,13 +44,13 @@ The CI pipeline runs via GitHub Actions (`.github/workflows/ci.yml`) and is stru
 
 ## 2. Pinned Action Matrix & Supply Chain Security
 
-In strict adherence to security engineering standards, third-party GitHub Actions are pinned to full 40-character commit SHAs to protect against upstream supply-chain attacks and mutable tag tampering:
+In strict adherence to security engineering standards, third-party GitHub Actions are pinned to full 40-character commit SHAs to protect against upstream supply-chain attacks and mutable tag tampering. All actions run natively on Node 24 (`runs.using: 'node24'`) ensuring compatibility with the GitHub Actions runtime:
 
 | Action | Pinned Commit SHA | Tag / Release Reference | Purpose |
 | :--- | :--- | :--- | :--- |
-| **`actions/checkout`** | `11bd71901bbe5b1630ceea73d27597364c9af683` | `v4.2.2` | Clean repository checkout with `persist-credentials: false` |
-| **`pnpm/action-setup`** | `fe02b34f77f8bc703788d5817da081398fad5dd2` | `v4.0.0` | Exact pnpm setup resolving version from `package.json` |
-| **`actions/setup-node`** | `1d0ff469b62b6d0ad9b0af0fb3b1e40be53ce9b9` | `v4.2.0` | Node.js 20 LTS setup reading `.nvmrc` with pnpm store caching |
+| **`actions/checkout`** | `9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0` | `v7.0.0` | Clean repository checkout with `persist-credentials: false` (runs on Node 24) |
+| **`pnpm/action-setup`** | `fc06bc1257f339d1d5d8b3a19a8cae5388b55320` | `v5.0.0` | Exact pnpm setup resolving version from `package.json` (runs on Node 24) |
+| **`actions/setup-node`** | `949feb2413d6458794dcd2491c4babbbce0c15c1` | `v7.1.0` | Node.js 24 LTS setup reading `.nvmrc` with pnpm store caching (runs on Node 24) |
 
 ### Security Invariants
 - **Least-Privilege Permissions:** Global workflow permission is locked to `contents: read`. No write permissions, no OIDC `id-token` write permissions, no deployment privileges.
@@ -62,7 +62,7 @@ In strict adherence to security engineering standards, third-party GitHub Action
 
 ## 3. Node.js & Package Manager Reproducibility
 
-- **Node.js Runtime:** Fixed to Node.js 20 LTS (`.nvmrc` contains `20`). Aligned with `package.json` `"engines": { "node": ">=20.0.0" }`.
+- **Node.js Runtime:** Fixed to Node.js 24 LTS (`.nvmrc` contains `24`). Aligned with `package.json` `"engines": { "node": ">=24.0.0" }`.
 - **Package Manager:** Pinned to `pnpm@11.21.0` via `package.json` `"packageManager": "pnpm@11.21.0"`.
 - **Lockfile Enforcement:** CI executes strictly with `pnpm install --frozen-lockfile`. If `pnpm-lock.yaml` is out of sync with `package.json`, CI fails immediately rather than silently mutating dependencies.
 

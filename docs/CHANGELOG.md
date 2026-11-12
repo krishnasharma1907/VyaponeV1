@@ -7,16 +7,17 @@ Record implementation changes by task ID. Do not record planned work as complete
 ### [VO-018] — Set up CI and pull-request checks (2026-11-12)
 - Implemented and locally validated GitHub Actions CI pipeline and pull-request check architecture:
   - CI Workflow (`.github/workflows/ci.yml`): Configured two-stage workflow (`quality-checks` and `production-build`) executing on `push` to `main`, `pull_request` targeting `main`, and `workflow_dispatch`.
-  - Security Hardening: Pinned all third-party GitHub Actions to verified 40-character commit SHAs (`actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2`, `pnpm/action-setup@fe02b34f77f8bc703788d5817da081398fad5dd2 # v4.0.0`, `actions/setup-node@1d0ff469b62b6d0ad9b0af0fb3b1e40be53ce9b9 # v4.2.0`).
+  - Security Hardening: Pinned all third-party GitHub Actions to verified 40-character commit SHAs running natively on Node 24 (`actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0`, `pnpm/action-setup@fc06bc1257f339d1d5d8b3a19a8cae5388b55320 # v5.0.0`, `actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0`).
   - Least Privilege: Set global workflow permissions to `contents: read`; configured `persist-credentials: false` in checkout; added concurrency control with `cancel-in-progress: true` for PRs.
-  - Reproducible Runtime: Created `.nvmrc` (`20`) fixing Node.js 20 LTS; added `"packageManager": "pnpm@11.21.0"` to `package.json`; enforced `pnpm install --frozen-lockfile`.
+  - Reproducible Runtime: Created `.nvmrc` (`24`) fixing Node.js 24 LTS; aligned `package.json` engines to `"node": ">=24.0.0"`; pinned `"packageManager": "pnpm@11.21.0"`; enforced `pnpm install --frozen-lockfile`.
   - Quality Gates in CI: Configured automated execution of `pnpm format:check`, `pnpm lint`, `pnpm typecheck`, `pnpm test`, and `pnpm build`.
   - Zero Secrets in CI: Verified tests mock providers and Next.js production build compiles all 30 routes without live Supabase database sockets or external credentials.
   - Automated Dependency Maintenance (`.github/dependabot.yml`): Configured weekly security and version scanning for `github-actions` and `npm` ecosystems.
   - Architecture Documentation (`docs/CI_CD.md`): Authored comprehensive specification covering pipeline architecture, pinned action matrix, least-privilege security model, local reproduction, and pending branch protection configuration.
   - Automated Unit Tests (`tests/unit/ci/workflow.test.ts`): Authored 6 automated tests validating workflow syntax, branch triggers, permission hardening, action SHA pinning, required quality gates, Dependabot configuration, and reproducible runtime settings. Total test suite expanded to 170 passing tests across 16 files (100% pass rate).
+  - Corrective Audit Pass: Migrated runtime and runner configuration from deprecated Node 20 to Node.js 24 LTS across `.nvmrc`, `package.json`, `.github/workflows/ci.yml`, `docs/CI_CD.md`, and `tests/unit/ci/workflow.test.ts` to ensure compatibility with pnpm 11 and GitHub Actions Node 24 action runtime.
   - Verified all repository quality gates pass: `pnpm format:check` (clean), `pnpm lint` (0 errors, 0 warnings), `pnpm typecheck` (0 errors), `pnpm test` (170 tests pass), and `pnpm build` (30/30 pages compiled).
-  - Updated backlog status for VO-018 to `DONE` and recorded progress.
+  - Backlog status for VO-018 maintained as `DONE`.
 
 ### [VO-017] — Implement Supabase Client and Database Connection Foundation (2026-11-12)
 - Implemented strongly-typed Supabase client infrastructure and database connection foundation with compile-time and runtime security isolation:
