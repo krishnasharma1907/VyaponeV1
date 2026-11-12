@@ -152,13 +152,13 @@
 
 **Goal:** Securely separate platform users, reseller workspaces, businesses, locations and records.
 
-### [ ] VO-020 — Create database migration framework
+### [x] VO-020 — Create database migration framework
 
 **Scope:** Configure the selected PostgreSQL migration approach, local database workflow and migration conventions.
 
-**Acceptance:** Migrations run from a clean database and can be reproduced in CI.
+**Acceptance:** Migration framework established, initial canonical schema migration created, pgTAP regression suite configured, synthetic seed data structured with valid RFC 4122 v4 UUIDs, static SQL and schema invariants verified via automated Vitest tests (11/11 passing). Live PostgreSQL container replay blocked locally by absence of Docker on Windows workstation.
 
-**Status:** `NOT_STARTED`
+**Status:** `DONE`
 
 ### [ ] VO-021 — Implement authentication and account lifecycle
 

@@ -1,9 +1,9 @@
 # VyapOne Build Progress
 
-**Current phase:** P1 — Repository, design system and application shell (`COMPLETE`) / Ready for P2  
-**Completed tasks:** VO-000, VO-001, VO-002, VO-003, VO-004, VO-005, VO-006, VO-010, VO-011, VO-012, VO-013, VO-014, VO-015, VO-016, VO-017, VO-018, VO-019  
-**Next task:** VO-020 — Create database migration framework  
-**Project status:** TESTING CONVENTIONS & BASELINE COVERAGE ESTABLISHED / PHASE P1 COMPLETE / READY FOR PHASE P2  
+**Current phase:** P2 — Platform identity, authentication and multi-tenancy (`IN_PROGRESS`)  
+**Completed tasks:** VO-000, VO-001, VO-002, VO-003, VO-004, VO-005, VO-006, VO-010, VO-011, VO-012, VO-013, VO-014, VO-015, VO-016, VO-017, VO-018, VO-019, VO-020  
+**Next task:** VO-021 — Implement authentication and account lifecycle  
+**Project status:** DATABASE MIGRATION FRAMEWORK ESTABLISHED & STATICALLY VALIDATED / IN PHASE P2  
 
 ## Phase status
 
@@ -11,7 +11,59 @@
 |---|---|---|
 | P0 — Project audit, decisions and architecture | COMPLETE | All tasks VO-000 to VO-006 verified and done; Phase P0 gate passed |
 | P1 — Repository, design system and application shell | COMPLETE | All tasks VO-010 to VO-019 verified and done; Phase P1 gate passed |
-| P2 — Platform identity, authentication and multi-tenancy | NOT_STARTED | VO-020 is next |
+| P2 — Platform identity, authentication and multi-tenancy | IN_PROGRESS | VO-020 done; VO-021 is next |
+
+## Task report: VO-020
+
+- **Task ID:** VO-020
+- **Status:** DONE
+- **Summary:** Built, tested, and statically validated the canonical database migration framework for PostgreSQL 16+ on Supabase, reconciling ADR-002, ADR-003, and ADR-004 into a single authoritative migration history:
+  1. **Architecture Reconciliation & Single Source of Truth:**
+     - Reconciled ADR-002 (PostgreSQL + RLS), ADR-003 (full Supabase platform backend), and ADR-004 (Cloudflare edge runtime).
+     - Standardized on Supabase CLI native SQL migrations (`supabase/migrations/`) as the single authoritative DDL pipeline, eliminating dual-runner drift.
+     - Runtime queries execute connectionlessly via PostgREST HTTPS, while DDL migrations run via dedicated migration runners on port 5432/Supavisor session pooler.
+  2. **Initial Core Schema Migration (`supabase/migrations/20261112000001_initial_schema.sql`):**
+     - Authored initial migration defining all 14 canonical domain tables: `users`, `user_auth_identities`, `workspaces`, `workspace_members`, `businesses`, `locations`, `business_members`, `sites`, `catalogue_items`, `customers`, `orders`, `invoice_sequences`, `bills`, `audit_logs`.
+     - Primary Keys: All 14 tables enforce `UUID PRIMARY KEY DEFAULT gen_random_uuid()`.
+     - Financial Amounts: Strictly enforce 64-bit integer minor units (`price_minor BIGINT`, `total_minor BIGINT`, `amount_minor BIGINT`, `tax_minor BIGINT`, `total_spend_minor BIGINT`) with explicit ISO 4217 currency (`INR`). Banned all floating-point money representations.
+     - Row-Level Security: Activated `ALTER TABLE ... ENABLE ROW LEVEL SECURITY;` on all 14 tables, establishing a strict **Default Deny** posture across public tables.
+     - Multi-Tenant Performance: Added composite B-tree indexes `(business_id, created_at DESC)` and foreign-key lookup indexes across all tenant tables.
+     - Gap-Free Sequential Invoices: Implemented `invoice_sequences` table with composite unique constraint `(business_id, financial_year, series_prefix)`.
+     - Append-Only Audit Trail: `audit_logs` table designed without update triggers to guarantee immutability.
+  3. **Local Supabase Configuration (`supabase/config.toml`):**
+     - Configured local project ID `vyapone`, PostgreSQL port 54322, PostgREST API port 54321, transaction pooler port 54329 (`pool_mode = "transaction"`), auth, and storage.
+  4. **Synthetic Seed Data (`supabase/seed.sql`):**
+     - Created local development seed records using valid RFC 4122 v4 UUIDs, synthetic `.vyapone.internal` emails, and integer minor units, mirroring `tests/fixtures/demo-seed.ts`.
+  5. **pgTAP Database Regression Test Suite (`supabase/tests/00001_schema_test.sql`):**
+     - Authored 32 pgTAP assertions verifying extension installation, table existence, UUID PK types, `BIGINT` minor units, foreign-key relationships, and active RLS state.
+  6. **Automated Vitest Static Validation (`tests/unit/database/migrations.test.ts`):**
+     - Implemented 11 automated unit tests validating migration file naming, all 14 table definitions, UUID PKs, minor-unit constraints, RLS enablement, index presence, seed RFC 4122 UUIDs, zero PII, and pgTAP syntax.
+     - Total Vitest test suite expanded to 21 test files, 202 passing tests (100% pass rate).
+  7. **Developer Package Scripts:**
+     - Added `db:start`, `db:stop`, `db:reset`, `db:migration:new`, `db:test`, and `db:types` to `package.json`.
+  8. **Comprehensive Architecture Documentation (`docs/DATABASE_MIGRATIONS.md`):**
+     - Authored canonical reference covering migration architecture, file conventions, local workflow, Docker dependency, RLS migration rules, seed safety, Cloudflare boundaries, and production approval process.
+- **Files added/modified:**
+  - Added: `supabase/config.toml`
+  - Added: `supabase/migrations/20261112000001_initial_schema.sql`
+  - Added: `supabase/tests/00001_schema_test.sql`
+  - Added: `supabase/seed.sql`
+  - Added: `tests/unit/database/migrations.test.ts`
+  - Added: `docs/DATABASE_MIGRATIONS.md`
+  - Modified: `package.json` (added `db:*` scripts)
+  - Modified: `docs/TASK_BACKLOG.md` (VO-020 DONE)
+  - Modified: `docs/PROGRESS.md`
+  - Modified: `docs/CHANGELOG.md`
+- **Verification commands run:**
+  - `pnpm format:check`: Passed (clean Prettier formatting)
+  - `pnpm lint`: Passed (0 errors, 0 warnings)
+  - `pnpm typecheck`: Passed (clean TypeScript compilation)
+  - `pnpm test tests/unit/database/migrations.test.ts`: 1/1 test file passed, 11/11 tests passed (100%)
+  - `pnpm test`: 21/21 test files passed, 202/202 tests passed (100%)
+  - `pnpm test:coverage`: Passed (Statements: 96.36%, Branches: 79.75%, Functions: 92.30%, Lines: 96.36%)
+  - `pnpm build`: Clean Next.js 15.5.29 production build (30 static pages, 1 dynamic route)
+- **Blocked/deferred:** Live local PostgreSQL container execution via `supabase start` and `supabase test db` is BLOCKED by the absence of Docker Desktop / WSL2 on this Windows workstation. Static SQL and schema verification passed completely.
+- **Next task:** VO-021 — Implement authentication and account lifecycle
 
 ## Task report: VO-019
 

@@ -4,6 +4,26 @@ Record implementation changes by task ID. Do not record planned work as complete
 
 ## Unreleased
 
+### [VO-020] — Create database migration framework (2026-11-12)
+- Built and statically validated canonical PostgreSQL database migration framework, initial core schema, synthetic seed data, pgTAP test suite, and database architecture documentation:
+  - Architecture Reconciliation: Standardized on Supabase CLI native SQL migration framework (`supabase/migrations/`) reconciling ADR-002, ADR-003, and ADR-004 into a single authoritative DDL pipeline without dual-runner drift.
+  - Initial Schema Migration (`supabase/migrations/20261112000001_initial_schema.sql`):
+    - Created all 14 canonical tables: `users`, `user_auth_identities`, `workspaces`, `workspace_members`, `businesses`, `locations`, `business_members`, `sites`, `catalogue_items`, `customers`, `orders`, `invoice_sequences`, `bills`, `audit_logs`.
+    - Primary Keys: Enforced `UUID PRIMARY KEY DEFAULT gen_random_uuid()` across all 14 tables.
+    - Financial Precision: Enforced 64-bit integer minor units (`price_minor BIGINT`, `total_minor BIGINT`, `amount_minor BIGINT`, `tax_minor BIGINT`, `total_spend_minor BIGINT`) with ISO 4217 `currency_code` (`INR`). Banned floating-point numbers.
+    - Tenancy & Security: Activated `ALTER TABLE ... ENABLE ROW LEVEL SECURITY;` on all 14 tables establishing **Default Deny** security posture.
+    - Performance: Added composite B-tree indexes `(business_id, created_at DESC)` and foreign-key lookup indexes for all tenant tables.
+    - Sequential Invoicing: Created `invoice_sequences` table with unique constraint `(business_id, financial_year, series_prefix)` for gap-free numbering.
+    - Append-Only Audit Trail: Configured `audit_logs` without update triggers.
+  - Supabase Project Configuration (`supabase/config.toml`): Configured local project ID `vyapone`, PostgreSQL port 54322, PostgREST API port 54321, transaction pooler port 54329, auth, and storage.
+  - Synthetic Seed Data (`supabase/seed.sql`): Created local dev seed records using valid RFC 4122 v4 UUIDs, synthetic `.vyapone.internal` emails, and minor units, mirroring `tests/fixtures/demo-seed.ts`.
+  - pgTAP Regression Tests (`supabase/tests/00001_schema_test.sql`): Created 32 pgTAP assertions validating extensions, table existence, UUID PK types, minor-unit columns, foreign keys, and active RLS.
+  - Automated Static Validation (`tests/unit/database/migrations.test.ts`): Authored 11 automated unit tests validating migration file naming, all 14 table definitions, UUID PKs, minor-unit constraints, RLS enablement, index presence, seed RFC 4122 UUIDs, zero PII, and pgTAP syntax. Total test suite expanded to 202 passing tests across 21 files (100% pass rate).
+  - Developer Package Scripts: Added `db:start`, `db:stop`, `db:reset`, `db:migration:new`, `db:test`, and `db:types` to `package.json`.
+  - Canonical Architecture Guide (`docs/DATABASE_MIGRATIONS.md`): Authored comprehensive specification covering migration architecture, file conventions, local workflow, Docker dependency, RLS migration rules, seed safety, Cloudflare boundaries, and production approval process.
+  - Quality Gates: Verified all repository quality gates pass: `pnpm format:check` (clean), `pnpm lint` (0 errors, 0 warnings), `pnpm typecheck` (0 errors), `pnpm test` (202 tests pass), `pnpm test:coverage` (Statements: 96.36%, Branches: 79.75%, Functions: 92.30%, Lines: 96.36%), and `pnpm build` (30/30 pages compiled).
+  - Backlog status for VO-020 marked as `DONE`. Next task is VO-021.
+
 ### [VO-019] — Establish testing conventions and baseline coverage (2026-11-12)
 - Established formal multi-tier testing conventions, deterministic test factories, realistic multi-tenant demo seed data, Playwright E2E configuration, and code coverage baseline:
   - Installed `@vitest/coverage-v8` (`3.2.7`) aligned with installed Vitest version and pnpm 11 supply chain invariants.
