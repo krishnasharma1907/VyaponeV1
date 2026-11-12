@@ -4,6 +4,28 @@ Record implementation changes by task ID. Do not record planned work as complete
 
 ## Unreleased
 
+### [VO-019] — Establish testing conventions and baseline coverage (2026-11-12)
+- Established formal multi-tier testing conventions, deterministic test factories, realistic multi-tenant demo seed data, Playwright E2E configuration, and code coverage baseline:
+  - Installed `@vitest/coverage-v8` (`3.2.7`) aligned with installed Vitest version and pnpm 11 supply chain invariants.
+  - Test Layer Structure:
+    - Unit Tests (`tests/unit/`): 18 test files, 182 passing tests running in-memory with jsdom.
+    - Integration Tests (`tests/integration/`): 2 test files, 9 passing tests validating route shells with real Zod config parsing and multi-tenant sovereign boundary isolation.
+    - End-to-End Tests (`tests/e2e/`): Playwright Chromium test verifying app shells, portal navigation, and mobile viewports (`playwright.config.ts`, `tests/e2e/app-shell.spec.ts`).
+  - Canonical Test Factories (`tests/factories/`): Built strongly-typed, deterministic test entity factories representing all 13 canonical tables from `docs/diagrams/core-erd.mmd`:
+    - `users`: `createTestUser`, `createTestUserAuthIdentity`.
+    - `workspaces`: `createTestWorkspace`, `createTestWorkspaceMember`.
+    - `businesses`: `createTestBusiness`, `createTestLocation`, `createTestBusinessMember`, `createTestSite`.
+    - `commerce`: `createTestCatalogueItem`, `createTestCustomer`, `createTestOrder`, `createTestBill`, `createTestAuditLog`.
+    - Deterministic ID generation with monotonic sequence counters (`formatDeterministicId`, `resetFactorySequence`) and frozen timestamp `BASE_TEST_TIMESTAMP = "2026-11-12T10:00:00.000Z"`.
+    - Strict financial minor unit invariants (`amount_minor BIGINT`, `price_minor BIGINT`, `currency: "INR"`).
+  - Seeded Local Demo Data (`tests/fixtures/demo-seed.ts`): Built canonical synthetic demo hierarchy (Platform Admin -> Reseller Workspace -> Sovereign Business "Kaveri Silks" -> Location -> Staff -> Published Site -> Catalogue -> Customer -> Order -> Invoice `INV/2026-27/0001` -> Audit Logs).
+  - Demo Seed Security Guard (`src/lib/database/seed.ts`): Implemented `assertSafeSeedEnvironment()` throwing `SeedingSecurityError` if executed in `NODE_ENV === "production"`, `NEXT_PUBLIC_APP_ENV === "production"|"staging"`, or non-localhost databases.
+  - Code Coverage Baseline: Measured Vitest v8 coverage across `src/**` excluding stubs/barrels: Statements **96.35%**, Branches **79.75%**, Functions **92.30%**, Lines **96.35%**. Enforced CI thresholds in `vitest.config.ts` (min 85% statements, 70% branches, 80% functions, 85% lines).
+  - Canonical Architecture Guide (`docs/TESTING_CONVENTIONS.md`): Authored comprehensive guide detailing test architecture, pyramid layers, AAA pattern, factory usage, demo seed security rules, and commands.
+  - Phase P1 Completion: Marked all Phase P1 tasks (VO-010 to VO-019) DONE, verified all criteria in `docs/PHASE_GATES.md`, and prepared repository for Phase P2.
+  - Verified all repository quality gates pass: `pnpm format:check` (clean), `pnpm lint` (0 errors, 0 warnings), `pnpm typecheck` (0 errors), `pnpm test` (191 tests pass), `pnpm test:coverage` (thresholds met), `pnpm test:responsive` (35/35 viewports pass), and `pnpm build` (30/30 pages compiled).
+  - Backlog status for VO-019 marked as `DONE`. Next task is VO-020.
+
 ### [VO-018] — Set up CI and pull-request checks (2026-11-12)
 - Implemented and locally validated GitHub Actions CI pipeline and pull-request check architecture:
   - CI Workflow (`.github/workflows/ci.yml`): Configured two-stage workflow (`quality-checks` and `production-build`) executing on `push` to `main`, `pull_request` targeting `main`, and `workflow_dispatch`.

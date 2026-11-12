@@ -140,13 +140,13 @@
 
 **Status:** `DONE`
 
-### [ ] VO-019 — Establish testing conventions and baseline coverage
+### [x] VO-019 — Establish testing conventions and baseline coverage
 
 **Scope:** Create unit, integration and browser test structure; test factories/fixtures; seeded local demo data.
 
 **Acceptance:** A documented test command runs; sample test covers core app shell and server validation.
 
-**Status:** `NOT_STARTED`
+**Status:** `DONE`
 
 ## P2 — Platform identity, authentication and multi-tenancy
 

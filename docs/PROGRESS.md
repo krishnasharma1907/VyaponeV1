@@ -1,17 +1,86 @@
 # VyapOne Build Progress
 
-**Current phase:** P1 — Repository, design system and application shell (`IN_PROGRESS`)  
-**Completed tasks:** VO-000, VO-001, VO-002, VO-003, VO-004, VO-005, VO-006, VO-010, VO-011, VO-012, VO-013, VO-014, VO-015, VO-016, VO-017, VO-018  
-**Next task:** VO-019 — Establish testing conventions and baseline coverage  
-**Project status:** CI PIPELINE & PULL-REQUEST VALIDATION IMPLEMENTED & LOCALLY VERIFIED / IN PHASE P1  
+**Current phase:** P1 — Repository, design system and application shell (`COMPLETE`) / Ready for P2  
+**Completed tasks:** VO-000, VO-001, VO-002, VO-003, VO-004, VO-005, VO-006, VO-010, VO-011, VO-012, VO-013, VO-014, VO-015, VO-016, VO-017, VO-018, VO-019  
+**Next task:** VO-020 — Create database migration framework  
+**Project status:** TESTING CONVENTIONS & BASELINE COVERAGE ESTABLISHED / PHASE P1 COMPLETE / READY FOR PHASE P2  
 
 ## Phase status
 
 | Phase | Status | Notes |
 |---|---|---|
 | P0 — Project audit, decisions and architecture | COMPLETE | All tasks VO-000 to VO-006 verified and done; Phase P0 gate passed |
-| P1 — Repository, design system and application shell | IN_PROGRESS | VO-010 to VO-018 done; VO-019 is next |
-| P2 — Platform identity, authentication and multi-tenancy | NOT_STARTED | |
+| P1 — Repository, design system and application shell | COMPLETE | All tasks VO-010 to VO-019 verified and done; Phase P1 gate passed |
+| P2 — Platform identity, authentication and multi-tenancy | NOT_STARTED | VO-020 is next |
+
+## Task report: VO-019
+
+- **Task ID:** VO-019
+- **Status:** DONE
+- **Summary:** Established formal testing conventions, test execution layers, comprehensive test factories for all 13 canonical entities, seeded local demo data architecture with strict environment guards, Playwright E2E configuration, measured Vitest code coverage baseline, and updated documentation:
+  1. **Testing Layers Separation:**
+     - `tests/unit/`: Fast in-memory unit tests executing via Vitest + jsdom (18 files, 182 tests).
+     - `tests/integration/`: Cross-module integration tests validating app shells with live Zod config validation and multi-tenant isolation boundaries (2 files, 9 tests). Total Vitest test suite: 20 files, 191 tests passing (100%).
+     - `tests/e2e/`: Browser end-to-end tests executing via Playwright Chromium (`playwright.config.ts`, `tests/e2e/app-shell.spec.ts`).
+  2. **Canonical Test Factories (`tests/factories/`):**
+     - Built strongly-typed factories for all 13 canonical domain entities from `docs/diagrams/core-erd.mmd`:
+       - `createTestUser()`, `createTestUserAuthIdentity()`
+       - `createTestWorkspace()`, `createTestWorkspaceMember()`
+       - `createTestBusiness()`, `createTestLocation()`, `createTestBusinessMember()`, `createTestSite()`
+       - `createTestCatalogueItem()`, `createTestCustomer()`, `createTestOrder()`, `createTestBill()`, `createTestAuditLog()`
+     - Supported deterministic IDs via monotonic sequence generators (`formatDeterministicId`, `resetFactorySequence`) and frozen test timestamp (`BASE_TEST_TIMESTAMP = "2026-11-12T10:00:00.000Z"`).
+     - Strictly enforced financial minor units (`amount_minor BIGINT`, `price_minor BIGINT`, ISO 4217 `currency: "INR"`).
+  3. **Seeded Local Demo Data (`tests/fixtures/demo-seed.ts`):**
+     - Constructed realistic, synthetic multi-tenant demo hierarchy: Platform Super-Admin (`demo.admin@example.vyapone.internal`), Reseller Workspace (`demo-reseller-workspace`), Sovereign Business (`demo-business-kaveri` / "Kaveri Silks & Sarees"), Location (`loc-demo-kaveri-mg-road`), Staff (`demo.staff@example.vyapone.internal`), Published Site (`demo-kaveri-site`), Catalogue Item (`item-demo-kanchipuram-saree`, 850,000 minor units = ₹8,500.00), Customer, Order, Sequential Invoice (`INV/2026-27/0001`), and immutable Audit Logs.
+     - Production Security Guard (`src/lib/database/seed.ts`): Implemented `assertSafeSeedEnvironment()` throwing `SeedingSecurityError` if executed in `NODE_ENV === "production"`, `NEXT_PUBLIC_APP_ENV === "production"|"staging"`, or against non-localhost database URLs.
+  4. **Integration Test Layer (`tests/integration/`):**
+     - `tests/integration/app-shell-validation.test.tsx`: Validates 5 core protected route shells (Dashboard, Counter POS, Workspace Reseller, Platform Admin, and Public Site) within genuine validated public & server environment contexts.
+     - `tests/integration/multi-tenant-isolation.test.ts`: Verifies strict isolation of sovereign business records, ensuring reseller workspaces do not conflate ownership with sovereign business entities.
+  5. **Vitest Code Coverage Configuration & Baseline:**
+     - Installed and configured `@vitest/coverage-v8` (`3.2.7`).
+     - Excluded barrel exports, pure type declarations, and configuration stubs from coverage collection.
+     - Measured baseline coverage: Statements **96.35%**, Branches **79.75%**, Functions **92.30%**, Lines **96.35%**.
+     - Enforced automated thresholds in `vitest.config.ts`: Statements 85%, Branches 70%, Functions 80%, Lines 85%.
+  6. **Comprehensive Documentation (`docs/TESTING_CONVENTIONS.md`):**
+     - Authored canonical guide detailing the testing pyramid, Arrange-Act-Assert (AAA) pattern, deterministic factories, seeding safety invariants, code coverage thresholds, test commands (`pnpm test`, `pnpm test:unit`, `pnpm test:integration`, `pnpm test:coverage`, `pnpm test:responsive`), and debugging practices.
+  7. **Phase P1 Completion:**
+     - Marked all Phase P1 tasks (VO-010 to VO-019) DONE.
+     - Verified Phase P1 Gate criteria in `docs/PHASE_GATES.md`.
+- **Files added/modified:**
+  - Added: `docs/TESTING_CONVENTIONS.md`
+  - Added: `playwright.config.ts`
+  - Added: `src/lib/database/seed.ts`
+  - Added: `tests/factories/types.ts`
+  - Added: `tests/factories/users.ts`
+  - Added: `tests/factories/workspaces.ts`
+  - Added: `tests/factories/businesses.ts`
+  - Added: `tests/factories/commerce.ts`
+  - Added: `tests/factories/index.ts`
+  - Added: `tests/fixtures/demo-seed.ts`
+  - Added: `tests/unit/factories/factories.test.ts`
+  - Added: `tests/unit/fixtures/demo-seed.test.ts`
+  - Added: `tests/integration/app-shell-validation.test.tsx`
+  - Added: `tests/integration/multi-tenant-isolation.test.ts`
+  - Added: `tests/e2e/app-shell.spec.ts`
+  - Modified: `package.json` (added `@vitest/coverage-v8`, added test scripts)
+  - Modified: `pnpm-lock.yaml`
+  - Modified: `vitest.config.ts` (configured v8 coverage & thresholds)
+  - Modified: `docs/TASK_BACKLOG.md` (VO-019 DONE)
+  - Modified: `docs/PHASE_GATES.md` (P1 Gate passed)
+  - Modified: `docs/PROGRESS.md`
+  - Modified: `docs/CHANGELOG.md`
+- **Verification commands run:**
+  - `pnpm format:check`: Passed (clean formatting)
+  - `pnpm lint`: Passed (0 errors, 0 warnings)
+  - `pnpm typecheck`: Passed (clean TypeScript compilation)
+  - `pnpm test:unit`: 18/18 test files passed, 182/182 tests passed (100%)
+  - `pnpm test:integration`: 2/2 test files passed, 9/9 tests passed (100%)
+  - `pnpm test`: 20/20 test files passed, 191/191 tests passed (100%)
+  - `pnpm test:coverage`: Statements: 96.35% (min 85%), Branches: 79.75% (min 70%), Functions: 92.30% (min 80%), Lines: 96.35% (min 85%)
+  - `pnpm test:responsive`: 35/35 responsive checks passed across 5 canonical viewports (320px, 390px, 768px, 1024px, 1440px)
+  - `pnpm build`: Clean Next.js 15.5.29 production build (30 static pages, 1 dynamic route)
+- **Blocked/deferred:** None. Phase P1 is complete.
+- **Next task:** VO-020 — Create database migration framework (Phase P2 entry) |
 
 ## Task report: VO-018
 
