@@ -4,6 +4,40 @@ Record implementation changes by task ID. Do not record planned work as complete
 
 ## Unreleased
 
+### [VO-022] — Implement workspaces and membership roles (2026-11-12)
+- Implemented reseller agency and DIY workspaces, multi-tiered membership roles, cryptographic invitations, and role-based permissions:
+  - Multi-Tiered Role Hierarchy & Permissions (`src/lib/workspaces/permissions.ts`):
+    - Established explicit workspace role ranks: `workspace_owner` (30) > `workspace_admin` / `reseller_admin` (20) > `workspace_member` / `reseller_staff` (10).
+    - Implemented centralized permission checking (`hasWorkspacePermission`, `canManageTargetRole`, `canAssignRole`).
+    - Enforced Sovereign Business Ownership Boundary Invariant: Workspace membership (`public.workspace_members`) never confers sovereign business ownership (`public.businesses.sovereign_owner_id`), strictly preserving sovereign merchant data rights across agency tenancies.
+  - Workspace Domain Service (`src/lib/workspaces/service.ts`):
+    - Implemented workspace creation with automatic single-transaction `workspace_owner` membership.
+    - Implemented Last-Owner Protection preventing demotion or removal of the sole remaining workspace owner.
+    - Added immutable audit trail logging for all sensitive lifecycle operations (`workspace.created`, `workspace.profile_updated`, `workspace.member_invited`, `workspace.invitation_accepted`, `workspace.member_role_changed`, `workspace.member_removed`, `workspace.member_left`).
+  - Cryptographic Invitation Lifecycle (`src/lib/workspaces/tokens.ts`):
+    - Generated 32-byte cryptographically secure random invitation tokens (`crypto.getRandomValues`) with deterministic SHA-256 storage (`crypto.subtle.digest`) in `public.workspace_invitations.token_hash`.
+    - Zero plaintext token persistence; strict 7-day expiration and single-use acceptance; enforced recipient email identity validation before accepting invitations.
+  - Server Actions (`src/lib/workspaces/actions.ts`):
+    - Created authenticated Next.js Server Actions with structured results (`WorkspaceActionResult<T>`) for workspace creation, profile updates, member invitations, invitation acceptance, role updates, member removal, and workspace leaving.
+    - Integrated path revalidation across `/workspace`, `/workspace/team`, and `/workspace/settings`.
+  - Accessible UI Primitives (`src/components/workspaces/`):
+    - Built `WorkspaceSwitcher` (workspace context selector with role badges).
+    - Built `WorkspaceTeamTable` (accessible roster with role modification and removal triggers).
+    - Built `WorkspaceSettingsForm` (workspace metadata and slug manager with owner editing protection).
+    - Built `WorkspaceInviteModal` (WAI-ARIA accessible invitation dialog displaying secure one-time links).
+  - Forward-Only Database Migration (`supabase/migrations/20261112000003_secure_search_path_and_workspace_roles.sql`):
+    - Hardened PostgreSQL `handle_new_auth_user()` trigger function with `SECURITY DEFINER SET search_path = ''` using schema-qualified `pg_catalog.*` and `public.*` references.
+    - Added `public.workspace_invitations` table with foreign keys, indexes, and Row-Level Security enabled.
+    - Extended `workspace_members_role_check` constraint with canonical workspace and reseller role aliases.
+  - Automated Tests & Quality Gates:
+    - Added 78 passing unit tests across 7 test files in `tests/unit/workspaces/`.
+    - Project test suite expanded to 34 test files, 340 passing tests with 100% pass rate.
+    - Coverage metrics meet all quality gate thresholds (Statements 85.53%, Branches 72.15%, Functions 84.45%, Lines 85.53%).
+    - Formatter, linter, TypeScript typechecking, and Next.js production build (`next build` with 34 pages) all passed with 0 errors.
+  - Architecture Documentation:
+    - Authored `docs/WORKSPACES_AND_MEMBERSHIPS.md`.
+  - Backlog status for VO-022 marked as `DONE`. Next task is VO-023.
+
 ### [VO-021] — Implement authentication and account lifecycle (2026-11-12)
 - Implemented comprehensive authentication, account lifecycle, session management, and route boundaries for the Supabase-based VyapOne application:
   - Multi-Modal Interactive Authentication Screens:

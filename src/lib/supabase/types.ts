@@ -130,7 +130,12 @@ export interface Database {
           id: string;
           workspace_id: string;
           user_id: string;
-          role: "reseller_admin" | "reseller_staff";
+          role:
+            | "workspace_owner"
+            | "workspace_admin"
+            | "workspace_member"
+            | "reseller_admin"
+            | "reseller_staff";
           status: "active" | "invited" | "deactivated";
           created_at: string;
         };
@@ -138,7 +143,12 @@ export interface Database {
           id?: string;
           workspace_id: string;
           user_id: string;
-          role: "reseller_admin" | "reseller_staff";
+          role:
+            | "workspace_owner"
+            | "workspace_admin"
+            | "workspace_member"
+            | "reseller_admin"
+            | "reseller_staff";
           status?: "active" | "invited" | "deactivated";
           created_at?: string;
         };
@@ -146,7 +156,12 @@ export interface Database {
           id?: string;
           workspace_id?: string;
           user_id?: string;
-          role?: "reseller_admin" | "reseller_staff";
+          role?:
+            | "workspace_owner"
+            | "workspace_admin"
+            | "workspace_member"
+            | "reseller_admin"
+            | "reseller_staff";
           status?: "active" | "invited" | "deactivated";
           created_at?: string;
         };
@@ -161,6 +176,73 @@ export interface Database {
           {
             foreignKeyName: "workspace_members_user_id_fkey";
             columns: ["user_id"];
+            isOneToOne: false;
+            referencedRelation: "users";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+
+      workspace_invitations: {
+        Row: {
+          id: string;
+          workspace_id: string;
+          email: string;
+          role:
+            | "workspace_owner"
+            | "workspace_admin"
+            | "workspace_member"
+            | "reseller_admin"
+            | "reseller_staff";
+          token_hash: string;
+          invited_by: string;
+          status: "pending" | "accepted" | "revoked" | "expired";
+          expires_at: string;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          workspace_id: string;
+          email: string;
+          role:
+            | "workspace_owner"
+            | "workspace_admin"
+            | "workspace_member"
+            | "reseller_admin"
+            | "reseller_staff";
+          token_hash: string;
+          invited_by: string;
+          status?: "pending" | "accepted" | "revoked" | "expired";
+          expires_at: string;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          workspace_id?: string;
+          email?: string;
+          role?:
+            | "workspace_owner"
+            | "workspace_admin"
+            | "workspace_member"
+            | "reseller_admin"
+            | "reseller_staff";
+          token_hash?: string;
+          invited_by?: string;
+          status?: "pending" | "accepted" | "revoked" | "expired";
+          expires_at?: string;
+          created_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "workspace_invitations_workspace_id_fkey";
+            columns: ["workspace_id"];
+            isOneToOne: false;
+            referencedRelation: "workspaces";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "workspace_invitations_invited_by_fkey";
+            columns: ["invited_by"];
             isOneToOne: false;
             referencedRelation: "users";
             referencedColumns: ["id"];

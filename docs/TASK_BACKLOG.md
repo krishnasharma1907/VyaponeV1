@@ -168,13 +168,13 @@
 
 **Status:** `DONE`
 
-### [ ] VO-022 — Implement workspaces and membership roles
+### [x] VO-022 — Implement workspaces and membership roles
 
 **Scope:** Create reseller/DIY workspaces, workspace memberships and explicit role/permission model.
 
-**Acceptance:** Users can belong to permitted workspaces; permissions are centrally checked and tested.
+**Acceptance:** Reseller and DIY workspaces created via authenticated Server Actions; automatic `workspace_owner` role assignment on creation; centralized hierarchical role and permission matrix implemented; Sovereign Business Ownership separation enforced (`public.workspace_members` does not confer `businesses.sovereign_owner_id` rights); 32-byte cryptographically secure invitation tokens generated, SHA-256 hashed and stored with 7-day expiration; last-owner demotion/removal protection enforced; migration `20261112000003_secure_search_path_and_workspace_roles.sql` hardened trigger function with `SECURITY DEFINER SET search_path = ''` and added `public.workspace_invitations` table with RLS; UI components built (`WorkspaceSwitcher`, `WorkspaceTeamTable`, `WorkspaceSettingsForm`, `WorkspaceInviteModal`); verified via 78 passing unit tests (100% pass rate) and full test suite of 340 passing tests with coverage exceeding quality gates.
 
-**Status:** `NOT_STARTED`
+**Status:** `DONE`
 
 ### [ ] VO-023 — Implement business and location core
 

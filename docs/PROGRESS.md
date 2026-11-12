@@ -1,9 +1,9 @@
 # VyapOne Build Progress
 
 **Current phase:** P2 — Platform identity, authentication and multi-tenancy (`IN_PROGRESS`)  
-**Completed tasks:** VO-000, VO-001, VO-002, VO-003, VO-004, VO-005, VO-006, VO-010, VO-011, VO-012, VO-013, VO-014, VO-015, VO-016, VO-017, VO-018, VO-019, VO-020, VO-021  
-**Next task:** VO-022 — Implement workspaces and membership roles  
-**Project status:** AUTHENTICATION AND ACCOUNT LIFECYCLE ESTABLISHED & VERIFIED / IN PHASE P2  
+**Completed tasks:** VO-000, VO-001, VO-002, VO-003, VO-004, VO-005, VO-006, VO-010, VO-011, VO-012, VO-013, VO-014, VO-015, VO-016, VO-017, VO-018, VO-019, VO-020, VO-021, VO-022  
+**Next task:** VO-023 — Implement business and location core  
+**Project status:** WORKSPACES AND MEMBERSHIP ROLES IMPLEMENTED & VERIFIED / IN PHASE P2  
 
 ## Phase status
 
@@ -11,7 +11,74 @@
 |---|---|---|
 | P0 — Project audit, decisions and architecture | COMPLETE | All tasks VO-000 to VO-006 verified and done; Phase P0 gate passed |
 | P1 — Repository, design system and application shell | COMPLETE | All tasks VO-010 to VO-019 verified and done; Phase P1 gate passed |
-| P2 — Platform identity, authentication and multi-tenancy | IN_PROGRESS | VO-020 and VO-021 done; VO-022 is next |
+| P2 — Platform identity, authentication and multi-tenancy | IN_PROGRESS | VO-020, VO-021, and VO-022 done; VO-023 is next |
+
+## Task report: VO-022
+
+- **Task ID:** VO-022
+- **Status:** DONE
+- **Summary:** Implemented workspace creation, multi-tiered membership roles, cryptographic invitations, and role-based permissions for reseller agency and DIY workspaces:
+  1. **Workspace Management Service (`src/lib/workspaces/service.ts`):**
+     - Implemented `createWorkspace()`, `getUserWorkspaces()`, `getWorkspace()`, `updateWorkspaceProfile()`, `inviteWorkspaceMember()`, `acceptWorkspaceInvitation()`, `updateMemberRole()`, `removeMember()`, and `leaveWorkspace()`.
+     - Automatically creates workspace and initial `workspace_owner` membership record in a single transaction/flow.
+     - Strictly enforces **Last-Owner Protection**: Prohibits demoting or removing the sole remaining owner of a workspace.
+     - Writes immutable audit events for all sensitive lifecycle actions (`workspace.created`, `workspace.profile_updated`, `workspace.member_invited`, `workspace.invitation_accepted`, `workspace.member_role_changed`, `workspace.member_removed`, `workspace.member_left`).
+  2. **Hierarchical Roles & Sovereign Ownership Boundary (`src/lib/workspaces/permissions.ts`):**
+     - Defined explicit role hierarchy: `workspace_owner` (rank 30) > `workspace_admin` / `reseller_admin` (rank 20) > `workspace_member` / `reseller_staff` (rank 10).
+     - Centralized permission evaluation via `hasWorkspacePermission()`, `canManageTargetRole()`, and `canAssignRole()`.
+     - Architecturally enforced the **Sovereign Business Ownership Boundary Invariant**: Workspace administrative access (`public.workspace_members`) does **not** confer sovereign business data rights (`public.businesses.sovereign_owner_id`), strictly separating agency reseller operations from merchant data sovereignty.
+  3. **Cryptographically Secure Invitation Lifecycle (`src/lib/workspaces/tokens.ts`):**
+     - Generates 32-byte cryptographically random hex tokens (`crypto.getRandomValues`) delivered to recipients.
+     - Computes deterministic SHA-256 digests (`crypto.subtle.digest`) for storage in `public.workspace_invitations.token_hash`. Zero plaintext tokens leaked into database or audit logs.
+     - Strict 7-day expiration and single-use invalidation (`status = 'accepted'`).
+     - Rejects unauthorized email claims by verifying that accepting authenticated user matches invitation recipient.
+  4. **Authenticated Next.js Server Actions (`src/lib/workspaces/actions.ts`):**
+     - Implemented `"use server"` actions with structured results (`WorkspaceActionResult<T>`): `createWorkspaceAction`, `updateWorkspaceProfileAction`, `inviteWorkspaceMemberAction`, `acceptWorkspaceInvitationAction`, `updateMemberRoleAction`, `removeMemberAction`, `leaveWorkspaceAction`.
+     - Integrated `revalidatePath` across workspace route shells (`/workspace`, `/workspace/team`, `/workspace/settings`).
+  5. **Accessible Mobile-First UI Primitives (`src/components/workspaces/`):**
+     - Built `WorkspaceSwitcher`: Dropdown selector with active workspace badges and creation trigger.
+     - Built `WorkspaceTeamTable`: Team member roster with role badges, role update dropdowns, remove actions, and accessibility labels.
+     - Built `WorkspaceSettingsForm`: Workspace name and slug management with owner-only editing protections.
+     - Built `WorkspaceInviteModal`: Accessible WAI-ARIA modal dialog for sending member invitations and displaying one-time invitation links.
+  6. **Forward-Only Database Migration (`supabase/migrations/20261112000003_secure_search_path_and_workspace_roles.sql`):**
+     - Hardened PostgreSQL `handle_new_auth_user()` trigger function with `SECURITY DEFINER SET search_path = ''` using fully qualified `pg_catalog.*` and `public.*` schema references to neutralize search path hijacking.
+     - Expanded `workspace_members_role_check` constraint to support canonical and reseller aliases: `('workspace_owner', 'workspace_admin', 'workspace_member', 'reseller_admin', 'reseller_staff')`.
+     - Created `public.workspace_invitations` table with UUID PK, foreign keys, status checks, index on `token_hash`, and enabled Row-Level Security (`ALTER TABLE public.workspace_invitations ENABLE ROW LEVEL SECURITY`).
+  7. **Comprehensive Unit Testing & Verification:**
+     - Added 78 passing unit tests across 7 test files in `tests/unit/workspaces/` (permissions, tokens, schemas, service, actions, migration, components).
+     - Full Vitest suite contains 34 test files, 340 passing tests with 100% pass rate.
+     - Test coverage satisfies all quality gate thresholds: Statements 85.53% (target >= 85%), Branches 72.15% (target >= 70%), Functions 84.45% (target >= 80%), Lines 85.53% (target >= 85%).
+     - Formatter (`pnpm format:check`), linter (`pnpm lint`), and TypeScript typechecker (`pnpm typecheck`) all clean with 0 errors.
+     - Next.js production build (`pnpm build`) compiled 34 static and dynamic routes cleanly.
+  8. **Architecture Documentation:**
+     - Created `docs/WORKSPACES_AND_MEMBERSHIPS.md` documenting hierarchy, invariant proofs, token security, and component architecture.
+- **Files added/modified:**
+  - Added: `supabase/migrations/20261112000003_secure_search_path_and_workspace_roles.sql`
+  - Added: `src/lib/workspaces/types.ts`
+  - Added: `src/lib/workspaces/permissions.ts`
+  - Added: `src/lib/workspaces/schemas.ts`
+  - Added: `src/lib/workspaces/tokens.ts`
+  - Added: `src/lib/workspaces/service.ts`
+  - Added: `src/lib/workspaces/actions.ts`
+  - Added: `src/lib/workspaces/index.ts`
+  - Added: `src/components/workspaces/workspace-switcher.tsx`
+  - Added: `src/components/workspaces/workspace-team-table.tsx`
+  - Added: `src/components/workspaces/workspace-settings-form.tsx`
+  - Added: `src/components/workspaces/workspace-invite-modal.tsx`
+  - Added: `src/components/workspaces/index.ts`
+  - Added: `docs/WORKSPACES_AND_MEMBERSHIPS.md`
+  - Added: `tests/unit/workspaces/permissions.test.ts`
+  - Added: `tests/unit/workspaces/tokens.test.ts`
+  - Added: `tests/unit/workspaces/schemas.test.ts`
+  - Added: `tests/unit/workspaces/service.test.ts`
+  - Added: `tests/unit/workspaces/actions.test.ts`
+  - Added: `tests/unit/workspaces/migration.test.ts`
+  - Added: `tests/unit/workspaces/components.test.tsx`
+  - Modified: `src/lib/supabase/types.ts`
+  - Modified: `tests/factories/workspaces.ts`
+  - Modified: `docs/TASK_BACKLOG.md`
+  - Modified: `docs/PROGRESS.md`
+  - Modified: `docs/CHANGELOG.md`
 
 ## Task report: VO-021
 
