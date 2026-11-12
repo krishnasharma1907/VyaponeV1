@@ -1,17 +1,69 @@
 # VyapOne Build Progress
 
 **Current phase:** P1 — Repository, design system and application shell (`IN_PROGRESS`)  
-**Completed tasks:** VO-000, VO-001, VO-002, VO-003, VO-004, VO-005, VO-006, VO-010, VO-011, VO-012, VO-013, VO-014, VO-015, VO-016, VO-017  
-**Next task:** VO-018 — Set up CI and pull-request checks  
-**Project status:** SUPABASE CLIENT & DATABASE CONNECTION FOUNDATION IMPLEMENTED & VERIFIED / IN PHASE P1  
+**Completed tasks:** VO-000, VO-001, VO-002, VO-003, VO-004, VO-005, VO-006, VO-010, VO-011, VO-012, VO-013, VO-014, VO-015, VO-016, VO-017, VO-018  
+**Next task:** VO-019 — Establish testing conventions and baseline coverage  
+**Project status:** CI PIPELINE & PULL-REQUEST VALIDATION IMPLEMENTED & LOCALLY VERIFIED / IN PHASE P1  
 
 ## Phase status
 
 | Phase | Status | Notes |
 |---|---|---|
 | P0 — Project audit, decisions and architecture | COMPLETE | All tasks VO-000 to VO-006 verified and done; Phase P0 gate passed |
-| P1 — Repository, design system and application shell | IN_PROGRESS | VO-010 to VO-017 done; VO-018 is next |
+| P1 — Repository, design system and application shell | IN_PROGRESS | VO-010 to VO-018 done; VO-019 is next |
 | P2 — Platform identity, authentication and multi-tenancy | NOT_STARTED | |
+
+## Task report: VO-018
+
+- **Task ID:** VO-018
+- **Status:** DONE
+- **Summary:** Built, tested, and locally validated the GitHub Actions CI pipeline and pull-request validation checks with strict action SHA pinning, least-privilege permissions, zero secrets in CI, reproducible pnpm/Node.js setup, and Dependabot automation:
+  1. **CI Workflow (`.github/workflows/ci.yml`):**
+     - Structured into two sequential jobs with stable check names:
+       - `quality-checks`: Runs `pnpm format:check`, `pnpm lint`, `pnpm typecheck`, `pnpm test`.
+       - `production-build`: Dependent on `quality-checks`; runs `pnpm build` (compiles all 30 App Router static/dynamic route shells).
+     - Triggers on `push` to `main`, `pull_request` targeting `main`, and manual execution via `workflow_dispatch`.
+     - Concurrency control: `cancel-in-progress: true` terminates superseded runs when new commits are pushed to an open PR.
+     - Sensible execution timeouts: `timeout-minutes: 15` per job.
+  2. **Security Hardening & Action Pinning:**
+     - Global least-privilege permissions locked to `contents: read`. No write or deployment tokens.
+     - `persist-credentials: false` in checkout prevents leaked git tokens on runner disks.
+     - All third-party actions pinned to full 40-character commit SHAs with version comments:
+       - `actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2`
+       - `pnpm/action-setup@fe02b34f77f8bc703788d5817da081398fad5dd2 # v4.0.0`
+       - `actions/setup-node@1d0ff469b62b6d0ad9b0af0fb3b1e40be53ce9b9 # v4.2.0`
+  3. **Reproducible Environment:**
+     - Added `.nvmrc` (`20`) fixing the Node.js 20 LTS version.
+     - Added `"packageManager": "pnpm@11.21.0"` to `package.json`.
+     - Dependency installation locked via `pnpm install --frozen-lockfile` with pnpm store caching via `actions/setup-node`.
+  4. **Zero Secrets in CI:**
+     - Verified that unit tests mock external providers and that `pnpm build` compiles all route shells without requiring live database credentials, production secrets, or third-party API keys.
+  5. **Dependabot Configuration (`.github/dependabot.yml`):**
+     - Weekly automated security and version update checks for `github-actions` and `npm` ecosystems.
+  6. **Architecture Documentation (`docs/CI_CD.md`):**
+     - Comprehensive reference detailing CI pipeline stages, pinned actions, security invariants, reproducing CI locally, failure triage, and pending GitHub branch protection configuration.
+  7. **Automated Unit Tests (`tests/unit/ci/workflow.test.ts`):**
+     - 6 automated tests validating workflow syntax, branch triggers, permission hardening, action SHA pinning, required quality gates, Dependabot configuration, and reproducible runtime settings.
+     - Total project test suite increased to 170 passing tests across 16 test files (100% pass rate).
+- **Files added/modified:**
+  - Added: `.github/workflows/ci.yml`
+  - Added: `.github/dependabot.yml`
+  - Added: `.nvmrc`
+  - Added: `docs/CI_CD.md`
+  - Added: `tests/unit/ci/workflow.test.ts`
+  - Modified: `package.json` (added `"packageManager": "pnpm@11.21.0"`)
+  - Modified: `docs/TASK_BACKLOG.md`
+  - Modified: `docs/PROGRESS.md`
+  - Modified: `docs/CHANGELOG.md`
+- **Verification commands run:**
+  - `pnpm vitest run tests/unit/ci`: 1/1 test file passed, 6/6 tests passed (100%)
+  - `pnpm test`: 16/16 test files passed, 170/170 tests passed (100%)
+  - `pnpm typecheck`: Clean TypeScript compilation (0 errors)
+  - `pnpm lint`: Clean ESLint check (0 errors, 0 warnings)
+  - `pnpm format:check`: Clean Prettier check (All files formatted)
+  - `pnpm build`: Clean Next.js 15.5.29 production build (30/30 static pages)
+- **Blocked/deferred:** Remote GitHub-hosted execution and branch protection configuration remain pending repository administrator setup. Ready for VO-019.
+- **Next task:** VO-019 — Establish testing conventions and baseline coverage
 
 ## Task report: VO-017
 

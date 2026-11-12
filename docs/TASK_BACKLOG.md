@@ -132,13 +132,13 @@
 
 **Status:** `DONE`
 
-### [ ] VO-018 — Set up CI and pull-request checks
+### [x] VO-018 — Set up CI and pull-request checks
 
 **Scope:** Run lint, typecheck, unit tests and build in CI. Add branch protection guidance if repository hosting is configured.
 
 **Acceptance:** CI fails on relevant quality failures and passes on a clean baseline.
 
-**Status:** `NOT_STARTED`
+**Status:** `DONE`
 
 ### [ ] VO-019 — Establish testing conventions and baseline coverage
 
