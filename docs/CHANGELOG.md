@@ -4,6 +4,20 @@ Record implementation changes by task ID. Do not record planned work as complete
 
 ## Unreleased
 
+### [VO-017] — Implement Supabase Client and Database Connection Foundation (2026-11-12)
+- Implemented strongly-typed Supabase client infrastructure and database connection foundation with compile-time and runtime security isolation:
+  - Installed `@supabase/ssr` (`0.12.7`) and `@supabase/supabase-js` (`2.119.0`).
+  - Browser Client (`src/lib/supabase/client.ts`): Client-safe factory `createBrowserSupabaseClient()` using `@supabase/ssr`, restricted to public allowlisted configuration (`NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`) with browser singleton memoization.
+  - Server Client (`src/lib/supabase/server.ts`): Server-only factory `createServerSupabaseClient(customCookies?)` guarded by `import "server-only"`, supporting Next.js 15 async `cookies()` with `getAll`/`setAll` and request-scoped lifecycle enforcing PostgreSQL Row-Level Security (RLS) under the requesting user's identity.
+  - Middleware Session Helper (`src/lib/supabase/middleware.ts`): Session updater `updateSession(request)` refreshing auth sessions via `supabase.auth.getUser()` and synchronizing cookies between request and response headers.
+  - Administrative Client (`src/lib/supabase/admin.ts`): Privileged service-role factory `createAdminSupabaseClient(customEnv?)` guarded by `import "server-only"`, disabling session persistence, strictly reserved for platform tenant provisioning, webhook verification, and audit logs.
+  - Database Types Foundation (`src/lib/supabase/types.ts`): Strongly-typed `Database` interface representing all 13 canonical entities from `docs/diagrams/core-erd.mmd` (`users`, `user_auth_identities`, `workspaces`, `workspace_members`, `businesses`, `locations`, `business_members`, `sites`, `catalogue_items`, `orders`, `customers`, `bills`, `audit_logs`).
+  - Database Connection & Pooler Foundation (`src/lib/database/index.ts`): Reconciled ADR-002, ADR-003, and ADR-004 for Cloudflare Workers edge runtime; implemented `inspectDatabaseConfig()` safely identifying Supavisor transaction poolers (port 6543 / `?pgbouncer=true`), session poolers (port 5432), and direct connections without persistent socket leaks on import.
+  - Architecture Documentation (`docs/DATABASE_ARCHITECTURE.md`): Authored comprehensive specification covering execution boundaries, serverless connection pooling, Cloudflare Workers compatibility, environment matrix, RLS protection boundaries, and $0-budget free-tier constraints.
+  - Automated Unit Tests: Authored 23 tests across 6 files (`tests/unit/supabase/browser-client.test.ts`, `server-client.test.ts`, `admin-client.test.ts`, `boundary.test.ts`, `types.test.ts`, and `tests/unit/database/connection.test.ts`). Total test suite expanded to 164 passing tests across 15 files (100% pass rate).
+  - Verified all repository quality gates pass: `pnpm format:check` (clean), `pnpm lint` (0 errors, 0 warnings), `pnpm typecheck` (0 errors), `pnpm test` (164 tests pass), and `pnpm build` (30/30 pages compiled).
+  - Updated backlog status for VO-017 to `DONE` and recorded progress.
+
 ### [VO-016] — Implement application configuration and environment handling (2026-11-12)
 - Implemented secure, typed, validated application configuration foundation with strict server vs. client runtime isolation:
   - Validation Engine (`src/config/env.ts`): Built Zod schemas (`publicEnvSchema`, `serverCoreEnvSchema`, `optionalIntegrationsEnvSchema`) validating environment variables, port ranges, URL formatting, and PostgreSQL connection protocols.

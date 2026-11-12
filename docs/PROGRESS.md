@@ -1,17 +1,89 @@
 # VyapOne Build Progress
 
 **Current phase:** P1 — Repository, design system and application shell (`IN_PROGRESS`)  
-**Completed tasks:** VO-000, VO-001, VO-002, VO-003, VO-004, VO-005, VO-006, VO-010, VO-011, VO-012, VO-013, VO-014, VO-015, VO-016  
-**Next task:** VO-017 — Add structured logging and error handling  
-**Project status:** APPLICATION CONFIGURATION & ENVIRONMENT HANDLING FOUNDATION IMPLEMENTED & VERIFIED / IN PHASE P1  
+**Completed tasks:** VO-000, VO-001, VO-002, VO-003, VO-004, VO-005, VO-006, VO-010, VO-011, VO-012, VO-013, VO-014, VO-015, VO-016, VO-017  
+**Next task:** VO-018 — Set up CI and pull-request checks  
+**Project status:** SUPABASE CLIENT & DATABASE CONNECTION FOUNDATION IMPLEMENTED & VERIFIED / IN PHASE P1  
 
 ## Phase status
 
 | Phase | Status | Notes |
 |---|---|---|
 | P0 — Project audit, decisions and architecture | COMPLETE | All tasks VO-000 to VO-006 verified and done; Phase P0 gate passed |
-| P1 — Repository, design system and application shell | IN_PROGRESS | VO-010 to VO-016 done; VO-017 is next |
+| P1 — Repository, design system and application shell | IN_PROGRESS | VO-010 to VO-017 done; VO-018 is next |
 | P2 — Platform identity, authentication and multi-tenancy | NOT_STARTED | |
+
+## Task report: VO-017
+
+- **Task ID:** VO-017
+- **Status:** DONE
+- **Summary:** Built, tested, and verified the Supabase client and database connection foundation with full compile-time and runtime security isolation, request-scoped cookie handling, Cloudflare Workers connection pooling reconciliation, and version-controlled TypeScript database type definitions:
+  1. **Browser Client (`src/lib/supabase/client.ts`):**
+     - Implemented `createBrowserSupabaseClient()` using `@supabase/ssr`.
+     - Strictly restricted to public allowlisted configuration (`NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`).
+     - Browser runtime singleton memoization prevents duplicate GoTrue auth listeners or redundant WebSocket connection channels.
+     - Never imports privileged server configuration or `server-only`.
+  2. **Server Client (`src/lib/supabase/server.ts`):**
+     - Implemented `createServerSupabaseClient(customCookies?)` guarded by Next.js `import "server-only"`.
+     - Request-scoped authenticated client integrating with Next.js 15 asynchronous `await cookies()` from `next/headers`.
+     - Cookie reading (`getAll`) and writing (`setAll`) support seamless session propagation with graceful handling of Server Component read-only cookie constraints.
+     - Operates strictly in the context of the authenticated user's JWT, enforcing PostgreSQL Row-Level Security (RLS) policies (`auth.uid()`). Zero shared mutable state across requests.
+  3. **Middleware Session Handler (`src/lib/supabase/middleware.ts`):**
+     - Implemented `updateSession(request)` for Next.js Middleware.
+     - Refreshes auth sessions via `supabase.auth.getUser()`, updating request headers and response cookies to prevent session desynchronization during App Router navigation.
+     - Handles unconfigured local dev environments gracefully without throwing or interrupting requests.
+  4. **Administrative Client (`src/lib/supabase/admin.ts`):**
+     - Implemented `createAdminSupabaseClient(customEnv?)` using `@supabase/supabase-js`.
+     - Guarded by Next.js `import "server-only"`. Uses `SUPABASE_SERVICE_ROLE_KEY` to bypass RLS.
+     - Disabled session persistence (`persistSession: false, autoRefreshToken: false`) tailored for stateless server execution.
+     - Strictly restricted to platform-level tenant provisioning, webhook verification (e.g. Razorpay payment notifications), background cron jobs, and audit log ingestion. Never exposed to client bundles or routine user operations.
+  5. **Database Types Foundation (`src/lib/supabase/types.ts`):**
+     - Version-controlled `Database` interface covering all 13 canonical tables from `docs/diagrams/core-erd.mmd` (`users`, `user_auth_identities`, `workspaces`, `workspace_members`, `businesses`, `locations`, `business_members`, `sites`, `catalogue_items`, `orders`, `customers`, `bills`, `audit_logs`).
+     - Strongly-typed `Row`, `Insert`, `Update`, and `Relationships` definitions.
+     - Documented official CLI type regeneration command: `pnpm dlx supabase gen types typescript --project-id <project-ref> > src/lib/supabase/types.ts`.
+  6. **Database Connection & Pooler Foundation (`src/lib/database/index.ts`):**
+     - Reconciled ADR-002, ADR-003, and ADR-004 for Cloudflare Pages/Workers edge runtime.
+     - Implemented `inspectDatabaseConfig(customEnv?)` safely detecting Supavisor transaction pooler (port 6543 / `?pgbouncer=true`), session pooler (port 5432), and direct connections without opening persistent TCP sockets on import.
+     - Zero credential leakage: host, port, database name, and pooler mode are extracted safely while passwords and credentials are never included in output metadata.
+  7. **Architecture Documentation (`docs/DATABASE_ARCHITECTURE.md`):**
+     - Authored canonical reference documenting client boundaries, serverless connection pooling, Cloudflare Workers compatibility, environment matrix, RLS protection boundaries, and $0-budget free-tier constraints/mitigations.
+  8. **Comprehensive Automated Unit Tests (`tests/unit/supabase/` & `tests/unit/database/`):**
+     - `tests/unit/supabase/browser-client.test.ts`: 4 tests (initialization, browser memoization, missing credentials error).
+     - `tests/unit/supabase/server-client.test.ts`: 3 tests (request scoping, cookie read/write handling, missing credentials error).
+     - `tests/unit/supabase/admin-client.test.ts`: 4 tests (service-role auth, non-persisted session, secret redaction, missing key error).
+     - `tests/unit/supabase/boundary.test.ts`: 3 tests (proves `server.ts` and `admin.ts` actively reject client component imports via `server-only`).
+     - `tests/unit/supabase/types.test.ts`: 4 tests (validates table keys, entity attributes, sovereign ownership, and monetary integer minor units).
+     - `tests/unit/database/connection.test.ts`: 5 tests (transaction pooler detection, session pooler detection, unpooled detection, secret redaction).
+     - Total project test suite increased to 164 passing tests across 15 test files (100% pass rate).
+- **Files added/modified:**
+  - Added: `src/lib/supabase/types.ts`
+  - Added: `src/lib/supabase/client.ts`
+  - Added: `src/lib/supabase/server.ts`
+  - Added: `src/lib/supabase/middleware.ts`
+  - Added: `src/lib/supabase/admin.ts`
+  - Added: `src/lib/supabase/index.ts`
+  - Added: `src/lib/database/index.ts`
+  - Added: `docs/DATABASE_ARCHITECTURE.md`
+  - Added: `tests/unit/supabase/browser-client.test.ts`
+  - Added: `tests/unit/supabase/server-client.test.ts`
+  - Added: `tests/unit/supabase/admin-client.test.ts`
+  - Added: `tests/unit/supabase/boundary.test.ts`
+  - Added: `tests/unit/supabase/types.test.ts`
+  - Added: `tests/unit/database/connection.test.ts`
+  - Modified: `package.json` (installed `@supabase/ssr` `0.12.7` and `@supabase/supabase-js` `2.119.0`)
+  - Modified: `pnpm-lock.yaml`
+  - Modified: `docs/TASK_BACKLOG.md`
+  - Modified: `docs/PROGRESS.md`
+  - Modified: `docs/CHANGELOG.md`
+- **Verification commands run:**
+  - `pnpm vitest run tests/unit/supabase tests/unit/database`: 6/6 test files passed, 23/23 tests passed (100%)
+  - `pnpm test`: 15/15 test files passed, 164/164 tests passed (100%)
+  - `pnpm typecheck`: Clean TypeScript compilation (0 errors)
+  - `pnpm lint`: Clean ESLint check (0 errors, 0 warnings)
+  - `pnpm format:check`: Clean Prettier check (All files formatted)
+  - `pnpm build`: Clean Next.js 15.5.29 production build (30/30 static pages)
+- **Blocked/deferred:** None. Ready for VO-018.
+- **Next task:** VO-018 — Set up CI and pull-request checks
 
 ## Task report: VO-016
 

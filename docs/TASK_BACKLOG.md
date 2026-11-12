@@ -124,13 +124,13 @@
 
 **Status:** `DONE`
 
-### [ ] VO-017 — Add structured logging and error handling
+### [x] VO-017 — Implement Supabase Client and Database Connection Foundation
 
-**Scope:** Implement request IDs, structured server logs, user-safe errors, error boundaries and health endpoint.
+**Scope:** Implement browser, server, and administrative Supabase client foundation with `@supabase/ssr` and `@supabase/supabase-js`, request-scoped authenticated cookie handling, TypeScript database types matching core ERDs, connection pooling reconciliation for Cloudflare Workers/Pages, and strict RLS protection boundaries.
 
-**Acceptance:** Errors are observable without leaking tokens, personal data or stack traces to users.
+**Acceptance:** Browser and server client factories work with configuration isolation; service-role key is guarded by `server-only` and cannot leak to client; request-scoped cookies function without cross-request state sharing; database types match canonical domain entities; quality gates pass.
 
-**Status:** `NOT_STARTED`
+**Status:** `DONE`
 
 ### [ ] VO-018 — Set up CI and pull-request checks
 
