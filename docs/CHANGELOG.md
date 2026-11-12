@@ -4,6 +4,40 @@ Record implementation changes by task ID. Do not record planned work as complete
 
 ## Unreleased
 
+### [VO-021] — Implement authentication and account lifecycle (2026-11-12)
+- Implemented comprehensive authentication, account lifecycle, session management, and route boundaries for the Supabase-based VyapOne application:
+  - Multi-Modal Interactive Authentication Screens:
+    - Built tabbed Sign-In page (`src/app/(auth)/login/page.tsx`, `src/components/auth/login-form.tsx`) supporting Mobile OTP (India-primary) and Email/Password credentials with accessible WAI-ARIA tabs and real-time validation error feedback.
+    - Built Merchant & Reseller Onboarding Registration page (`src/app/(auth)/register/page.tsx`, `src/components/auth/register-form.tsx`) with account type selection (`owner`, `reseller`), business naming, email, phone, and password fields.
+    - Built Password Recovery flow: Forgot Password request (`src/app/(auth)/forgot-password/page.tsx`, `src/components/auth/forgot-password-form.tsx`) and New Password setup (`src/app/(auth)/update-password/page.tsx`, `src/components/auth/update-password-form.tsx`).
+    - Built Email Verification notice screen (`src/app/(auth)/verify-email/page.tsx`).
+  - Next.js Server Actions (`src/lib/auth/actions.ts`):
+    - Implemented `signUpAction`, `signInWithPasswordAction`, `requestPhoneOtpAction`, `verifyPhoneOtpAction`, `requestPasswordResetAction`, `updatePasswordAction`, and `signOutAction` returning structured, user-safe result objects (`AuthActionResult`).
+  - Security Utilities & Controls (`src/lib/auth/security.ts`):
+    - Open Redirect Defense: Implemented `isValidInternalRedirect()` strictly validating internal relative paths and preventing external protocol-relative (`//evil.com`), Windows backslash (`/\evil.com`), and control-character bypass attacks.
+    - Indian Mobile Normalization: Implemented `normalizePhoneNumber()` converting 10-digit Indian numbers, prefixed 0-numbers, and prefixed 91-numbers to canonical E.164 (`+91xxxxxxxxxx`).
+    - Error Sanitization: Implemented `mapAuthError()` neutralizing database/GoTrue errors into safe strings, completely mitigating account enumeration risks.
+  - Zod Validation Schemas (`src/lib/auth/schemas.ts`):
+    - Enforced strict schemas for email, E.164 phone, password complexity (min 8 chars, letter + digit), 6-digit OTP, registration, password recovery, and matching confirmation passwords.
+  - PKCE Auth Callback Handler (`src/app/auth/callback/route.ts`):
+    - Implemented GET Route Handler to exchange PKCE authorization code for session, validate redirect targets, and bootstrap application user profiles.
+  - Next.js 15 Edge Middleware (`src/middleware.ts`):
+    - Invokes `updateSession()` from `@/lib/supabase/middleware` to refresh auth session tokens before routing to Server Components.
+    - Enforces back-office route protection for `/dashboard/*`, `/counter/*`, `/workspace/*`, `/platform-admin/*`, redirecting unauthenticated users to `/login?next=<encodedPath>`.
+    - Enforces guest-only route boundary, redirecting authenticated users away from `/login`, `/register`, or `/forgot-password` to `/dashboard`.
+    - Preserves refreshed session cookies across 307 redirects using `copyCookies()`.
+  - Database Trigger & Application Fallback:
+    - Created forward migration `supabase/migrations/20261112000002_auth_profile_trigger.sql` implementing `handle_new_auth_user()` with `SECURITY DEFINER` to automatically populate `public.users` and `public.user_auth_identities`.
+    - Created idempotent application-layer fallback helper `ensureUserProfile()` in `src/lib/auth/profile.ts`.
+  - Automated Unit Testing & Quality Gates:
+    - Added 6 new unit test suites with 55 unit tests in `tests/unit/auth/` (`actions.test.ts`, `callback.test.ts`, `middleware.test.ts`, `profile.test.ts`, `schemas.test.ts`, `security.test.ts`).
+    - Full test suite expanded to 27 test files, 262 passing tests with 100% pass rate.
+    - Coverage satisfies quality gate thresholds: Statements 85.34%, Branches 75.13%, Functions 80.68%, Lines 85.34%.
+    - Verified `pnpm format:check` (clean), `pnpm lint` (0 errors, 0 warnings), `pnpm typecheck` (0 errors), `pnpm build` (34 pages compiled cleanly).
+  - Comprehensive Architecture Documentation:
+    - Authored `docs/AUTHENTICATION.md` covering architecture, lifecycle flows, middleware sequence, India DLT/SMS regulatory requirements, and security controls.
+  - Backlog status for VO-021 marked as `DONE`. Next task is VO-022.
+
 ### [VO-020] — Create database migration framework (2026-11-12)
 - Built and statically validated canonical PostgreSQL database migration framework, initial core schema, synthetic seed data, pgTAP test suite, and database architecture documentation:
   - Architecture Reconciliation: Standardized on Supabase CLI native SQL migration framework (`supabase/migrations/`) reconciling ADR-002, ADR-003, and ADR-004 into a single authoritative DDL pipeline without dual-runner drift.

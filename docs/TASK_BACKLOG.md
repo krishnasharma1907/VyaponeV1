@@ -160,13 +160,13 @@
 
 **Status:** `DONE`
 
-### [ ] VO-021 — Implement authentication and account lifecycle
+### [x] VO-021 — Implement authentication and account lifecycle
 
 **Scope:** Implement signup/login, phone/email identity per selected auth decision, verification, logout, recovery and session handling.
 
 **Acceptance:** Auth flows work in local/staging; protected endpoints reject anonymous users.
 
-**Status:** `NOT_STARTED`
+**Status:** `DONE`
 
 ### [ ] VO-022 — Implement workspaces and membership roles
 

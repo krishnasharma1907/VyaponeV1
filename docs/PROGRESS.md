@@ -1,9 +1,9 @@
 # VyapOne Build Progress
 
 **Current phase:** P2 — Platform identity, authentication and multi-tenancy (`IN_PROGRESS`)  
-**Completed tasks:** VO-000, VO-001, VO-002, VO-003, VO-004, VO-005, VO-006, VO-010, VO-011, VO-012, VO-013, VO-014, VO-015, VO-016, VO-017, VO-018, VO-019, VO-020  
-**Next task:** VO-021 — Implement authentication and account lifecycle  
-**Project status:** DATABASE MIGRATION FRAMEWORK ESTABLISHED & STATICALLY VALIDATED / IN PHASE P2  
+**Completed tasks:** VO-000, VO-001, VO-002, VO-003, VO-004, VO-005, VO-006, VO-010, VO-011, VO-012, VO-013, VO-014, VO-015, VO-016, VO-017, VO-018, VO-019, VO-020, VO-021  
+**Next task:** VO-022 — Implement workspaces and membership roles  
+**Project status:** AUTHENTICATION AND ACCOUNT LIFECYCLE ESTABLISHED & VERIFIED / IN PHASE P2  
 
 ## Phase status
 
@@ -11,7 +11,81 @@
 |---|---|---|
 | P0 — Project audit, decisions and architecture | COMPLETE | All tasks VO-000 to VO-006 verified and done; Phase P0 gate passed |
 | P1 — Repository, design system and application shell | COMPLETE | All tasks VO-010 to VO-019 verified and done; Phase P1 gate passed |
-| P2 — Platform identity, authentication and multi-tenancy | IN_PROGRESS | VO-020 done; VO-021 is next |
+| P2 — Platform identity, authentication and multi-tenancy | IN_PROGRESS | VO-020 and VO-021 done; VO-022 is next |
+
+## Task report: VO-021
+
+- **Task ID:** VO-021
+- **Status:** DONE
+- **Summary:** Implemented the complete authentication and account lifecycle for the Supabase-based VyapOne application:
+  1. **Dual Multi-Modal Sign-In & Registration UI Primitives:**
+     - Created `src/components/auth/login-form.tsx` featuring tabbed authentication (India-primary Mobile SMS OTP and Email/Password), accessible WAI-ARIA tabs, live validation error feedback, and step-by-step OTP verification.
+     - Created `src/components/auth/register-form.tsx` for merchant and reseller agency onboarding with account type selection (`owner`, `reseller`), business naming, email, normalized phone, and password inputs.
+     - Created `src/components/auth/forgot-password-form.tsx` and `src/components/auth/update-password-form.tsx` for end-to-end password recovery.
+     - Created `src/app/(auth)/verify-email/page.tsx` for email verification feedback.
+  2. **Next.js Server Actions ("use server"):**
+     - Implemented `signUpAction`, `signInWithPasswordAction`, `requestPhoneOtpAction`, `verifyPhoneOtpAction`, `requestPasswordResetAction`, `updatePasswordAction`, and `signOutAction` in `src/lib/auth/actions.ts`.
+     - Standardized on structured result objects (`AuthActionResult`) with user-safe error mapping to prevent information disclosure.
+  3. **Security Invariants & Utilities (`src/lib/auth/security.ts`):**
+     - Open Redirect Protection: `isValidInternalRedirect()` strictly allows safe relative paths and rejects external schemes, protocol-relative paths (`//evil.com`), Windows backslash evasions (`/\evil.com`), and control characters.
+     - Indian Mobile Normalization: `normalizePhoneNumber()` converts 10-digit Indian numbers, prefixed 0-numbers, and prefixed 91-numbers to canonical E.164 (`+91xxxxxxxxxx`).
+     - Error Sanitization: `mapAuthError()` translates internal database/GoTrue errors into uniform, user-safe messages without leaking account existence or stack traces.
+  4. **Strict Zod Schemas (`src/lib/auth/schemas.ts`):**
+     - Enforced validation rules for email, phone (E.164), password strength (min 8 chars, letter + digit), 6-digit OTP, signup, password reset, and password confirmation matching.
+  5. **PKCE Callback Route Handler (`src/app/auth/callback/route.ts`):**
+     - Created GET Route Handler for code-for-session exchange, validating redirect targets with `isValidInternalRedirect()`, and idempotently bootstrapping user profiles.
+  6. **Next.js 15 Edge Middleware (`src/middleware.ts`):**
+     - Enforces session token freshness via `updateSession()`.
+     - Route Protection: Redirects anonymous visitors on `/dashboard/*`, `/counter/*`, `/workspace/*`, `/platform-admin/*` to `/login?next=<encodedPath>`.
+     - Guest-Only Protection: Redirects authenticated users accessing `/login`, `/register`, or `/forgot-password` to `/dashboard`.
+     - Cookie Preservation: Preserves refreshed Supabase session cookies across 307 redirects using `copyCookies()`.
+  7. **Database Triggers & Profile Bootstrapping:**
+     - Created forward-only migration `supabase/migrations/20261112000002_auth_profile_trigger.sql` implementing `handle_new_auth_user()` with `SECURITY DEFINER` and search path restriction to bridge `auth.users` to `public.users` and `public.user_auth_identities`.
+     - Created application-layer fallback helper `ensureUserProfile()` in `src/lib/auth/profile.ts`.
+  8. **Automated Unit Testing & Verification:**
+     - Added 55 new unit tests across 6 auth test files in `tests/unit/auth/` (schemas, security, actions, middleware, profile bootstrap, callback).
+     - Full Vitest test suite now passes with 27 test files, 262 tests (100% pass rate).
+     - Test coverage satisfies all quality gate thresholds: Statements 85.34%, Branches 75.13%, Functions 80.68%, Lines 85.34%.
+     - Next.js production build (`pnpm build`) compiled 34 pages with 0 errors.
+  9. **Documentation:**
+     - Created `docs/AUTHENTICATION.md` covering architecture, lifecycle flows, middleware sequence, India DLT/SMS regulatory requirements, and security controls.
+- **Files added/modified:**
+  - Added: `src/lib/auth/security.ts`
+  - Added: `src/lib/auth/schemas.ts`
+  - Added: `src/lib/auth/profile.ts`
+  - Added: `src/lib/auth/actions.ts`
+  - Added: `src/components/auth/login-form.tsx`
+  - Added: `src/components/auth/register-form.tsx`
+  - Added: `src/components/auth/forgot-password-form.tsx`
+  - Added: `src/components/auth/update-password-form.tsx`
+  - Added: `src/app/auth/callback/route.ts`
+  - Added: `src/app/(auth)/forgot-password/page.tsx`
+  - Added: `src/app/(auth)/update-password/page.tsx`
+  - Added: `src/app/(auth)/verify-email/page.tsx`
+  - Added: `src/middleware.ts`
+  - Added: `supabase/migrations/20261112000002_auth_profile_trigger.sql`
+  - Added: `tests/unit/auth/security.test.ts`
+  - Added: `tests/unit/auth/schemas.test.ts`
+  - Added: `tests/unit/auth/actions.test.ts`
+  - Added: `tests/unit/auth/middleware.test.ts`
+  - Added: `tests/unit/auth/profile.test.ts`
+  - Added: `tests/unit/auth/callback.test.ts`
+  - Added: `docs/AUTHENTICATION.md`
+  - Modified: `src/lib/supabase/middleware.ts`
+  - Modified: `src/lib/supabase/types.ts`
+  - Modified: `src/app/(auth)/login/page.tsx`
+  - Modified: `src/app/(auth)/register/page.tsx`
+  - Modified: `tests/unit/routing/route-shells.test.tsx`
+  - Modified: `docs/TASK_BACKLOG.md`
+  - Modified: `docs/PROGRESS.md`
+  - Modified: `docs/CHANGELOG.md`
+- **Verification commands run:**
+  - `pnpm format:check`: Passed (clean Prettier formatting)
+  - `pnpm lint`: Passed (0 errors, 0 warnings)
+  - `pnpm typecheck`: Passed (0 errors across entire workspace)
+  - `pnpm test`: Passed (27 test files, 262 tests passing)
+  - `pnpm test:coverage`: Passed (all thresholds met: Stmts >= 85%, Branch >= 70%, Funcs >= 80%, Lines >= 85%)
+  - `pnpm build`: Passed (Next.js 15.5.29 production build succeeded with 34 generated pages and Middleware)
 
 ## Task report: VO-020
 

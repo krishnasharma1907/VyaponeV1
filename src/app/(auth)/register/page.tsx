@@ -1,19 +1,7 @@
-import React from "react";
-import Link from "next/link";
+import React, { Suspense } from "react";
 import type { Metadata } from "next";
-import {
-  Button,
-  Card,
-  CardHeader,
-  CardTitle,
-  CardDescription,
-  CardContent,
-  CardFooter,
-  Field,
-  Input,
-  Select,
-  Badge,
-} from "@/components/ui";
+import { RegisterForm } from "@/components/auth/register-form";
+import { Skeleton } from "@/components/ui";
 
 export const metadata: Metadata = {
   title: "Register — VyapOne",
@@ -22,59 +10,14 @@ export const metadata: Metadata = {
 
 export default function RegisterPage() {
   return (
-    <Card variant="elevated">
-      <CardHeader>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-          <CardTitle as="h1">Get Started</CardTitle>
-          <Badge variant="info">Registration (Shell)</Badge>
+    <Suspense
+      fallback={
+        <div style={{ padding: "var(--space-6)" }}>
+          <Skeleton height={380} />
         </div>
-        <CardDescription>
-          Onboarding entry shell for merchants and reseller agencies. Account creation connects in
-          Phase P2 (VO-021).
-        </CardDescription>
-      </CardHeader>
-      <CardContent>
-        <form style={{ display: "flex", flexDirection: "column", gap: "var(--space-4)" }}>
-          <Field id="account-type" label="Account Type" required>
-            <Select defaultValue="owner" disabled>
-              <option value="owner">Business Owner (Single/Multi-Location)</option>
-              <option value="reseller">Reseller Agency (Manage Multiple Clients)</option>
-            </Select>
-          </Field>
-          <Field id="reg-business-name" label="Business or Agency Name" required>
-            <Input placeholder="e.g., Sharma General Store" disabled />
-          </Field>
-          <Field
-            id="reg-phone"
-            label="Mobile Number"
-            required
-            helperText="Primary identifier (connects in Phase P2)"
-          >
-            <Input type="tel" placeholder="98765 43210" autoComplete="tel" disabled />
-          </Field>
-          <Button type="button" variant="primary" style={{ width: "100%" }} disabled>
-            Continue to Verification (Connects in VO-021)
-          </Button>
-        </form>
-      </CardContent>
-      <CardFooter>
-        <span
-          style={{ fontSize: "var(--font-size-body-sm)", color: "var(--color-text-secondary)" }}
-        >
-          Already registered?
-        </span>
-        <Link
-          href="/login"
-          style={{
-            fontSize: "var(--font-size-body-sm)",
-            color: "var(--color-brand-primary)",
-            fontWeight: "var(--font-weight-medium)",
-            textDecoration: "none",
-          }}
-        >
-          Sign In
-        </Link>
-      </CardFooter>
-    </Card>
+      }
+    >
+      <RegisterForm />
+    </Suspense>
   );
 }

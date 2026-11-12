@@ -1,5 +1,32 @@
 import React from "react";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
+
+// Mock next/navigation for client components rendered during route shell validation
+vi.mock("next/navigation", () => ({
+  useRouter: () => ({
+    push: vi.fn(),
+    replace: vi.fn(),
+    prefetch: vi.fn(),
+    back: vi.fn(),
+    forward: vi.fn(),
+    refresh: vi.fn(),
+  }),
+  useSearchParams: () => new URLSearchParams(),
+  usePathname: () => "/",
+  redirect: vi.fn(),
+}));
+
+// Mock auth server actions to isolate UI tests from server-only backend code
+vi.mock("@/lib/auth/actions", () => ({
+  signUpAction: vi.fn(),
+  signInWithPasswordAction: vi.fn(),
+  requestPhoneOtpAction: vi.fn(),
+  verifyPhoneOtpAction: vi.fn(),
+  requestPasswordResetAction: vi.fn(),
+  updatePasswordAction: vi.fn(),
+  signOutAction: vi.fn(),
+}));
+
 import { render, screen, within } from "@testing-library/react";
 import HomePage from "@/app/page";
 import AuthLayout from "@/app/(auth)/layout";

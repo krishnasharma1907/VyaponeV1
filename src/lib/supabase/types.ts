@@ -541,6 +541,42 @@ export interface Database {
         ];
       };
 
+      invoice_sequences: {
+        Row: {
+          id: string;
+          business_id: string;
+          financial_year: string;
+          series_prefix: string;
+          current_sequence_number: number;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          business_id: string;
+          financial_year: string;
+          series_prefix?: string;
+          current_sequence_number?: number;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          business_id?: string;
+          financial_year?: string;
+          series_prefix?: string;
+          current_sequence_number?: number;
+          updated_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "invoice_sequences_business_id_fkey";
+            columns: ["business_id"];
+            isOneToOne: false;
+            referencedRelation: "businesses";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+
       bills: {
         Row: {
           id: string;
