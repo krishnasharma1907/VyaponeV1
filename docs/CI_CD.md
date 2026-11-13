@@ -131,3 +131,36 @@ pnpm build
 - **Typecheck Failure (`pnpm typecheck`):** Inspect TypeScript compiler output. Remember that VyapOne prohibits `any` types and non-null assertions (`!`).
 - **Test Failure (`pnpm test`):** Run `pnpm vitest run <file>` to isolate failing test cases and inspect expectations.
 - **Build Failure (`pnpm build`):** Inspect the Next.js compilation trace for module resolution errors or accidental client-side imports of `server-only` modules.
+
+---
+
+## 7. Cloudflare Workers Builds & Deployment Troubleshooting
+
+### Incident: `ERROR packages field missing or empty`
+
+- **Symptom:** Cloudflare Workers Builds / Pages Build failed during dependency installation:
+  ```
+  Detected:
+  - pnpm@10.11.1
+  - Node.js 24.18.0
+
+  Command:
+  pnpm install --frozen-lockfile
+
+  Error:
+  ERROR packages field missing or empty
+  ```
+- **Root Cause:** When `pnpm-workspace.yaml` is present in the repository root, pnpm treats the directory as a workspace manifest. If `pnpm-workspace.yaml` contains configuration keys (such as `allowBuilds:`) but lacks a non-empty `packages` array, pnpm's workspace reader terminates immediately with `ERR_PNPM_PACKAGES_FIELD_MISSING_OR_EMPTY`.
+- **Resolution:** In single-package applications where the primary application lives at the repository root, `pnpm-workspace.yaml` must explicitly declare the root package directory:
+  ```yaml
+  packages:
+    - "."
+  allowBuilds:
+    esbuild: true
+  ```
+- **Cloudflare Build Environment Assumptions:**
+  - **Root Directory:** Repository root (`.`).
+  - **Node.js Version:** Node.js 24 LTS (`v24.18.0`+ / `.nvmrc` `24`).
+  - **Package Manager Version:** Pinned to `pnpm@11.21.0` in `package.json` (`packageManager: "pnpm@11.21.0"`). Cloudflare Workers Builds detects package manager versions through standard Corepack / `package.json` conventions.
+  - **Lockfile Integrity:** `pnpm-lock.yaml` remains strictly frozen (`--frozen-lockfile`) without generating or mutating lockfile entries.
+

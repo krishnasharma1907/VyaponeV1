@@ -94,4 +94,15 @@ describe("CI & Pull-Request Validation Architecture [VO-018]", () => {
     expect(packageJson.packageManager).toBe("pnpm@11.21.0");
     expect(packageJson.engines.node).toBe(">=24.0.0");
   });
+
+  it("verifies pnpm-workspace.yaml defines valid packages array for CI and Cloudflare Workers Builds", () => {
+    const workspacePath = path.join(rootDir, "pnpm-workspace.yaml");
+    expect(fs.existsSync(workspacePath)).toBe(true);
+    const content = fs.readFileSync(workspacePath, "utf8");
+
+    // Must define packages with root package '.' to avoid ERR_PNPM_PACKAGES_FIELD_MISSING_OR_EMPTY
+    expect(content).toMatch(/packages:\s*\n\s*-\s*["']?\./);
+    // Must preserve allowBuilds
+    expect(content).toContain("allowBuilds:");
+  });
 });
