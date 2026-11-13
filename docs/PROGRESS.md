@@ -2,6 +2,7 @@
 
 **Current phase:** P2 — Platform identity, authentication and multi-tenancy (`IN_PROGRESS`)  
 **Completed tasks:** VO-000, VO-001, VO-002, VO-003, VO-004, VO-005, VO-006, VO-010, VO-011, VO-012, VO-013, VO-014, VO-015, VO-016, VO-017, VO-018, VO-019, VO-020, VO-021, VO-022, VO-023, VO-024  
+**Latest fix:** Registration authentication error fix & dynamic Cloudflare environment variable resolution  
 **Next task:** VO-025 — Implement business profile settings  
 **Project status:** DUAL-LAYER TENANT ISOLATION ENFORCED & VERIFIED / IN PHASE P2  
 

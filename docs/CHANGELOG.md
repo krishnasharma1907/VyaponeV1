@@ -4,6 +4,25 @@ Record implementation changes by task ID. Do not record planned work as complete
 
 ## Unreleased
 
+### [FIX] — VyapOne registration error and dynamic runtime environment resolution (2026-11-13)
+- Fixed authentication error on registration page (`An error occurred during authentication. Please try again.`):
+  - **Dynamic Environment Resolution:**
+    - Updated `src/lib/supabase/server.ts` and `src/lib/supabase/client.ts` to dynamically resolve `process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL` and `process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || process.env.SUPABASE_ANON_KEY` at runtime.
+    - Prevents static build-time inlining from locking `supabaseUrl` and `supabaseAnonKey` to empty strings when Cloudflare Workers Builds runs with empty build variables.
+  - **Registration Redirect Handling:**
+    - Updated `signUpAction` in `src/lib/auth/actions.ts` to pass `options.emailRedirectTo` using `NEXT_PUBLIC_APP_URL || APP_URL` so confirmation links point to `/auth/callback`.
+  - **Error Diagnostics & Logging:**
+    - Added structured server-side `console.error` in `signUpAction`, `signInWithPasswordAction`, `requestPhoneOtpAction`, `verifyPhoneOtpAction`, `requestPasswordResetAction`, and `updatePasswordAction` with strict redaction of user credentials, passwords, and PII.
+    - Guarded `ensureUserProfile` in `signUpAction` within a try/catch so any non-fatal profile bootstrap error does not abort valid registration responses.
+  - **Sanitized Auth Error Mapping:**
+    - Expanded `mapAuthError` in `src/lib/auth/security.ts` to recognize configuration errors, network connectivity failures, database trigger errors, registration restrictions, provider password requirements, invalid email formats, and SMTP sending errors with user-safe, actionable messaging.
+  - **Test Coverage & Quality Gates:**
+    - Added 12 new unit and regression tests in `tests/unit/auth/actions.test.ts`, `tests/unit/auth/security.test.ts`, `tests/unit/supabase/server-client.test.ts`, and `tests/unit/supabase/browser-client.test.ts`.
+    - Total test suite now contains 495 passing tests with 100% pass rate.
+    - Full quality gates verified: format, lint, typecheck, coverage (85.0%), and `next build` all exit code 0.
+  - **Documentation:**
+    - Updated `docs/AUTHENTICATION.md` with §9 documenting runtime environment resolution, Cloudflare Dashboard Build Variables vs. Environment Variables, and error mappings.
+
 ### [VO-024] — Enforce tenant isolation at database and API layers (2026-11-13)
 - Implemented comprehensive dual-layer tenant isolation enforced at both the database layer (PostgreSQL Row-Level Security with `FORCE ROW LEVEL SECURITY`) and API/service domain layer according to PRD FINAL v2 (§4, §15.2, §16, §17):
   - Database RLS Architecture (`supabase/migrations/20261113000002_enforce_tenant_isolation.sql`):

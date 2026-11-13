@@ -63,4 +63,19 @@ describe("Supabase Browser Client [VO-017]", () => {
     // In JSDOM (where window is defined), client instances should be identical
     expect(client1).toBe(client2);
   });
+
+  it("dynamically resolves SUPABASE_URL and SUPABASE_ANON_KEY from process.env", async () => {
+    delete process.env.NEXT_PUBLIC_SUPABASE_URL;
+    delete process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+    process.env.SUPABASE_URL = "https://runtime-env.supabase.co";
+    process.env.SUPABASE_ANON_KEY = "runtime-anon-key-1234567890";
+
+    const { createBrowserSupabaseClient, _resetBrowserClientForTesting } =
+      await import("@/lib/supabase/client");
+    _resetBrowserClientForTesting();
+
+    const client = createBrowserSupabaseClient();
+    expect(client).toBeDefined();
+    expect(typeof client.from).toBe("function");
+  });
 });

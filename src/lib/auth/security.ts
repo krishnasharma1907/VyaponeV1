@@ -177,6 +177,73 @@ export function mapAuthError(error: unknown): string {
     return "Unable to send SMS verification code at this moment. Please try again later or use email.";
   }
 
+  // Configuration issues (e.g., missing Supabase environment variables)
+  if (
+    lower.includes("configuration") ||
+    lower.includes("next_public_supabase_url") ||
+    lower.includes("supabase server client requires")
+  ) {
+    return "Authentication service is not properly configured. Please check deployment settings.";
+  }
+
+  // Network / fetch connectivity errors
+  if (
+    lower.includes("failed to fetch") ||
+    lower.includes("fetch failed") ||
+    lower.includes("network error") ||
+    lower.includes("networkrequestfailed") ||
+    lower.includes("econnrefused") ||
+    lower.includes("enotfound")
+  ) {
+    return "Unable to connect to the authentication service. Please check your network connection and try again.";
+  }
+
+  // Database trigger or internal server error during user creation
+  if (
+    lower.includes("database error saving new user") ||
+    lower.includes("database error") ||
+    lower.includes("internal server error")
+  ) {
+    return "Unable to create account due to a server database error. Please try again later.";
+  }
+
+  // Registration disabled on provider
+  if (
+    lower.includes("signup is disabled") ||
+    lower.includes("signups not allowed") ||
+    lower.includes("signups are disabled") ||
+    lower.includes("email signups are disabled")
+  ) {
+    return "Account registration is currently disabled on this platform.";
+  }
+
+  // Password requirements
+  if (
+    lower.includes("password should be at least") ||
+    lower.includes("password is too short") ||
+    lower.includes("signup requires a valid password")
+  ) {
+    return "Password does not meet security requirements. Please use at least 8 characters with letters and numbers.";
+  }
+
+  // Invalid email format from provider
+  if (
+    lower.includes("email address is invalid") ||
+    lower.includes("invalid email") ||
+    lower.includes("unable to validate email")
+  ) {
+    return "Please provide a valid email address.";
+  }
+
+  // Confirmation email sending failure
+  if (
+    lower.includes("error sending confirmation mail") ||
+    lower.includes("error sending email") ||
+    lower.includes("smtp")
+  ) {
+    return "Could not send confirmation email. Please verify your email address or try again later.";
+  }
+
   // Default sanitized fallback
   return "An error occurred during authentication. Please try again.";
 }

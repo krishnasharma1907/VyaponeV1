@@ -146,9 +146,44 @@ Under Telecom Regulatory Authority of India (TRAI) guidelines:
 
 ---
 
-## 8. Verification & Quality Gates
+## 9. Production Deployment & Cloudflare Environment Configuration
 
-The authentication foundation has been verified across:
-- **Unit Test Coverage:** 5 test suites with 55 unit tests in `tests/unit/auth/` covering validation schemas, open redirect defense, error sanitization, middleware route boundaries, profile bootstrapping, and server actions.
-- **Full Suite Integration:** 248 total project unit tests passing with zero regressions.
-- **Type Safety:** `pnpm typecheck` passed with 0 errors (`strict: true`, zero `any` types).
+### 9.1 Dynamic Environment Resolution
+To support edge runtimes (such as Cloudflare Workers) where build-time Next.js inlining might not match runtime Worker environment variables:
+- `src/lib/supabase/server.ts` and `src/lib/supabase/client.ts` dynamically evaluate:
+  ```ts
+  const url =
+    (typeof process !== "undefined" &&
+      (process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL)) ||
+    publicConfig.supabaseUrl;
+  const anonKey =
+    (typeof process !== "undefined" &&
+      (process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || process.env.SUPABASE_ANON_KEY)) ||
+    publicConfig.supabaseAnonKey;
+  ```
+- This prevents `ConfigurationError` from being thrown if environment variables are injected as runtime secrets rather than build variables.
+
+### 9.2 Required Cloudflare Settings
+In the Cloudflare Dashboard under **Workers & Pages > vyapone > Settings > Variables and Secrets**:
+1. **Build Variables** (required during `pnpm build`):
+   - `NEXT_PUBLIC_APP_ENV`: `production`
+   - `NEXT_PUBLIC_APP_URL`: `https://vyapone.kssharma2022krish.workers.dev`
+   - `NEXT_PUBLIC_SUPABASE_URL`: `https://<project-ref>.supabase.co`
+   - `NEXT_PUBLIC_SUPABASE_ANON_KEY`: `<anon-key>`
+2. **Environment Variables & Secrets** (required at runtime):
+   - `NEXT_PUBLIC_SUPABASE_URL` / `SUPABASE_URL`: `https://<project-ref>.supabase.co`
+   - `NEXT_PUBLIC_SUPABASE_ANON_KEY` / `SUPABASE_ANON_KEY`: `<anon-key>`
+   - `SUPABASE_SERVICE_ROLE_KEY`: `<service-role-key>` (secret)
+   - `DATABASE_URL`: `<pooled-connection-string>` (secret)
+   - `SESSION_SECRET`: `<minimum-32-chars-secret>` (secret)
+
+### 9.3 Error Sanitization & Diagnostics
+`mapAuthError()` in `src/lib/auth/security.ts` sanitizes all provider messages while providing clear diagnostic guidance:
+- **Configuration errors:** `"Authentication service is not properly configured. Please check deployment settings."`
+- **Network / Connectivity:** `"Unable to connect to the authentication service. Please check your network connection and try again."`
+- **Database trigger failures:** `"Unable to create account due to a server database error. Please try again later."`
+- **Registration disabled:** `"Account registration is currently disabled on this platform."`
+- **Password rules:** `"Password does not meet security requirements. Please use at least 8 characters with letters and numbers."`
+- **Invalid email:** `"Please provide a valid email address."`
+- **Email send failures:** `"Could not send confirmation email. Please verify your email address or try again later."`
+- Server-side error details are logged via `console.error` with strict redaction of customer credentials, passwords, and PII.

@@ -72,7 +72,79 @@ describe("VO-021 Auth Server Actions", () => {
 
       expect(result.success).toBe(true);
       expect(result.redirectTo).toBe("/verify-email");
-      expect(mockAuth.signUp).toHaveBeenCalled();
+      expect(mockAuth.signUp).toHaveBeenCalledWith(
+        expect.objectContaining({
+          email: "new@example.com",
+          password: "ValidPassword123",
+          options: expect.objectContaining({
+            emailRedirectTo: expect.stringContaining("/auth/callback"),
+          }),
+        }),
+      );
+    });
+
+    it("handles ensureUserProfile non-fatal errors during registration gracefully", async () => {
+      const mockUser = { id: "user-1", email: "new@example.com" };
+      setupMockSupabase({
+        signUpResult: { data: { user: mockUser, session: null }, error: null },
+      });
+      vi.spyOn(profileBootstrap, "ensureUserProfile").mockRejectedValue(
+        new Error("new row violates row-level security policy for table users"),
+      );
+
+      const result = await signUpAction(null, {
+        fullName: "New Merchant",
+        businessName: "Merchant Store",
+        email: "new@example.com",
+        password: "ValidPassword123",
+        accountType: "owner",
+      });
+
+      expect(result.success).toBe(true);
+      expect(result.redirectTo).toBe("/verify-email");
+    });
+
+    it("returns configuration error when Supabase client throws ConfigurationError", async () => {
+      vi.spyOn(serverSupabase, "createServerSupabaseClient").mockRejectedValue(
+        new Error(
+          "Supabase server client requires NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY to be configured.",
+        ),
+      );
+
+      const result = await signUpAction(null, {
+        fullName: "New Merchant",
+        businessName: "Merchant Store",
+        email: "new@example.com",
+        password: "ValidPassword123",
+        accountType: "owner",
+      });
+
+      expect(result.success).toBe(false);
+      expect(result.error).toBe(
+        "Authentication service is not properly configured. Please check deployment settings.",
+      );
+    });
+
+    it("returns mapped error when Supabase auth returns database error saving user", async () => {
+      setupMockSupabase({
+        signUpResult: {
+          data: { user: null },
+          error: new Error("Database error saving new user"),
+        },
+      });
+
+      const result = await signUpAction(null, {
+        fullName: "New Merchant",
+        businessName: "Merchant Store",
+        email: "new@example.com",
+        password: "ValidPassword123",
+        accountType: "owner",
+      });
+
+      expect(result.success).toBe(false);
+      expect(result.error).toBe(
+        "Unable to create account due to a server database error. Please try again later.",
+      );
     });
 
     it("returns validation error when password is too weak", async () => {

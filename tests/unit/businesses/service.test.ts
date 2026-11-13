@@ -545,14 +545,18 @@ describe("Business & Location Service Layer [VO-023]", () => {
   });
 
   describe("5. Member Management & Last-Owner Protection", () => {
-    const createMockBuilder = (resultData: unknown, countVal?: number) => {
+    const createMockBuilder = (
+      resultData: unknown,
+      countVal?: number | null,
+      errorVal: unknown = null,
+    ) => {
       const builder: Record<string, unknown> = {
-        then: vi.fn((resolve) => resolve({ data: resultData, error: null, count: countVal })),
+        then: vi.fn((resolve) => resolve({ data: resultData, error: errorVal, count: countVal })),
       };
       builder.eq = vi.fn(() => builder);
       builder.order = vi.fn(() => builder);
-      builder.single = vi.fn(async () => ({ data: resultData, error: null }));
-      builder.maybeSingle = vi.fn(async () => ({ data: resultData, error: null }));
+      builder.single = vi.fn(async () => ({ data: resultData, error: errorVal }));
+      builder.maybeSingle = vi.fn(async () => ({ data: resultData, error: errorVal }));
       return builder;
     };
 

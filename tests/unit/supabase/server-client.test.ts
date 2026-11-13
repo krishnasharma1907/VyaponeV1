@@ -72,4 +72,20 @@ describe("Supabase Server Client [VO-017]", () => {
     // Request-scoped instances MUST NOT be the same singleton
     expect(client1).not.toBe(client2);
   });
+
+  it("dynamically resolves SUPABASE_URL and SUPABASE_ANON_KEY from runtime process.env", async () => {
+    delete process.env.NEXT_PUBLIC_SUPABASE_URL;
+    delete process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+    process.env.SUPABASE_URL = "https://runtime-env.supabase.co";
+    process.env.SUPABASE_ANON_KEY = "runtime-anon-key-1234567890";
+
+    const { createServerSupabaseClient } = await import("@/lib/supabase/server");
+
+    const client = await createServerSupabaseClient({
+      getAll: () => [],
+    });
+
+    expect(client).toBeDefined();
+    expect(typeof client.from).toBe("function");
+  });
 });

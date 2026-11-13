@@ -45,8 +45,14 @@ export interface CookieHandler {
 export async function createServerSupabaseClient(
   customCookies?: CookieHandler,
 ): Promise<SupabaseClient<Database>> {
-  const url = publicConfig.supabaseUrl;
-  const anonKey = publicConfig.supabaseAnonKey;
+  const url =
+    (typeof process !== "undefined" &&
+      (process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL)) ||
+    publicConfig.supabaseUrl;
+  const anonKey =
+    (typeof process !== "undefined" &&
+      (process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || process.env.SUPABASE_ANON_KEY)) ||
+    publicConfig.supabaseAnonKey;
 
   if (!url || !anonKey) {
     throw new ConfigurationError([

@@ -67,10 +67,17 @@ export async function signUpAction(
 
     const supabase = await createServerSupabaseClient();
 
+    const appUrl =
+      (typeof process !== "undefined" &&
+        (process.env.NEXT_PUBLIC_APP_URL || process.env.APP_URL)) ||
+      "http://localhost:3000";
+    const emailRedirectTo = `${appUrl.replace(/\/+$/, "")}/auth/callback`;
+
     const { data, error } = await supabase.auth.signUp({
       email,
       password,
       options: {
+        emailRedirectTo,
         data: {
           full_name: fullName,
           phone: phone || null,
@@ -81,6 +88,11 @@ export async function signUpAction(
     });
 
     if (error) {
+      console.error("[Auth:SignUp] Supabase sign-up failed:", {
+        name: error.name,
+        message: error.message,
+        status: (error as { status?: number }).status,
+      });
       return {
         success: false,
         error: mapAuthError(error),
@@ -88,11 +100,15 @@ export async function signUpAction(
     }
 
     if (data.user) {
-      await ensureUserProfile(supabase, data.user, {
-        fullName,
-        email,
-        phone,
-      });
+      try {
+        await ensureUserProfile(supabase, data.user, {
+          fullName,
+          email,
+          phone,
+        });
+      } catch (profileErr) {
+        console.warn("[Auth:SignUp] ensureUserProfile fallback non-fatal error:", profileErr);
+      }
     }
 
     // If confirmation is required by Supabase Auth
@@ -111,6 +127,10 @@ export async function signUpAction(
       redirectTo: "/dashboard",
     };
   } catch (err) {
+    console.error("[Auth:SignUp] Unexpected exception during sign up:", {
+      name: err instanceof Error ? err.name : typeof err,
+      message: err instanceof Error ? err.message : String(err),
+    });
     return {
       success: false,
       error: mapAuthError(err),
@@ -148,6 +168,11 @@ export async function signInWithPasswordAction(
     });
 
     if (error) {
+      console.error("[Auth:SignIn] Supabase sign-in failed:", {
+        name: error.name,
+        message: error.message,
+        status: (error as { status?: number }).status,
+      });
       return {
         success: false,
         error: mapAuthError(error),
@@ -168,6 +193,10 @@ export async function signInWithPasswordAction(
       redirectTo: safeRedirect,
     };
   } catch (err) {
+    console.error("[Auth:SignIn] Unexpected exception during sign in:", {
+      name: err instanceof Error ? err.name : typeof err,
+      message: err instanceof Error ? err.message : String(err),
+    });
     return {
       success: false,
       error: mapAuthError(err),
@@ -208,6 +237,10 @@ export async function requestPhoneOtpAction(
     });
 
     if (error) {
+      console.error("[Auth:RequestPhoneOtp] Supabase signInWithOtp failed:", {
+        name: error.name,
+        message: error.message,
+      });
       return {
         success: false,
         error: mapAuthError(error),
@@ -219,6 +252,10 @@ export async function requestPhoneOtpAction(
       message: `A 6-digit verification code has been sent to ${phone}.`,
     };
   } catch (err) {
+    console.error("[Auth:RequestPhoneOtp] Unexpected exception during phone OTP request:", {
+      name: err instanceof Error ? err.name : typeof err,
+      message: err instanceof Error ? err.message : String(err),
+    });
     return {
       success: false,
       error: mapAuthError(err),
@@ -257,6 +294,10 @@ export async function verifyPhoneOtpAction(
     });
 
     if (error) {
+      console.error("[Auth:VerifyPhoneOtp] Supabase verifyOtp failed:", {
+        name: error.name,
+        message: error.message,
+      });
       return {
         success: false,
         error: mapAuthError(error),
@@ -277,6 +318,10 @@ export async function verifyPhoneOtpAction(
       redirectTo: safeRedirect,
     };
   } catch (err) {
+    console.error("[Auth:VerifyPhoneOtp] Unexpected exception during phone OTP verify:", {
+      name: err instanceof Error ? err.name : typeof err,
+      message: err instanceof Error ? err.message : String(err),
+    });
     return {
       success: false,
       error: mapAuthError(err),
@@ -322,6 +367,10 @@ export async function requestPasswordResetAction(
     });
 
     if (error) {
+      console.error("[Auth:PasswordReset] Supabase resetPasswordForEmail failed:", {
+        name: error.name,
+        message: error.message,
+      });
       // Map error, but do not leak non-existent account
       return {
         success: false,
@@ -336,6 +385,10 @@ export async function requestPasswordResetAction(
         "If an account with that email exists, we have sent instructions to reset your password.",
     };
   } catch (err) {
+    console.error("[Auth:PasswordReset] Unexpected exception during reset password request:", {
+      name: err instanceof Error ? err.name : typeof err,
+      message: err instanceof Error ? err.message : String(err),
+    });
     return {
       success: false,
       error: mapAuthError(err),
@@ -374,6 +427,10 @@ export async function updatePasswordAction(
     });
 
     if (error) {
+      console.error("[Auth:UpdatePassword] Supabase updateUser failed:", {
+        name: error.name,
+        message: error.message,
+      });
       return {
         success: false,
         error: mapAuthError(error),
@@ -386,6 +443,10 @@ export async function updatePasswordAction(
       redirectTo: "/dashboard",
     };
   } catch (err) {
+    console.error("[Auth:UpdatePassword] Unexpected exception during password update:", {
+      name: err instanceof Error ? err.name : typeof err,
+      message: err instanceof Error ? err.message : String(err),
+    });
     return {
       success: false,
       error: mapAuthError(err),

@@ -134,6 +134,60 @@ describe("VO-021 Auth Security Utilities", () => {
       expect(mapped).toBe("Too many requests. Please wait a few moments before trying again.");
     });
 
+    it("maps configuration issues with actionable diagnostic guidance", () => {
+      const err = new Error(
+        "Supabase server client requires NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY to be configured.",
+      );
+      const mapped = mapAuthError(err);
+      expect(mapped).toBe(
+        "Authentication service is not properly configured. Please check deployment settings.",
+      );
+    });
+
+    it("maps network connectivity and fetch failures", () => {
+      const err = new Error("TypeError: Failed to fetch");
+      const mapped = mapAuthError(err);
+      expect(mapped).toBe(
+        "Unable to connect to the authentication service. Please check your network connection and try again.",
+      );
+    });
+
+    it("maps database errors during user signup cleanly", () => {
+      const err = new Error("Database error saving new user");
+      const mapped = mapAuthError(err);
+      expect(mapped).toBe(
+        "Unable to create account due to a server database error. Please try again later.",
+      );
+    });
+
+    it("maps disabled signups cleanly", () => {
+      const err = new Error("Signups not allowed for this instance");
+      const mapped = mapAuthError(err);
+      expect(mapped).toBe("Account registration is currently disabled on this platform.");
+    });
+
+    it("maps provider password requirement messages", () => {
+      const err = new Error("Password should be at least 8 characters");
+      const mapped = mapAuthError(err);
+      expect(mapped).toBe(
+        "Password does not meet security requirements. Please use at least 8 characters with letters and numbers.",
+      );
+    });
+
+    it("maps provider invalid email messages", () => {
+      const err = new Error("Email address is invalid");
+      const mapped = mapAuthError(err);
+      expect(mapped).toBe("Please provide a valid email address.");
+    });
+
+    it("maps confirmation email sending failures", () => {
+      const err = new Error("Error sending confirmation mail: SMTP server error");
+      const mapped = mapAuthError(err);
+      expect(mapped).toBe(
+        "Could not send confirmation email. Please verify your email address or try again later.",
+      );
+    });
+
     it("falls back to a generic safe message for unexpected internal errors", () => {
       const err = new Error("FATAL 28000: password authentication failed for user supabase_admin");
       const mapped = mapAuthError(err);

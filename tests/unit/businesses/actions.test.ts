@@ -396,7 +396,9 @@ describe("Business Server Actions [VO-023]", () => {
       // @ts-expect-error Intentionally invalid input
       const res = await createBusinessAction({});
       expect(res.success).toBe(false);
-      expect(res.code).toBe("VALIDATION_FAILED");
+      if (!res.success) {
+        expect(res.code).toBe("VALIDATION_FAILED");
+      }
     });
 
     it("returns validation error on invalid input in updateBusinessProfileAction", async () => {
@@ -409,12 +411,13 @@ describe("Business Server Actions [VO-023]", () => {
         },
       } as unknown as Awaited<ReturnType<typeof createServerSupabaseClient>>);
 
-      // @ts-expect-error Invalid GST format
       const res = await updateBusinessProfileAction(mockBusinessId, {
         gst_number: "invalid-gst",
       });
       expect(res.success).toBe(false);
-      expect(res.code).toBe("VALIDATION_FAILED");
+      if (!res.success) {
+        expect(res.code).toBe("VALIDATION_FAILED");
+      }
     });
 
     it("returns validation error on invalid input in createLocationAction", async () => {
@@ -430,7 +433,9 @@ describe("Business Server Actions [VO-023]", () => {
       // @ts-expect-error Missing required fields
       const res = await createLocationAction(mockBusinessId, {});
       expect(res.success).toBe(false);
-      expect(res.code).toBe("VALIDATION_FAILED");
+      if (!res.success) {
+        expect(res.code).toBe("VALIDATION_FAILED");
+      }
     });
 
     it("returns validation error on invalid input in addBusinessMemberAction", async () => {
@@ -446,7 +451,9 @@ describe("Business Server Actions [VO-023]", () => {
       // @ts-expect-error Missing required fields
       const res = await addBusinessMemberAction({});
       expect(res.success).toBe(false);
-      expect(res.code).toBe("VALIDATION_FAILED");
+      if (!res.success) {
+        expect(res.code).toBe("VALIDATION_FAILED");
+      }
     });
 
     it("sanitizes TenantAccessError correctly in server actions", async () => {
@@ -467,8 +474,10 @@ describe("Business Server Actions [VO-023]", () => {
 
       const res = await getBusinessAction(mockBusinessId);
       expect(res.success).toBe(false);
-      expect(res.code).toBe("NOT_FOUND");
-      expect(res.error).toBe("Business not found");
+      if (!res.success) {
+        expect(res.code).toBe("NOT_FOUND");
+        expect(res.error).toBe("Business not found");
+      }
     });
 
     it("returns error on unauthenticated removeBusinessMemberAction", async () => {
@@ -483,7 +492,9 @@ describe("Business Server Actions [VO-023]", () => {
 
       const res = await removeBusinessMemberAction(mockBusinessId, "u-target");
       expect(res.success).toBe(false);
-      expect(res.code).toBe("UNAUTHENTICATED");
+      if (!res.success) {
+        expect(res.code).toBe("UNAUTHENTICATED");
+      }
     });
 
     it("handles error in removeBusinessMemberAction cleanly", async () => {
@@ -502,7 +513,9 @@ describe("Business Server Actions [VO-023]", () => {
 
       const res = await removeBusinessMemberAction(mockBusinessId, "u-target");
       expect(res.success).toBe(false);
-      expect(res.code).toBe("LAST_OWNER");
+      if (!res.success) {
+        expect(res.code).toBe("LAST_OWNER");
+      }
     });
 
     it("returns error on unauthenticated updateBusinessMemberRoleAction", async () => {
@@ -519,7 +532,9 @@ describe("Business Server Actions [VO-023]", () => {
         role: "manager",
       });
       expect(res.success).toBe(false);
-      expect(res.code).toBe("UNAUTHENTICATED");
+      if (!res.success) {
+        expect(res.code).toBe("UNAUTHENTICATED");
+      }
     });
 
     it("handles error in updateBusinessMemberRoleAction cleanly", async () => {
@@ -540,7 +555,9 @@ describe("Business Server Actions [VO-023]", () => {
         role: "staff",
       });
       expect(res.success).toBe(false);
-      expect(res.code).toBe("LAST_OWNER");
+      if (!res.success) {
+        expect(res.code).toBe("LAST_OWNER");
+      }
     });
   });
 });
