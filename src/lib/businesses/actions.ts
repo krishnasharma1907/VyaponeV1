@@ -25,6 +25,7 @@ import {
   removeBusinessMember,
   BusinessError,
 } from "./service";
+import { TenantAccessError } from "@/lib/auth/tenant-access";
 import {
   createBusinessSchema,
   updateBusinessProfileSchema,
@@ -42,6 +43,9 @@ import {
 
 function sanitizeError(error: unknown): { error: string; code: string } {
   if (error instanceof BusinessError) {
+    return { error: error.message, code: error.code };
+  }
+  if (error instanceof TenantAccessError) {
     return { error: error.message, code: error.code };
   }
   if (error instanceof Error) {

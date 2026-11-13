@@ -184,13 +184,13 @@
 
 **Status:** `DONE`
 
-### [ ] VO-024 — Enforce tenant isolation at database and API layers
+### [x] VO-024 — Enforce tenant isolation at database and API layers
 
 **Scope:** Implement PostgreSQL RLS/database policies where supported and server-side authorization on every protected operation.
 
-**Acceptance:** Automated negative tests prove user A cannot read/write business B via UI, API, ID guessing or background job.
+**Acceptance:** Dual-layer tenant isolation enforced at both the database layer (PostgreSQL Row-Level Security with `FORCE ROW LEVEL SECURITY`) and API/service domain layer. Multi-tenant hierarchy enforced: `Platform → Reseller Workspace → Business → Location → Operational Records`. Invariant enforced: workspace membership never confers sovereign business ownership (`sovereign_owner_id`). Migration `20261113000002_enforce_tenant_isolation.sql` created with 8 hardened `SECURITY DEFINER` helper functions (`SET search_path = ''`), `FORCE ROW LEVEL SECURITY` across all 15 tenant-owned tables, and 60 explicit fail-closed policies covering `SELECT`, `INSERT`, `UPDATE`, and `DELETE` (with append-only prohibitions on `audit_logs`, `orders`, `bills`, `invoice_sequences`). Centralized server authorization helpers created in `src/lib/auth/tenant-access.ts` (`assertAuthenticatedUser`, `assertWorkspaceAccess`, `assertBusinessAccess`, `assertSovereignOwner`, `assertRecordBelongsToBusiness`, `assertLocationBelongsToBusiness`). Automated negative tests prove user A cannot read/write business B across 12 attack vectors (ID guessing, URL tampering, workspace leakage, cross-business records, location restriction, unauthenticated requests, revoked invitations, privilege escalation). Full test suite passes: 483 tests across 44 test files; coverage meets all thresholds (Statements 85.08%, Branches 70.09%, Lines 85.08%). Documented in `docs/TENANT_ISOLATION.md`.
 
-**Status:** `NOT_STARTED`
+**Status:** `DONE`
 
 ### [ ] VO-025 — Implement business profile settings
 

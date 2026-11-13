@@ -4,6 +4,30 @@ Record implementation changes by task ID. Do not record planned work as complete
 
 ## Unreleased
 
+### [VO-024] — Enforce tenant isolation at database and API layers (2026-11-13)
+- Implemented comprehensive dual-layer tenant isolation enforced at both the database layer (PostgreSQL Row-Level Security with `FORCE ROW LEVEL SECURITY`) and API/service domain layer according to PRD FINAL v2 (§4, §15.2, §16, §17):
+  - Database RLS Architecture (`supabase/migrations/20261113000002_enforce_tenant_isolation.sql`):
+    - Enforced `FORCE ROW LEVEL SECURITY` across all 15 tenant tables (`users`, `user_auth_identities`, `workspaces`, `workspace_members`, `workspace_invitations`, `businesses`, `locations`, `business_members`, `sites`, `catalogue_items`, `customers`, `orders`, `invoice_sequences`, `bills`, `audit_logs`).
+    - Implemented 8 hardened `SECURITY DEFINER` helper functions with explicit `SET search_path = ''` to prevent infinite policy recursion (`is_workspace_member`, `is_workspace_admin_or_owner`, `is_business_sovereign_owner`, `is_business_member`, `is_business_owner_or_manager`, `can_access_business`, `can_manage_business`, `can_access_location`).
+    - Defined 60 explicit fail-closed policies covering `SELECT`, `INSERT`, `UPDATE`, and `DELETE`.
+    - Implemented append-only and immutable table guardrails (`audit_logs`, `orders`, `bills`, `invoice_sequences` prohibit deletion via `USING (false)`).
+    - Restricted business deletion strictly to sovereign owner (`sovereign_owner_id = auth.uid()`); reseller members cannot delete client businesses.
+    - Added 7 composite lookup indexes to accelerate RLS evaluation paths.
+  - Centralized API Authorization Layer (`src/lib/auth/tenant-access.ts`):
+    - Created authoritative helpers: `assertAuthenticatedUser`, `assertWorkspaceAccess`, `assertBusinessAccess`, `assertSovereignOwner`, `assertRecordBelongsToBusiness`, `assertLocationBelongsToBusiness`, and `sanitizeTenantError`.
+    - Server Actions and services derive identity strictly from authenticated server sessions (`supabase.auth.getUser()`) and reject client-supplied tenant overrides.
+    - Enforced anti-enumeration design returning `404 NOT_FOUND` when records do not exist or caller lacks membership.
+    - Enforced operational location scoping: staff assigned to a location cannot access or mutate foreign locations.
+  - Verification & Quality Gates:
+    - Added automated integration tests verifying 12 cross-tenant attack scenarios (`tests/integration/cross-tenant-isolation.test.ts`).
+    - Added static migration verification tests (`tests/unit/database/migration-isolation.test.ts`).
+    - Added authorization helper tests (`tests/unit/security/tenant-isolation.test.ts`).
+    - Full Vitest suite contains 44 test files and 483 passing tests with 100% pass rate.
+    - Code coverage meets all required thresholds: Statements 85.08%, Branches 70.09%, Lines 85.08%, Functions 88.89%.
+    - Formatter, linter, typechecker, and production build all pass cleanly.
+  - Documentation:
+    - Created `docs/TENANT_ISOLATION.md` detailing the tenant hierarchy, RLS policy inventory, authorization helper APIs, and cross-tenant attack mitigations.
+
 ### [FIX] — Cloudflare Workers Builds pnpm workspace configuration (2026-11-13)
 - Fixed Cloudflare Workers Builds dependency installation error (`ERROR packages field missing or empty`):
   - Updated `pnpm-workspace.yaml` to explicitly declare `packages: ["."]`, satisfying pnpm workspace validation for single-package root application while preserving `allowBuilds: { esbuild: true }`.

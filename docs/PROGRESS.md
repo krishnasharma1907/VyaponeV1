@@ -1,9 +1,9 @@
 # VyapOne Build Progress
 
 **Current phase:** P2 — Platform identity, authentication and multi-tenancy (`IN_PROGRESS`)  
-**Completed tasks:** VO-000, VO-001, VO-002, VO-003, VO-004, VO-005, VO-006, VO-010, VO-011, VO-012, VO-013, VO-014, VO-015, VO-016, VO-017, VO-018, VO-019, VO-020, VO-021, VO-022, VO-023  
-**Next task:** VO-024 — Enforce tenant isolation at database and API layers  
-**Project status:** BUSINESS AND LOCATION CORE IMPLEMENTED & VERIFIED / IN PHASE P2  
+**Completed tasks:** VO-000, VO-001, VO-002, VO-003, VO-004, VO-005, VO-006, VO-010, VO-011, VO-012, VO-013, VO-014, VO-015, VO-016, VO-017, VO-018, VO-019, VO-020, VO-021, VO-022, VO-023, VO-024  
+**Next task:** VO-025 — Implement business profile settings  
+**Project status:** DUAL-LAYER TENANT ISOLATION ENFORCED & VERIFIED / IN PHASE P2  
 
 ## Phase status
 
@@ -11,7 +11,60 @@
 |---|---|---|
 | P0 — Project audit, decisions and architecture | COMPLETE | All tasks VO-000 to VO-006 verified and done; Phase P0 gate passed |
 | P1 — Repository, design system and application shell | COMPLETE | All tasks VO-010 to VO-019 verified and done; Phase P1 gate passed |
-| P2 — Platform identity, authentication and multi-tenancy | IN_PROGRESS | VO-020, VO-021, VO-022, and VO-023 done; VO-024 is next |
+| P2 — Platform identity, authentication and multi-tenancy | IN_PROGRESS | VO-020, VO-021, VO-022, VO-023, and VO-024 done; VO-025 is next |
+
+## Task report: VO-024
+
+- **Task ID:** VO-024
+- **Title:** Enforce tenant isolation at database and API layers
+- **Status:** DONE
+- **Summary:** Implemented comprehensive, dual-layer tenant isolation enforced both at the database layer (PostgreSQL Row-Level Security with `FORCE ROW LEVEL SECURITY`) and at the server/API layer according to PRD FINAL v2 (§4, §15.2, §16, §17):
+  1. **Dual-Layer Multi-Tenant Architecture:**
+     - Enforced sovereign hierarchy: `Platform → Reseller Workspace → Business → Location → Operational Records`.
+     - Invariant: Workspace membership (`public.workspace_members`) never confers sovereign business ownership (`public.businesses.sovereign_owner_id`).
+  2. **PostgreSQL RLS Hardening (`20261113000002_enforce_tenant_isolation.sql`):**
+     - Enforced `ALTER TABLE ... FORCE ROW LEVEL SECURITY;` across all 15 tenant tables (`users`, `user_auth_identities`, `workspaces`, `workspace_members`, `workspace_invitations`, `businesses`, `locations`, `business_members`, `sites`, `catalogue_items`, `customers`, `orders`, `invoice_sequences`, `bills`, `audit_logs`).
+     - Created 8 hardened `SECURITY DEFINER` helper functions with explicit `SET search_path = ''` to prevent infinite policy recursion (`is_workspace_member`, `is_workspace_admin_or_owner`, `is_business_sovereign_owner`, `is_business_member`, `is_business_owner_or_manager`, `can_access_business`, `can_manage_business`, `can_access_location`).
+     - Defined 60 explicit fail-closed policies covering `SELECT`, `INSERT`, `UPDATE`, and `DELETE` on all 15 tables.
+     - Implemented append-only and immutable table guardrails (`audit_logs`, `orders`, `bills`, `invoice_sequences` prohibit deletion via `USING (false)`).
+     - Restricted business deletion strictly to sovereign owner (`sovereign_owner_id = auth.uid()`).
+     - Added 7 composite performance indexes for policy lookup paths.
+  3. **Centralized Server Authorization Domain (`src/lib/auth/tenant-access.ts`):**
+     - Implemented `assertAuthenticatedUser`, `assertWorkspaceAccess`, `assertBusinessAccess`, `assertSovereignOwner`, `assertRecordBelongsToBusiness`, `assertLocationBelongsToBusiness`, and `sanitizeTenantError`.
+     - Derives caller identity strictly from authenticated server session (`supabase.auth.getUser()`).
+     - Rejects unauthorized requests with sanitized anti-enumeration `404 NOT_FOUND` or `403 FORBIDDEN` errors.
+     - Enforces operational location scoping: staff assigned to a location cannot access or mutate foreign locations.
+  4. **Cross-Tenant Attack Verification Suite:**
+     - Verified 12 cross-tenant attack vectors in `tests/integration/cross-tenant-isolation.test.ts`.
+     - Verified RLS policies, helper functions, and FORCE RLS in `tests/unit/database/migration-isolation.test.ts`.
+     - Verified authorization helpers in `tests/unit/security/tenant-isolation.test.ts`.
+     - All 483 tests pass across 44 test files with 100% pass rate.
+     - Code coverage meets all required thresholds: Statements 85.08%, Branches 70.09%, Lines 85.08%, Functions 88.89%.
+  5. **Documentation:**
+     - Created `docs/TENANT_ISOLATION.md` documenting ownership hierarchy, RLS policy inventory, authorization helper design, and attack verification.
+- **Files added/modified:**
+  - Added: `supabase/migrations/20261113000002_enforce_tenant_isolation.sql`
+  - Added: `src/lib/auth/tenant-access.ts`
+  - Added: `src/lib/auth/index.ts`
+  - Added: `docs/TENANT_ISOLATION.md`
+  - Added: `tests/unit/database/migration-isolation.test.ts`
+  - Added: `tests/unit/security/tenant-isolation.test.ts`
+  - Added: `tests/integration/cross-tenant-isolation.test.ts`
+  - Modified: `src/lib/supabase/types.ts`
+  - Modified: `src/lib/businesses/service.ts`
+  - Modified: `src/lib/businesses/actions.ts`
+  - Modified: `tests/unit/businesses/service.test.ts`
+  - Modified: `tests/unit/businesses/actions.test.ts`
+  - Modified: `docs/TASK_BACKLOG.md`
+  - Modified: `docs/PROGRESS.md`
+  - Modified: `docs/CHANGELOG.md`
+- **Verification Commands & Results:**
+  - `pnpm format:check` -> Exit code 0 (All files formatted cleanly)
+  - `pnpm lint` -> Exit code 0 (0 warnings, 0 errors)
+  - `pnpm typecheck` -> Exit code 0 (0 type errors)
+  - `pnpm test` -> Exit code 0 (483 tests passed across 44 test files)
+  - `pnpm test:coverage` -> Exit code 0 (Statements: 85.08%, Branches: 70.09%, Lines: 85.08%, Functions: 88.89%)
+  - `pnpm build` -> Exit code 0 (Compiled Next.js production build cleanly)
 
 ## Task report: VO-023
 

@@ -699,6 +699,23 @@ export async function addBusinessMember(
     );
   }
 
+  // Cross-tenant boundary check: verify location belongs to this business
+  if (input.location_id) {
+    const { data: loc } = await supabase
+      .from("locations")
+      .select("business_id")
+      .eq("id", input.location_id)
+      .maybeSingle();
+
+    if (!loc || loc.business_id !== input.business_id) {
+      throw new BusinessError(
+        "Location does not belong to this business",
+        "LOCATION_NOT_FOUND",
+        404,
+      );
+    }
+  }
+
   const { data: member, error } = await supabase
     .from("business_members")
     .insert({

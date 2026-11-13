@@ -4,6 +4,7 @@ import {
   getBusiness,
   updateBusinessProfile,
   createLocation,
+  addBusinessMember,
   updateBusinessMemberRole,
   removeBusinessMember,
 } from "@/lib/businesses/service";
@@ -629,6 +630,224 @@ describe("Business & Location Service Layer [VO-023]", () => {
       await expect(
         removeBusinessMember(mockSupabase, mockBusinessId, mockOwnerId, mockOwnerId),
       ).rejects.toThrow("Cannot remove the sole owner of the business");
+    });
+
+    it("successfully removes a member when downward authority is held", async () => {
+      const mockSupabase = {
+        from: vi.fn((table: string) => {
+          if (table === "businesses") {
+            return {
+              select: vi.fn(() =>
+                createMockBuilder({
+                  id: mockBusinessId,
+                  sovereign_owner_id: mockOwnerId,
+                  workspace_id: null,
+                }),
+              ),
+            };
+          }
+          if (table === "business_members") {
+            return {
+              select: vi.fn(() =>
+                createMockBuilder({
+                  id: "bm-002",
+                  role: "staff",
+                  status: "active",
+                }),
+              ),
+              delete: vi.fn(() => createMockBuilder(null)),
+            };
+          }
+          if (table === "audit_logs") {
+            return {
+              insert: vi.fn(() => createMockBuilder(null)),
+            };
+          }
+          return {};
+        }),
+      } as unknown as SupabaseClient<Database>;
+
+      const res = await removeBusinessMember(
+        mockSupabase,
+        mockBusinessId,
+        "u0000000-0000-0000-0000-000000000002",
+        mockOwnerId,
+      );
+      expect(res.success).toBe(true);
+    });
+
+    it("throws when target member is not found", async () => {
+      const mockSupabase = {
+        from: vi.fn((table: string) => {
+          if (table === "businesses") {
+            return {
+              select: vi.fn(() =>
+                createMockBuilder({
+                  id: mockBusinessId,
+                  sovereign_owner_id: mockOwnerId,
+                  workspace_id: null,
+                }),
+              ),
+            };
+          }
+          if (table === "business_members") {
+            return {
+              select: vi.fn(() => createMockBuilder(null, null, new Error("Not found"))),
+            };
+          }
+          return {};
+        }),
+      } as unknown as SupabaseClient<Database>;
+
+      await expect(
+        removeBusinessMember(mockSupabase, mockBusinessId, "u-unknown", mockOwnerId),
+      ).rejects.toThrow("Target member not found");
+    });
+
+    it("throws when caller does not have downward authority to remove target member", async () => {
+      const mockSupabase = {
+        from: vi.fn((table: string) => {
+          if (table === "businesses") {
+            return {
+              select: vi.fn(() =>
+                createMockBuilder({
+                  id: mockBusinessId,
+                  sovereign_owner_id: "usr-other-owner",
+                  workspace_id: null,
+                }),
+              ),
+            };
+          }
+          if (table === "business_members") {
+            return {
+              select: vi.fn((_cols: unknown) => {
+                // Return caller role or target member role
+                const builder = createMockBuilder({
+                  id: "bm-target",
+                  role: "manager",
+                  status: "active",
+                });
+                return builder;
+              }),
+            };
+          }
+          return {};
+        }),
+      } as unknown as SupabaseClient<Database>;
+
+      // Manager trying to remove another manager (rank 30 vs 30) -> rank must be strictly greater
+      await expect(
+        removeBusinessMember(mockSupabase, mockBusinessId, "usr-target-mgr", "usr-caller-mgr"),
+      ).rejects.toThrow(/cannot remove a member with role manager/);
+    });
+
+    it("prohibits staff from adding new members", async () => {
+      const mockSupabase = {
+        from: vi.fn((table: string) => {
+          if (table === "businesses") {
+            return {
+              select: vi.fn(() =>
+                createMockBuilder({
+                  id: mockBusinessId,
+                  sovereign_owner_id: "usr-other-owner",
+                  workspace_id: null,
+                }),
+              ),
+            };
+          }
+          if (table === "business_members") {
+            return {
+              select: vi.fn(() =>
+                createMockBuilder({
+                  id: "bm-staff",
+                  role: "staff",
+                  status: "active",
+                }),
+              ),
+            };
+          }
+          return {};
+        }),
+      } as unknown as SupabaseClient<Database>;
+
+      await expect(
+        addBusinessMember(mockSupabase, "usr-staff", {
+          business_id: mockBusinessId,
+          user_id: "usr-new",
+          role: "cashier",
+        }),
+      ).rejects.toThrow("You do not have permission to add members to this business");
+    });
+
+    it("prohibits staff from removing members", async () => {
+      const mockSupabase = {
+        from: vi.fn((table: string) => {
+          if (table === "businesses") {
+            return {
+              select: vi.fn(() =>
+                createMockBuilder({
+                  id: mockBusinessId,
+                  sovereign_owner_id: "usr-other-owner",
+                  workspace_id: null,
+                }),
+              ),
+            };
+          }
+          if (table === "business_members") {
+            return {
+              select: vi.fn(() =>
+                createMockBuilder({
+                  id: "bm-staff",
+                  role: "staff",
+                  status: "active",
+                }),
+              ),
+            };
+          }
+          return {};
+        }),
+      } as unknown as SupabaseClient<Database>;
+
+      await expect(
+        removeBusinessMember(mockSupabase, mockBusinessId, "usr-target", "usr-staff"),
+      ).rejects.toThrow("You do not have permission to remove members from this business");
+    });
+
+    it("throws when database delete returns error in removeBusinessMember", async () => {
+      const mockSupabase = {
+        from: vi.fn((table: string) => {
+          if (table === "businesses") {
+            return {
+              select: vi.fn(() =>
+                createMockBuilder({
+                  id: mockBusinessId,
+                  sovereign_owner_id: mockOwnerId,
+                  workspace_id: null,
+                }),
+              ),
+            };
+          }
+          if (table === "business_members") {
+            return {
+              select: vi.fn(() =>
+                createMockBuilder({
+                  id: "bm-staff",
+                  role: "staff",
+                  status: "active",
+                }),
+              ),
+              delete: vi.fn(() => ({
+                eq: vi.fn(async () => ({ error: { message: "DB connection dropped" } })),
+              })),
+            };
+          }
+          return {};
+        }),
+      } as unknown as SupabaseClient<Database>;
+
+      await expect(
+        removeBusinessMember(mockSupabase, mockBusinessId, "usr-staff", mockOwnerId),
+      ).rejects.toThrow("DB connection dropped");
     });
   });
 });

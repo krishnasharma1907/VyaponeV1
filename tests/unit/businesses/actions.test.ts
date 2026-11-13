@@ -382,5 +382,165 @@ describe("Business Server Actions [VO-023]", () => {
 
       expect(res.success).toBe(true);
     });
+
+    it("returns validation error on invalid input in createBusinessAction", async () => {
+      vi.mocked(createServerSupabaseClient).mockResolvedValueOnce({
+        auth: {
+          getUser: vi.fn(async () => ({
+            data: { user: { id: mockUserId } },
+            error: null,
+          })),
+        },
+      } as unknown as Awaited<ReturnType<typeof createServerSupabaseClient>>);
+
+      // @ts-expect-error Intentionally invalid input
+      const res = await createBusinessAction({});
+      expect(res.success).toBe(false);
+      expect(res.code).toBe("VALIDATION_FAILED");
+    });
+
+    it("returns validation error on invalid input in updateBusinessProfileAction", async () => {
+      vi.mocked(createServerSupabaseClient).mockResolvedValueOnce({
+        auth: {
+          getUser: vi.fn(async () => ({
+            data: { user: { id: mockUserId } },
+            error: null,
+          })),
+        },
+      } as unknown as Awaited<ReturnType<typeof createServerSupabaseClient>>);
+
+      // @ts-expect-error Invalid GST format
+      const res = await updateBusinessProfileAction(mockBusinessId, {
+        gst_number: "invalid-gst",
+      });
+      expect(res.success).toBe(false);
+      expect(res.code).toBe("VALIDATION_FAILED");
+    });
+
+    it("returns validation error on invalid input in createLocationAction", async () => {
+      vi.mocked(createServerSupabaseClient).mockResolvedValueOnce({
+        auth: {
+          getUser: vi.fn(async () => ({
+            data: { user: { id: mockUserId } },
+            error: null,
+          })),
+        },
+      } as unknown as Awaited<ReturnType<typeof createServerSupabaseClient>>);
+
+      // @ts-expect-error Missing required fields
+      const res = await createLocationAction(mockBusinessId, {});
+      expect(res.success).toBe(false);
+      expect(res.code).toBe("VALIDATION_FAILED");
+    });
+
+    it("returns validation error on invalid input in addBusinessMemberAction", async () => {
+      vi.mocked(createServerSupabaseClient).mockResolvedValueOnce({
+        auth: {
+          getUser: vi.fn(async () => ({
+            data: { user: { id: mockUserId } },
+            error: null,
+          })),
+        },
+      } as unknown as Awaited<ReturnType<typeof createServerSupabaseClient>>);
+
+      // @ts-expect-error Missing required fields
+      const res = await addBusinessMemberAction({});
+      expect(res.success).toBe(false);
+      expect(res.code).toBe("VALIDATION_FAILED");
+    });
+
+    it("sanitizes TenantAccessError correctly in server actions", async () => {
+      const { TenantAccessError } = await import("@/lib/auth/tenant-access");
+
+      vi.mocked(createServerSupabaseClient).mockResolvedValueOnce({
+        auth: {
+          getUser: vi.fn(async () => ({
+            data: { user: { id: mockUserId } },
+            error: null,
+          })),
+        },
+      } as unknown as Awaited<ReturnType<typeof createServerSupabaseClient>>);
+
+      vi.spyOn(businessService, "getBusiness").mockRejectedValueOnce(
+        new TenantAccessError("Business not found", "NOT_FOUND", 404),
+      );
+
+      const res = await getBusinessAction(mockBusinessId);
+      expect(res.success).toBe(false);
+      expect(res.code).toBe("NOT_FOUND");
+      expect(res.error).toBe("Business not found");
+    });
+
+    it("returns error on unauthenticated removeBusinessMemberAction", async () => {
+      vi.mocked(createServerSupabaseClient).mockResolvedValueOnce({
+        auth: {
+          getUser: vi.fn(async () => ({
+            data: { user: null },
+            error: new Error("No session"),
+          })),
+        },
+      } as unknown as Awaited<ReturnType<typeof createServerSupabaseClient>>);
+
+      const res = await removeBusinessMemberAction(mockBusinessId, "u-target");
+      expect(res.success).toBe(false);
+      expect(res.code).toBe("UNAUTHENTICATED");
+    });
+
+    it("handles error in removeBusinessMemberAction cleanly", async () => {
+      vi.mocked(createServerSupabaseClient).mockResolvedValueOnce({
+        auth: {
+          getUser: vi.fn(async () => ({
+            data: { user: { id: mockUserId } },
+            error: null,
+          })),
+        },
+      } as unknown as Awaited<ReturnType<typeof createServerSupabaseClient>>);
+
+      vi.spyOn(businessService, "removeBusinessMember").mockRejectedValueOnce(
+        new businessService.BusinessError("Cannot remove sole owner", "LAST_OWNER", 400),
+      );
+
+      const res = await removeBusinessMemberAction(mockBusinessId, "u-target");
+      expect(res.success).toBe(false);
+      expect(res.code).toBe("LAST_OWNER");
+    });
+
+    it("returns error on unauthenticated updateBusinessMemberRoleAction", async () => {
+      vi.mocked(createServerSupabaseClient).mockResolvedValueOnce({
+        auth: {
+          getUser: vi.fn(async () => ({
+            data: { user: null },
+            error: new Error("No session"),
+          })),
+        },
+      } as unknown as Awaited<ReturnType<typeof createServerSupabaseClient>>);
+
+      const res = await updateBusinessMemberRoleAction(mockBusinessId, "u-target", {
+        role: "manager",
+      });
+      expect(res.success).toBe(false);
+      expect(res.code).toBe("UNAUTHENTICATED");
+    });
+
+    it("handles error in updateBusinessMemberRoleAction cleanly", async () => {
+      vi.mocked(createServerSupabaseClient).mockResolvedValueOnce({
+        auth: {
+          getUser: vi.fn(async () => ({
+            data: { user: { id: mockUserId } },
+            error: null,
+          })),
+        },
+      } as unknown as Awaited<ReturnType<typeof createServerSupabaseClient>>);
+
+      vi.spyOn(businessService, "updateBusinessMemberRole").mockRejectedValueOnce(
+        new businessService.BusinessError("Cannot demote owner", "LAST_OWNER", 400),
+      );
+
+      const res = await updateBusinessMemberRoleAction(mockBusinessId, "u-target", {
+        role: "staff",
+      });
+      expect(res.success).toBe(false);
+      expect(res.code).toBe("LAST_OWNER");
+    });
   });
 });

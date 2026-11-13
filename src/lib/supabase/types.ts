@@ -774,6 +774,62 @@ export interface Database {
         };
         Returns: Json;
       };
+      is_workspace_member: {
+        Args: {
+          p_workspace_id: string;
+          p_user_id?: string;
+        };
+        Returns: boolean;
+      };
+      is_workspace_admin_or_owner: {
+        Args: {
+          p_workspace_id: string;
+          p_user_id?: string;
+        };
+        Returns: boolean;
+      };
+      is_business_sovereign_owner: {
+        Args: {
+          p_business_id: string;
+          p_user_id?: string;
+        };
+        Returns: boolean;
+      };
+      is_business_member: {
+        Args: {
+          p_business_id: string;
+          p_user_id?: string;
+        };
+        Returns: boolean;
+      };
+      is_business_owner_or_manager: {
+        Args: {
+          p_business_id: string;
+          p_user_id?: string;
+        };
+        Returns: boolean;
+      };
+      can_access_business: {
+        Args: {
+          p_business_id: string;
+          p_user_id?: string;
+        };
+        Returns: boolean;
+      };
+      can_manage_business: {
+        Args: {
+          p_business_id: string;
+          p_user_id?: string;
+        };
+        Returns: boolean;
+      };
+      can_access_location: {
+        Args: {
+          p_location_id: string;
+          p_user_id?: string;
+        };
+        Returns: boolean;
+      };
     };
     Enums: {
       [_ in never]: never;
