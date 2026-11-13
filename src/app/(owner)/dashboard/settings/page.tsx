@@ -62,10 +62,29 @@ export default function OwnerSettingsPage() {
             </Field>
             <div>
               <Button type="button" variant="primary" disabled>
-                Save Configuration (VO-023)
+                Save Configuration
               </Button>
             </div>
           </form>
+        </CardContent>
+      </Card>
+
+      <Card variant="default">
+        <CardHeader>
+          <CardTitle as="h2">Primary Store Location</CardTitle>
+          <CardDescription>
+            Physical address, pin code, and fulfillment coordinates for this store.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-3)" }}>
+            <Field id="loc-name-display" label="Location Name">
+              <Input value="Main Store" disabled />
+            </Field>
+            <Field id="loc-addr-display" label="Address">
+              <Input value="100 MG Road, Bengaluru, Karnataka — 560001" disabled />
+            </Field>
+          </div>
         </CardContent>
       </Card>
     </div>

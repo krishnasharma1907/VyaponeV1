@@ -6,7 +6,8 @@ export function createTestBusiness(
   const id = overrides.id ?? formatDeterministicId("biz");
   return {
     id,
-    workspace_id: overrides.workspace_id ?? formatDeterministicId("ws"),
+    workspace_id:
+      overrides.workspace_id !== undefined ? overrides.workspace_id : formatDeterministicId("ws"),
     legal_name: "Test Local Business Private Limited",
     trade_name: "Test Store",
     slug: `test-store-${id}`,

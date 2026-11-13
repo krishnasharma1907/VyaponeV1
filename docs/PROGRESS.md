@@ -1,9 +1,9 @@
 # VyapOne Build Progress
 
 **Current phase:** P2 — Platform identity, authentication and multi-tenancy (`IN_PROGRESS`)  
-**Completed tasks:** VO-000, VO-001, VO-002, VO-003, VO-004, VO-005, VO-006, VO-010, VO-011, VO-012, VO-013, VO-014, VO-015, VO-016, VO-017, VO-018, VO-019, VO-020, VO-021, VO-022  
-**Next task:** VO-023 — Implement business and location core  
-**Project status:** WORKSPACES AND MEMBERSHIP ROLES IMPLEMENTED & VERIFIED / IN PHASE P2  
+**Completed tasks:** VO-000, VO-001, VO-002, VO-003, VO-004, VO-005, VO-006, VO-010, VO-011, VO-012, VO-013, VO-014, VO-015, VO-016, VO-017, VO-018, VO-019, VO-020, VO-021, VO-022, VO-023  
+**Next task:** VO-024 — Enforce tenant isolation at database and API layers  
+**Project status:** BUSINESS AND LOCATION CORE IMPLEMENTED & VERIFIED / IN PHASE P2  
 
 ## Phase status
 
@@ -11,7 +11,78 @@
 |---|---|---|
 | P0 — Project audit, decisions and architecture | COMPLETE | All tasks VO-000 to VO-006 verified and done; Phase P0 gate passed |
 | P1 — Repository, design system and application shell | COMPLETE | All tasks VO-010 to VO-019 verified and done; Phase P1 gate passed |
-| P2 — Platform identity, authentication and multi-tenancy | IN_PROGRESS | VO-020, VO-021, and VO-022 done; VO-023 is next |
+| P2 — Platform identity, authentication and multi-tenancy | IN_PROGRESS | VO-020, VO-021, VO-022, and VO-023 done; VO-024 is next |
+
+## Task report: VO-023
+
+- **Task ID:** VO-023
+- **Status:** DONE
+- **Summary:** Implemented sovereign business entity and primary store location core according to canonical PRD FINAL v2 (§4, §7, §8, §9, §15, §16, §17):
+  1. **Sovereign Business Ownership Boundary:**
+     - Enforced sovereign merchant ownership (`sovereign_owner_id`) anchored strictly to the authenticated merchant user.
+     - Supported both DIY businesses (`workspace_id IS NULL`) and Reseller-managed businesses (`workspace_id` present, but sovereign data ownership anchored to merchant).
+     - Separated agency reseller workspace operations (`public.workspace_members`) from sovereign business data ownership.
+  2. **Primary Location Invariant:**
+     - Enforced invariant that each business must have exactly one primary location (`is_primary = true`).
+     - Backed by partial PostgreSQL unique index `idx_locations_primary_per_business ON public.locations (business_id) WHERE is_primary = true`.
+     - When a new or updated location is designated as primary, other business locations are automatically unset atomically.
+  3. **Operational Business Roles & Last-Owner Protection (`src/lib/businesses/permissions.ts`):**
+     - Defined business operational role hierarchy: `owner` (rank 40) > `manager` (rank 30) > `cashier` (rank 20) > `staff` (rank 10) in `public.business_members`.
+     - Completely separated from reseller workspace roles.
+     - Implemented Last-Owner Protection: Prohibits demoting, removing, or deactivating the sole remaining `owner` of a business.
+  4. **Business & Location Service Layer (`src/lib/businesses/service.ts`):**
+     - Implemented `createBusiness()`, `getBusiness()`, `getUserBusinesses()`, `updateBusinessProfile()`, `createLocation()`, `updateLocation()`, `getBusinessLocations()`, `getBusinessMembers()`, `addBusinessMember()`, `updateBusinessMemberRole()`, and `removeBusinessMember()`.
+     - Atomic creation of business, primary location, owner membership record, and audit log.
+     - Immutable audit trail generation (`business.created`, `business.profile_updated`, `location.created`, `location.updated`, `business.member_added`, `business.member_role_updated`, `business.member_removed`).
+  5. **Next.js Server Actions (`src/lib/businesses/actions.ts`):**
+     - Implemented `"use server"` actions with structured results (`BusinessActionResult<T>`): `createBusinessAction`, `updateBusinessProfileAction`, `createLocationAction`, `updateLocationAction`, `addBusinessMemberAction`, `updateBusinessMemberRoleAction`, `removeBusinessMemberAction`.
+     - Automatic `revalidatePath` across `/dashboard`, `/dashboard/settings`, and `/workspace/clients`.
+  6. **Accessible Mobile-First UI Components (`src/components/businesses/`):**
+     - Built `BusinessCreateForm`: Comprehensive store onboarding form capturing name, handle/slug, category, legal entity, tax ID (GSTIN), and primary store address.
+     - Built `BusinessProfileForm`: Settings management form for store identity and operational configuration.
+     - Built `LocationCard`: Address and contact display card with primary store location badge.
+     - Built `LocationForm`: Modal/inline form for adding and updating location records.
+     - Built `BusinessSwitcher`: Dropdown selector with active business badges, category tags, and creation trigger.
+  7. **Database Migration (`supabase/migrations/20261113000001_business_location_core.sql`):**
+     - Made `public.businesses.workspace_id` nullable to natively support direct DIY merchant onboarding.
+     - Added partial unique index `idx_locations_primary_per_business`.
+     - Created atomic RPC `public.create_business_with_primary_location(...)` with `SECURITY DEFINER SET search_path = ''` using fully qualified schema references.
+  8. **Comprehensive Testing & Quality Gates:**
+     - Added 85 passing tests across 7 test files in `tests/unit/businesses/` and `tests/integration/` (permissions, schemas, service, actions, components, migration, integration lifecycle).
+     - Full Vitest suite contains 41 test files, 425 passing tests with 100% pass rate.
+     - Formatter (`pnpm format:check`), linter (`pnpm lint`), and TypeScript typechecker (`pnpm typecheck`) all clean with 0 errors.
+     - Next.js production build (`pnpm build`) compiled 34 static and dynamic routes cleanly.
+  9. **Architecture Documentation:**
+     - Created `docs/BUSINESSES_AND_LOCATIONS.md` documenting business hierarchy, ownership models, primary location invariants, operational roles, and component APIs.
+- **Files added/modified:**
+  - Added: `supabase/migrations/20261113000001_business_location_core.sql`
+  - Added: `docs/BUSINESSES_AND_LOCATIONS.md`
+  - Added: `src/lib/businesses/types.ts`
+  - Added: `src/lib/businesses/permissions.ts`
+  - Added: `src/lib/businesses/schemas.ts`
+  - Added: `src/lib/businesses/service.ts`
+  - Added: `src/lib/businesses/actions.ts`
+  - Added: `src/lib/businesses/index.ts`
+  - Added: `src/components/businesses/business-create-form.tsx`
+  - Added: `src/components/businesses/business-profile-form.tsx`
+  - Added: `src/components/businesses/location-card.tsx`
+  - Added: `src/components/businesses/location-form.tsx`
+  - Added: `src/components/businesses/business-switcher.tsx`
+  - Added: `src/components/businesses/index.ts`
+  - Added: `tests/unit/businesses/permissions.test.ts`
+  - Added: `tests/unit/businesses/schemas.test.ts`
+  - Added: `tests/unit/businesses/service.test.ts`
+  - Added: `tests/unit/businesses/actions.test.ts`
+  - Added: `tests/unit/businesses/components.test.tsx`
+  - Added: `tests/unit/businesses/migration.test.ts`
+  - Added: `tests/integration/business-lifecycle.test.ts`
+  - Modified: `src/app/(owner)/dashboard/settings/page.tsx`
+  - Modified: `src/lib/supabase/types.ts`
+  - Modified: `tests/factories/businesses.ts`
+  - Modified: `vitest.config.ts`
+  - Modified: `docs/TASK_BACKLOG.md`
+  - Modified: `docs/PROGRESS.md`
+  - Modified: `docs/CHANGELOG.md`
 
 ## Task report: VO-022
 

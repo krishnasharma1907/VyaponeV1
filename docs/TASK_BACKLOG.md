@@ -176,13 +176,13 @@
 
 **Status:** `DONE`
 
-### [ ] VO-023 — Implement business and location core
+### [x] VO-023 — Implement business and location core
 
 **Scope:** Create business profile, location records, business owner and reseller relationship.
 
-**Acceptance:** Business data is linked to its owning business and location; create/read/update flows work.
+**Acceptance:** Sovereign business entity (`public.businesses`) and primary store location (`public.locations`) implemented with strict tenant isolation and sovereign merchant ownership model (`sovereign_owner_id`). Support for both DIY businesses (`workspace_id IS NULL`) and Reseller-managed businesses (`workspace_id` present, but sovereign ownership anchored strictly to merchant). Partial unique index `idx_locations_primary_per_business` enforces exactly one primary location per business. Business operational roles (`owner`, `manager`, `cashier`, `staff`) implemented in `public.business_members` with last-owner protection against removal, demotion, or deactivation. Migration `20261113000001_business_location_core.sql` created with atomic RPC `public.create_business_with_primary_location` (`SECURITY DEFINER SET search_path = ''`). UI components (`BusinessCreateForm`, `BusinessProfileForm`, `LocationCard`, `LocationForm`, `BusinessSwitcher`) built and integrated. Architecture documented in `docs/BUSINESSES_AND_LOCATIONS.md`. Verified via 85 passing unit/integration tests (100% pass rate) and full repository test suite of 425 passing tests.
 
-**Status:** `NOT_STARTED`
+**Status:** `DONE`
 
 ### [ ] VO-024 — Enforce tenant isolation at database and API layers
 

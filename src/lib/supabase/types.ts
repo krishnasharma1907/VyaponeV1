@@ -253,7 +253,7 @@ export interface Database {
       businesses: {
         Row: {
           id: string;
-          workspace_id: string;
+          workspace_id: string | null;
           legal_name: string;
           trade_name: string;
           slug: string;
@@ -267,7 +267,7 @@ export interface Database {
         };
         Insert: {
           id?: string;
-          workspace_id: string;
+          workspace_id?: string | null;
           legal_name: string;
           trade_name: string;
           slug: string;
@@ -281,7 +281,7 @@ export interface Database {
         };
         Update: {
           id?: string;
-          workspace_id?: string;
+          workspace_id?: string | null;
           legal_name?: string;
           trade_name?: string;
           slug?: string;
@@ -757,7 +757,23 @@ export interface Database {
       [_ in never]: never;
     };
     Functions: {
-      [_ in never]: never;
+      create_business_with_primary_location: {
+        Args: {
+          p_legal_name: string;
+          p_trade_name: string;
+          p_slug: string;
+          p_location_name: string;
+          p_address_line1: string;
+          p_city: string;
+          p_state: string;
+          p_postal_code: string;
+          p_workspace_id?: string | null;
+          p_gst_number?: string | null;
+          p_pan_number?: string | null;
+          p_address_line2?: string | null;
+        };
+        Returns: Json;
+      };
     };
     Enums: {
       [_ in never]: never;

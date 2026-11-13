@@ -4,6 +4,36 @@ Record implementation changes by task ID. Do not record planned work as complete
 
 ## Unreleased
 
+### [VO-023] — Implement business and location core (2026-11-13)
+- Implemented sovereign business entity and primary store location core according to PRD FINAL v2 (§4, §7, §8, §9, §15, §16, §17):
+  - Sovereign Business Ownership Boundary:
+    - Enforced sovereign merchant data ownership anchored strictly to `businesses.sovereign_owner_id`.
+    - Supported both direct DIY onboarding (`workspace_id IS NULL`) and reseller agency managed businesses (`workspace_id` set, but merchant retains absolute data sovereignty).
+    - Guaranteed that reseller workspace permissions (`public.workspace_members`) never confer sovereign business ownership rights.
+  - Primary Location Invariant:
+    - Guaranteed exactly one primary store location (`is_primary = true`) per business backed by PostgreSQL partial unique index `idx_locations_primary_per_business`.
+    - Automatically and atomically demotes any previous primary location when a new primary location is created or updated.
+  - Business Operational Roles & Last-Owner Protection (`src/lib/businesses/permissions.ts`):
+    - Established business operational role ranks: `owner` (40) > `manager` (30) > `cashier` (20) > `staff` (10) in `public.business_members`, separated from workspace agency roles.
+    - Implemented Last-Owner Protection preventing demotion, removal, or deactivation of the sole remaining owner of a business.
+  - Business & Location Domain Service (`src/lib/businesses/service.ts`):
+    - Implemented atomic business onboarding, profile management, multi-location CRUD, and team member management with immutable audit logging (`business.created`, `business.profile_updated`, `location.created`, `location.updated`, `business.member_added`, `business.member_role_updated`, `business.member_removed`).
+  - Authenticated Server Actions (`src/lib/businesses/actions.ts`):
+    - Created `"use server"` actions with structured results (`BusinessActionResult<T>`): `createBusinessAction`, `updateBusinessProfileAction`, `createLocationAction`, `updateLocationAction`, `addBusinessMemberAction`, `updateBusinessMemberRoleAction`, `removeBusinessMemberAction`.
+    - Integrated path revalidation across `/dashboard`, `/dashboard/settings`, and `/workspace/clients`.
+  - Accessible UI Primitives (`src/components/businesses/`):
+    - Built `BusinessCreateForm` for store and primary location creation.
+    - Built `BusinessProfileForm` for store profile settings and tax ID configuration.
+    - Built `LocationCard` for address display with primary store location badges.
+    - Built `LocationForm` for creating and updating business locations.
+    - Built `BusinessSwitcher` dropdown selector for quick business context switching.
+  - Forward-Only Database Migration (`supabase/migrations/20261113000001_business_location_core.sql`):
+    - Made `public.businesses.workspace_id` nullable for native DIY onboarding.
+    - Created partial unique index `idx_locations_primary_per_business`.
+    - Created atomic RPC `public.create_business_with_primary_location` with `SECURITY DEFINER SET search_path = ''`.
+  - Architecture Documentation:
+    - Created `docs/BUSINESSES_AND_LOCATIONS.md` documenting ownership hierarchy, primary location invariants, and domain APIs.
+
 ### [VO-022] — Implement workspaces and membership roles (2026-11-12)
 - Implemented reseller agency and DIY workspaces, multi-tiered membership roles, cryptographic invitations, and role-based permissions:
   - Multi-Tiered Role Hierarchy & Permissions (`src/lib/workspaces/permissions.ts`):
