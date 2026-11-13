@@ -9,6 +9,9 @@ Record implementation changes by task ID. Do not record planned work as complete
   - Updated `pnpm-workspace.yaml` to explicitly declare `packages: ["."]`, satisfying pnpm workspace validation for single-package root application while preserving `allowBuilds: { esbuild: true }`.
   - Added unit test in `tests/unit/ci/workflow.test.ts` to ensure `pnpm-workspace.yaml` packages declaration is preserved.
   - Documented root cause, resolution, and deployment troubleshooting in `docs/CI_CD.md` §7.
+- Fixed Cloudflare deployment execution error (`[ERR_PNPM_IGNORED_BUILDS] Ignored build scripts: workerd@...`):
+  - Approved `workerd` in `allowBuilds` and `onlyBuiltDependencies` in `pnpm-workspace.yaml` so `npx wrangler deploy` can execute postinstall scripts cleanly.
+  - Updated CI validation test in `tests/unit/ci/workflow.test.ts`.
 
 ### [VO-023] — Implement business and location core (2026-11-13)
 - Implemented sovereign business entity and primary store location core according to PRD FINAL v2 (§4, §7, §8, §9, §15, §16, §17):

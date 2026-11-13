@@ -157,6 +157,31 @@ pnpm build
     - "."
   allowBuilds:
     esbuild: true
+    workerd: true
+  onlyBuiltDependencies:
+    - esbuild
+    - workerd
+  ```
+
+### Incident: `[ERR_PNPM_IGNORED_BUILDS] Ignored build scripts: workerd@...`
+
+- **Symptom:** During Cloudflare deployment (`Deploy command: npx wrangler deploy`), dependency installation for `wrangler` and its binary runtime `workerd` fails with:
+  ```
+  [ERR_PNPM_IGNORED_BUILDS] Ignored build scripts: workerd@1.20261110.1
+  Run "pnpm approve-builds" to pick which dependencies should be allowed to run scripts.
+  Failed: error occurred while running deploy command
+  ```
+- **Root Cause:** In pnpm v10 and v11, lifecycle scripts (`postinstall`/`install`) for transient and direct dependencies are ignored by default under supply-chain security policies unless explicitly approved in `pnpm-workspace.yaml`. When `npx wrangler deploy` runs inside a pnpm-managed project, `workerd`'s postinstall script is blocked if `workerd` is not listed in `allowBuilds` or `onlyBuiltDependencies`.
+- **Resolution:** Add `workerd` to both `allowBuilds` and `onlyBuiltDependencies` in `pnpm-workspace.yaml`:
+  ```yaml
+  packages:
+    - "."
+  allowBuilds:
+    esbuild: true
+    workerd: true
+  onlyBuiltDependencies:
+    - esbuild
+    - workerd
   ```
 - **Cloudflare Build Environment Assumptions:**
   - **Root Directory:** Repository root (`.`).
