@@ -4,7 +4,7 @@ import { createServerClient, type CookieOptions } from "@supabase/ssr";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { cookies } from "next/headers";
 import { publicConfig } from "@/config/public";
-import { ConfigurationError } from "@/config/env";
+import { ConfigurationError, getEnvVar } from "@/config/env";
 import type { Database } from "./types";
 
 /**
@@ -46,10 +46,14 @@ export async function createServerSupabaseClient(
   customCookies?: CookieHandler,
 ): Promise<SupabaseClient<Database>> {
   const url =
+    getEnvVar("NEXT_PUBLIC_SUPABASE_URL") ||
+    getEnvVar("SUPABASE_URL") ||
     (typeof process !== "undefined" &&
       (process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL)) ||
     publicConfig.supabaseUrl;
   const anonKey =
+    getEnvVar("NEXT_PUBLIC_SUPABASE_ANON_KEY") ||
+    getEnvVar("SUPABASE_ANON_KEY") ||
     (typeof process !== "undefined" &&
       (process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || process.env.SUPABASE_ANON_KEY)) ||
     publicConfig.supabaseAnonKey;

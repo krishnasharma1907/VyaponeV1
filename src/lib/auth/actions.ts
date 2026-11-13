@@ -17,6 +17,7 @@ import {
 } from "./schemas";
 import { isValidInternalRedirect, mapAuthError } from "./security";
 import { ensureUserProfile } from "./profile";
+import { getEnvVar } from "@/config/env";
 
 export interface AuthActionResult<T = void> {
   success: boolean;
@@ -68,6 +69,8 @@ export async function signUpAction(
     const supabase = await createServerSupabaseClient();
 
     const appUrl =
+      getEnvVar("NEXT_PUBLIC_APP_URL") ||
+      getEnvVar("APP_URL") ||
       (typeof process !== "undefined" &&
         (process.env.NEXT_PUBLIC_APP_URL || process.env.APP_URL)) ||
       "http://localhost:3000";

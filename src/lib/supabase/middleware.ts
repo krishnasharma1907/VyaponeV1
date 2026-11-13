@@ -2,6 +2,7 @@ import { createServerClient } from "@supabase/ssr";
 import type { User } from "@supabase/supabase-js";
 import { type NextRequest, NextResponse } from "next/server";
 import { publicConfig } from "@/config/public";
+import { getEnvVar } from "@/config/env";
 import type { Database } from "./types";
 
 export interface SessionUpdateResult {
@@ -34,8 +35,12 @@ export function copyCookies(source: NextResponse, destination: NextResponse): Ne
  * @returns Object containing modified NextResponse and authenticated User (or null).
  */
 export async function updateSession(request: NextRequest): Promise<SessionUpdateResult> {
-  const url = publicConfig.supabaseUrl;
-  const anonKey = publicConfig.supabaseAnonKey;
+  const url =
+    getEnvVar("NEXT_PUBLIC_SUPABASE_URL") || getEnvVar("SUPABASE_URL") || publicConfig.supabaseUrl;
+  const anonKey =
+    getEnvVar("NEXT_PUBLIC_SUPABASE_ANON_KEY") ||
+    getEnvVar("SUPABASE_ANON_KEY") ||
+    publicConfig.supabaseAnonKey;
 
   // If Supabase is unconfigured, allow request to proceed without auth mutation
   if (!url || !anonKey) {

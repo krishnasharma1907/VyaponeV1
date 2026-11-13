@@ -22,6 +22,31 @@ export class ConfigurationError extends Error {
 }
 
 /**
+ * Safely resolves an environment variable across runtime environments
+ * (Node.js, Cloudflare Workers, workerd, Edge) without being statically compiled
+ * away by Webpack/Next.js DefinePlugin.
+ */
+export function getEnvVar(name: string): string {
+  // 1. Bracket notation on process.env prevents Webpack DefinePlugin from inlining at build time
+  if (typeof process !== "undefined" && process?.env) {
+    const val = process.env[name];
+    if (typeof val === "string" && val.trim().length > 0) {
+      return val.trim();
+    }
+  }
+
+  // 2. Global worker environment bindings (Cloudflare Workers globalThis)
+  if (typeof globalThis !== "undefined") {
+    const gVal = (globalThis as Record<string, unknown>)[name];
+    if (typeof gVal === "string" && gVal.trim().length > 0) {
+      return gVal.trim();
+    }
+  }
+
+  return "";
+}
+
+/**
  * Public Environment Schema (safe for client bundles).
  * All keys MUST be prefixed with NEXT_PUBLIC_.
  */

@@ -88,4 +88,30 @@ describe("Supabase Server Client [VO-017]", () => {
     expect(client).toBeDefined();
     expect(typeof client.from).toBe("function");
   });
+
+  it("resolves SUPABASE_URL and SUPABASE_ANON_KEY from globalThis (Cloudflare worker bindings)", async () => {
+    delete process.env.NEXT_PUBLIC_SUPABASE_URL;
+    delete process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+    delete process.env.SUPABASE_URL;
+    delete process.env.SUPABASE_ANON_KEY;
+
+    // @ts-expect-error test global binding
+    globalThis.SUPABASE_URL = "https://global-env.supabase.co";
+    // @ts-expect-error test global binding
+    globalThis.SUPABASE_ANON_KEY = "global-anon-key-1234567890";
+
+    const { createServerSupabaseClient } = await import("@/lib/supabase/server");
+
+    const client = await createServerSupabaseClient({
+      getAll: () => [],
+    });
+
+    expect(client).toBeDefined();
+    expect(typeof client.from).toBe("function");
+
+    // @ts-expect-error cleanup global binding
+    delete globalThis.SUPABASE_URL;
+    // @ts-expect-error cleanup global binding
+    delete globalThis.SUPABASE_ANON_KEY;
+  });
 });

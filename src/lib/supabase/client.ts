@@ -1,7 +1,7 @@
 import { createBrowserClient } from "@supabase/ssr";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { publicConfig } from "@/config/public";
-import { ConfigurationError } from "@/config/env";
+import { ConfigurationError, getEnvVar } from "@/config/env";
 import type { Database } from "./types";
 
 /**
@@ -28,10 +28,14 @@ let browserClientInstance: SupabaseClient<Database> | null = null;
  */
 export function createBrowserSupabaseClient(): SupabaseClient<Database> {
   const url =
+    getEnvVar("NEXT_PUBLIC_SUPABASE_URL") ||
+    getEnvVar("SUPABASE_URL") ||
     (typeof process !== "undefined" &&
       (process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL)) ||
     publicConfig.supabaseUrl;
   const anonKey =
+    getEnvVar("NEXT_PUBLIC_SUPABASE_ANON_KEY") ||
+    getEnvVar("SUPABASE_ANON_KEY") ||
     (typeof process !== "undefined" &&
       (process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || process.env.SUPABASE_ANON_KEY)) ||
     publicConfig.supabaseAnonKey;
