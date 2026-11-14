@@ -59,11 +59,13 @@ export async function createServerSupabaseClient(
     publicConfig.supabaseAnonKey;
 
   if (!url || !anonKey) {
+    const missing: string[] = [];
+    if (!url) missing.push("NEXT_PUBLIC_SUPABASE_URL");
+    if (!anonKey) missing.push("NEXT_PUBLIC_SUPABASE_ANON_KEY");
     throw new ConfigurationError([
       {
-        path: "NEXT_PUBLIC_SUPABASE_URL / NEXT_PUBLIC_SUPABASE_ANON_KEY",
-        message:
-          "Supabase server client requires NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY to be configured.",
+        path: missing.join(" / "),
+        message: `Supabase server client requires ${missing.join(" and ")} to be configured.`,
       },
     ]);
   }

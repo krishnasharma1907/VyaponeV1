@@ -140,7 +140,7 @@ describe("VO-021 Auth Security Utilities", () => {
       );
       const mapped = mapAuthError(err);
       expect(mapped).toBe(
-        "Authentication service is not properly configured. Please check deployment settings.",
+        "Authentication service is not properly configured (missing both Supabase URL and Anon Key). Please check deployment settings.",
       );
     });
 

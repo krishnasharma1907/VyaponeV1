@@ -183,7 +183,18 @@ export function mapAuthError(error: unknown): string {
     lower.includes("next_public_supabase_url") ||
     lower.includes("supabase server client requires")
   ) {
-    return "Authentication service is not properly configured. Please check deployment settings.";
+    let detail = "";
+    if (
+      lower.includes("next_public_supabase_url") &&
+      lower.includes("next_public_supabase_anon_key")
+    ) {
+      detail = " (missing both Supabase URL and Anon Key)";
+    } else if (lower.includes("next_public_supabase_url")) {
+      detail = " (missing Supabase URL)";
+    } else if (lower.includes("next_public_supabase_anon_key")) {
+      detail = " (missing Supabase Anon Key)";
+    }
+    return `Authentication service is not properly configured${detail}. Please check deployment settings.`;
   }
 
   // Network / fetch connectivity errors

@@ -121,7 +121,7 @@ describe("VO-021 Auth Server Actions", () => {
 
       expect(result.success).toBe(false);
       expect(result.error).toBe(
-        "Authentication service is not properly configured. Please check deployment settings.",
+        "Authentication service is not properly configured (missing both Supabase URL and Anon Key). Please check deployment settings.",
       );
     });
 
