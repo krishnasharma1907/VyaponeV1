@@ -4,6 +4,31 @@ Record implementation changes by task ID. Do not record planned work as complete
 
 ## Unreleased
 
+### [VO-025] — Implement business profile settings and fact provenance (2026-11-14)
+- Implemented business profile settings, statutory identity management, sensitive fact provenance tracking, and security review gate hardening according to PRD FINAL v2 (§4.1, §4.2, §4.3, §15, §16, §17):
+  - **Database Migration & RLS Hardening (`supabase/migrations/20261114000002_business_profile_settings.sql`):**
+    - Extended `public.businesses` with `category`, `description`, `preferred_language`, `timezone`, `tax_scheme`, `contact_configuration`, `address_configuration`, `timings_configuration`, and `facts_provenance`.
+    - Added lookup index `idx_businesses_category`.
+    - Hardened `audit_logs_insert_policy` to require tenant scope validation (`can_access_business(business_id) AND is_workspace_member(workspace_id)`).
+    - Hardened `businesses_update_policy` to strictly prevent reassignment of sovereign ownership (`sovereign_owner_id`) or unpermitted workspace transfers under `WITH CHECK`.
+    - Hardened `catalogue_items_select_policy` to prevent unscoped cross-tenant item reads.
+  - **Domain Schemas & Types:**
+    - Defined Zod schemas with strict Indian formats: GSTIN (`gstNumberSchema`), PAN (`panNumberSchema`), PIN (`pinCodeSchema`), 24-hour timings (`timeStringSchema`), day timings (`dayTimingsSchema`), and fact confirmation (`confirmBusinessFactSchema`).
+    - Synchronized database and business domain types (`BusinessTaxScheme`, `ContactConfiguration`, `AddressConfiguration`, `TimingsConfiguration`, `FactsProvenanceMap`).
+  - **Service Layer & Server Actions:**
+    - Extended `updateBusinessProfile` in `src/lib/businesses/service.ts` to update all profile fields with permission enforcement (`business:update_profile`) and record `business.profile_updated` audit events.
+    - Implemented `confirmBusinessFact` to toggle verified/unverified status of sensitive facts (`tax_identity`, `operating_timings`, etc.) with `business.fact_confirmed` / `business.fact_unconfirmed` audit logging.
+    - Implemented `updateBusinessProfileAction` and `confirmBusinessFactAction` with session-derived user identification and error sanitization (`DATABASE_ERROR`).
+  - **Accessible UI Form & Route Shells:**
+    - Updated `BusinessProfileForm` to an accessible multi-tab interface: Store Identity, Tax & Legal, Address & Contacts, Timings & Locale, and Verified Facts.
+    - Added `CONFIRMED` vs `PROPOSED` badges and fact confirmation toggles for sovereign owners and managers.
+    - Formatted and wired in `/dashboard/settings` route shell.
+  - **Verification & Quality Gates:**
+    - Added 13 new unit tests in `tests/unit/businesses/profile-settings.test.ts`.
+    - Full Vitest suite contains 45 test files and 509 passing tests with 100% pass rate.
+    - Code coverage meets all required thresholds: Statements 84.87%, Branches 70.36%, Functions 88.58%, Lines 84.87%.
+    - Formatter, linter, typechecker, and production build all pass cleanly.
+
 ### [FIX] — VyapOne registration error and dynamic runtime environment resolution (2026-11-13)
 - Fixed authentication error on registration page (`An error occurred during authentication. Please try again.`):
   - **Dynamic Environment Resolution:**

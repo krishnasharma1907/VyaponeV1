@@ -23,6 +23,70 @@ export type BusinessRole = "owner" | "manager" | "cashier" | "staff";
 export type BusinessStatus = "active" | "onboarding" | "suspended" | "archived";
 
 /**
+ * Statutory GST tax scheme.
+ */
+export type BusinessTaxScheme = "registered" | "composition" | "unregistered" | "exempt";
+
+/**
+ * Business contact channels configuration.
+ */
+export interface ContactConfiguration {
+  primary_phone?: string | null;
+  secondary_phone?: string | null;
+  whatsapp_number?: string | null;
+  email?: string | null;
+  website?: string | null;
+}
+
+/**
+ * Registered business address configuration.
+ */
+export interface AddressConfiguration {
+  address_line1?: string | null;
+  address_line2?: string | null;
+  city?: string | null;
+  state?: string | null;
+  postal_code?: string | null;
+  country?: string | null;
+}
+
+/**
+ * Operating timings for a single day.
+ */
+export interface DayTimings {
+  open?: string;
+  close?: string;
+  closed?: boolean;
+}
+
+/**
+ * 7-day business operating schedule and holiday notes.
+ */
+export interface TimingsConfiguration {
+  monday?: DayTimings;
+  tuesday?: DayTimings;
+  wednesday?: DayTimings;
+  thursday?: DayTimings;
+  friday?: DayTimings;
+  saturday?: DayTimings;
+  sunday?: DayTimings;
+  holiday_notes?: string;
+}
+
+/**
+ * Provenance tracking for sensitive business facts.
+ */
+export interface FactProvenance {
+  confirmed: boolean;
+  source:
+    "user_input" | "user_confirmed" | "ai_extracted" | "gst_portal" | "imported" | "unverified";
+  confirmed_at?: string;
+  confirmed_by?: string;
+}
+
+export type FactsProvenanceMap = Record<string, FactProvenance>;
+
+/**
  * Granular permissions within a business context.
  */
 export type BusinessPermission =

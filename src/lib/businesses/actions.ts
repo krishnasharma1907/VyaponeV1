@@ -16,6 +16,7 @@ import {
   getBusiness,
   getUserBusinesses,
   updateBusinessProfile,
+  confirmBusinessFact,
   createLocation,
   updateLocation,
   getBusinessLocations,
@@ -29,12 +30,14 @@ import { TenantAccessError } from "@/lib/auth/tenant-access";
 import {
   createBusinessSchema,
   updateBusinessProfileSchema,
+  confirmBusinessFactSchema,
   createLocationSchema,
   updateLocationSchema,
   addBusinessMemberSchema,
   updateBusinessMemberRoleSchema,
   type CreateBusinessInput,
   type UpdateBusinessProfileInput,
+  type ConfirmBusinessFactInput,
   type CreateLocationInput,
   type UpdateLocationInput,
   type AddBusinessMemberInput,
@@ -49,6 +52,22 @@ function sanitizeError(error: unknown): { error: string; code: string } {
     return { error: error.message, code: error.code };
   }
   if (error instanceof Error) {
+    const msg = error.message.toLowerCase();
+    if (
+      msg.includes("fatal") ||
+      msg.includes("postgres") ||
+      msg.includes("relation") ||
+      msg.includes("column") ||
+      msg.includes("syntax error") ||
+      msg.includes("connection") ||
+      msg.includes("timeout") ||
+      msg.includes("sql")
+    ) {
+      return {
+        error: "A database error occurred. Please try again later.",
+        code: "DATABASE_ERROR",
+      };
+    }
     return { error: error.message, code: "INTERNAL_ERROR" };
   }
   return { error: "An unexpected error occurred", code: "UNKNOWN_ERROR" };
@@ -180,6 +199,56 @@ export async function updateBusinessProfileAction(
     }
 
     const result = await updateBusinessProfile(supabase, businessId, user.id, parseResult.data);
+    revalidatePath("/dashboard");
+    revalidatePath("/dashboard/settings");
+    return { success: true, data: result };
+  } catch (error) {
+    const sanitized = sanitizeError(error);
+    return { success: false, ...sanitized };
+  }
+}
+
+/**
+ * Toggles or records confirmation for a sensitive business fact with audit provenance.
+ */
+export async function confirmBusinessFactAction(
+  businessId: string,
+  rawInput: ConfirmBusinessFactInput,
+): Promise<BusinessActionResult<BusinessRow>> {
+  try {
+    const supabase = await createServerSupabaseClient();
+    const {
+      data: { user },
+      error: authError,
+    } = await supabase.auth.getUser();
+
+    if (authError || !user) {
+      return { success: false, error: "Authentication required", code: "UNAUTHENTICATED" };
+    }
+
+    const parseResult = confirmBusinessFactSchema.safeParse(rawInput);
+    if (!parseResult.success) {
+      const fieldErrors: Record<string, string[]> = {};
+      for (const issue of parseResult.error.issues) {
+        const path = issue.path.join(".");
+        if (!fieldErrors[path]) fieldErrors[path] = [];
+        fieldErrors[path].push(issue.message);
+      }
+      return {
+        success: false,
+        error: "Validation failed",
+        code: "VALIDATION_FAILED",
+        validationErrors: fieldErrors,
+      };
+    }
+
+    const result = await confirmBusinessFact(
+      supabase,
+      businessId,
+      user.id,
+      parseResult.data.field,
+      parseResult.data.confirmed,
+    );
     revalidatePath("/dashboard");
     revalidatePath("/dashboard/settings");
     return { success: true, data: result };

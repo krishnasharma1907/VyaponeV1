@@ -192,13 +192,13 @@
 
 **Status:** `DONE`
 
-### [ ] VO-025 — Implement business profile settings
+### [x] VO-025 — Implement business profile settings
 
 **Scope:** Manage business name, category, address, contacts, timings, language, timezone, currency, tax identity and confirmed/unconfirmed facts.
 
 **Acceptance:** Validation, field provenance/confirmation and audit trail exist for sensitive business facts.
 
-**Status:** `NOT_STARTED`
+**Status:** `DONE`
 
 ### [ ] VO-026 — Implement plans, entitlements and capacity service
 

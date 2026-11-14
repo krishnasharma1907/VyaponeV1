@@ -1,10 +1,10 @@
 # VyapOne Build Progress
 
 **Current phase:** P2 — Platform identity, authentication and multi-tenancy (`IN_PROGRESS`)  
-**Completed tasks:** VO-000, VO-001, VO-002, VO-003, VO-004, VO-005, VO-006, VO-010, VO-011, VO-012, VO-013, VO-014, VO-015, VO-016, VO-017, VO-018, VO-019, VO-020, VO-021, VO-022, VO-023, VO-024  
+**Completed tasks:** VO-000, VO-001, VO-002, VO-003, VO-004, VO-005, VO-006, VO-010, VO-011, VO-012, VO-013, VO-014, VO-015, VO-016, VO-017, VO-018, VO-019, VO-020, VO-021, VO-022, VO-023, VO-024, VO-025  
 **Latest fix:** Registration authentication error fix & dynamic Cloudflare environment variable resolution  
-**Next task:** VO-025 — Implement business profile settings  
-**Project status:** DUAL-LAYER TENANT ISOLATION ENFORCED & VERIFIED / IN PHASE P2  
+**Next task:** VO-026 — Implement plans, entitlements and capacity service  
+**Project status:** BUSINESS PROFILE SETTINGS & FACT PROVENANCE IMPLEMENTED / IN PHASE P2  
 
 ## Phase status
 
@@ -12,7 +12,64 @@
 |---|---|---|
 | P0 — Project audit, decisions and architecture | COMPLETE | All tasks VO-000 to VO-006 verified and done; Phase P0 gate passed |
 | P1 — Repository, design system and application shell | COMPLETE | All tasks VO-010 to VO-019 verified and done; Phase P1 gate passed |
-| P2 — Platform identity, authentication and multi-tenancy | IN_PROGRESS | VO-020, VO-021, VO-022, VO-023, and VO-024 done; VO-025 is next |
+| P2 — Platform identity, authentication and multi-tenancy | IN_PROGRESS | VO-020, VO-021, VO-022, VO-023, VO-024, and VO-025 done; VO-026 is next |
+
+## Task report: VO-025
+
+- **Task ID:** VO-025
+- **Title:** Implement business profile settings
+- **Status:** DONE
+- **Summary:** Implemented business profile settings, statutory identity management, sensitive fact provenance tracking, and security review gate hardening according to PRD FINAL v2 (§4.1, §4.2, §4.3, §15, §16, §17):
+  1. **Database Schema & RLS Hardening (`20261114000002_business_profile_settings.sql`):**
+     - Extended `public.businesses` with `category`, `description`, `preferred_language`, `timezone`, `tax_scheme`, `contact_configuration`, `address_configuration`, `timings_configuration`, and `facts_provenance`.
+     - Added performance index `idx_businesses_category`.
+     - Hardened `audit_logs_insert_policy` with tenant scope verification (`can_access_business(business_id) AND is_workspace_member(workspace_id)`).
+     - Hardened `businesses_update_policy` to strictly prevent reassignment of sovereign ownership (`sovereign_owner_id`) or unpermitted workspace transfers.
+     - Hardened `catalogue_items_select_policy` to prevent unscoped cross-tenant item reads.
+  2. **Domain Schemas & Types:**
+     - Extended Zod schemas with strict Indian formats: GSTIN (`gstNumberSchema`), PAN (`panNumberSchema`), PIN (`pinCodeSchema`), 24-hour timings (`timeStringSchema`), day timings (`dayTimingsSchema`), and fact confirmation (`confirmBusinessFactSchema`).
+     - Synchronized database and business domain types (`BusinessTaxScheme`, `ContactConfiguration`, `AddressConfiguration`, `TimingsConfiguration`, `FactsProvenanceMap`).
+  3. **Service Layer & Server Actions:**
+     - Extended `updateBusinessProfile` in `src/lib/businesses/service.ts` to update all profile fields with role checks and write `business.profile_updated` audit records.
+     - Implemented `confirmBusinessFact` to toggle verified/unverified status of sensitive facts (`tax_identity`, `operating_timings`, etc.) with `business.fact_confirmed` / `business.fact_unconfirmed` audit logging.
+     - Implemented `updateBusinessProfileAction` and `confirmBusinessFactAction` with session-derived user identification and error sanitization (`DATABASE_ERROR`).
+  4. **Accessible UI Form & Navigation:**
+     - Updated `BusinessProfileForm` to an accessible multi-tab interface: Store Identity, Tax & Legal, Address & Contacts, Timings & Locale, and Verified Facts.
+     - Displays `CONFIRMED` vs `PROPOSED` badges with fact confirmation toggles for sovereign owners and managers.
+     - Formatted and wired in `/dashboard/settings` route shell.
+  5. **Verification & Quality Gate:**
+     - 13 new unit tests in `tests/unit/businesses/profile-settings.test.ts` covering schema validation, service updates, fact confirmation, role authorization, and error sanitization.
+     - All 45 test files passed (509/509 tests, 100% pass rate).
+     - Full production build succeeds with all 34 routes compiled.
+- **Files added/modified:**
+  - Added: `supabase/migrations/20261114000002_business_profile_settings.sql`
+  - Added: `tests/unit/businesses/profile-settings.test.ts`
+  - Modified: `supabase/combined_migrations.sql`
+  - Modified: `src/lib/supabase/types.ts`
+  - Modified: `src/lib/businesses/types.ts`
+  - Modified: `src/lib/businesses/schemas.ts`
+  - Modified: `src/lib/businesses/service.ts`
+  - Modified: `src/lib/businesses/actions.ts`
+  - Modified: `src/components/businesses/business-profile-form.tsx`
+  - Modified: `src/app/(owner)/dashboard/settings/page.tsx`
+  - Modified: `tests/factories/businesses.ts`
+  - Modified: `tests/fixtures/demo-seed.ts`
+  - Modified: `tests/unit/businesses/components.test.tsx`
+  - Modified: `tests/unit/routing/route-shells.test.tsx`
+  - Modified: `tests/unit/supabase/types.test.ts`
+  - Modified: `docs/TASK_BACKLOG.md`
+  - Modified: `docs/PROGRESS.md`
+  - Modified: `docs/CHANGELOG.md`
+- **Verification:**
+  - Prettier: `pnpm format:check` -> PASS (0 issues)
+  - ESLint: `pnpm lint` -> PASS (0 errors, 0 warnings)
+  - TypeScript: `pnpm typecheck` -> PASS (0 errors)
+  - Unit/Integration Tests: `pnpm test` -> PASS (45/45 test files, 509/509 tests)
+  - Coverage: `pnpm test:coverage` -> PASS (Statements 84.87%, Branches 70.36%, Functions 88.58%, Lines 84.87%)
+  - Production Build: `pnpm build` -> PASS (34/34 routes generated)
+- **Acceptance status:** COMPLETE
+- **Blockers:** None
+- **Next task:** VO-026 — Implement plans, entitlements and capacity service
 
 ## Task report: VO-024
 

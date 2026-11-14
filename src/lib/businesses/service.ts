@@ -1,5 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
-import type { Database } from "@/lib/supabase/types";
+import type { Database, Json } from "@/lib/supabase/types";
 import type {
   BusinessMemberRow,
   BusinessMemberWithProfile,
@@ -387,8 +387,22 @@ export async function updateBusinessProfile(
   const updates: Partial<BusinessRow> = {};
   if (input.trade_name !== undefined) updates.trade_name = input.trade_name;
   if (input.legal_name !== undefined) updates.legal_name = input.legal_name;
+  if (input.category !== undefined) updates.category = input.category;
+  if (input.description !== undefined) updates.description = input.description;
   if (input.gst_number !== undefined) updates.gst_number = input.gst_number;
   if (input.pan_number !== undefined) updates.pan_number = input.pan_number;
+  if (input.tax_scheme !== undefined) updates.tax_scheme = input.tax_scheme;
+  if (input.currency_code !== undefined) updates.currency_code = input.currency_code;
+  if (input.preferred_language !== undefined) updates.preferred_language = input.preferred_language;
+  if (input.timezone !== undefined) updates.timezone = input.timezone;
+  if (input.contact_configuration !== undefined)
+    updates.contact_configuration = input.contact_configuration as Json;
+  if (input.address_configuration !== undefined)
+    updates.address_configuration = input.address_configuration as Json;
+  if (input.timings_configuration !== undefined)
+    updates.timings_configuration = input.timings_configuration as Json;
+  if (input.facts_provenance !== undefined)
+    updates.facts_provenance = input.facts_provenance as Json;
   if (input.status !== undefined) updates.status = input.status;
 
   const { data: updated, error } = await supabase
@@ -415,6 +429,89 @@ export async function updateBusinessProfile(
     resource: "businesses",
     metadata_json: {
       updated_fields: Object.keys(updates),
+    },
+  });
+
+  return updated;
+}
+
+/**
+ * Toggles or updates the confirmation provenance for a sensitive business fact.
+ */
+export async function confirmBusinessFact(
+  supabase: SupabaseClient<Database>,
+  businessId: string,
+  callerUserId: string,
+  field: string,
+  confirmed: boolean,
+): Promise<BusinessRow> {
+  const access = await getCallerBusinessAccess(supabase, businessId, callerUserId);
+
+  const canConfirm =
+    access.isSovereignOwner ||
+    (access.role && hasBusinessPermission(access.role, "business:update_profile")) ||
+    access.isWorkspaceManager;
+
+  if (!canConfirm) {
+    throw new BusinessError(
+      "You do not have permission to confirm facts for this business",
+      "FORBIDDEN",
+      403,
+    );
+  }
+
+  // Fetch current business facts
+  const { data: current, error: fetchError } = await supabase
+    .from("businesses")
+    .select("*")
+    .eq("id", businessId)
+    .single();
+
+  if (fetchError || !current) {
+    throw new BusinessError("Business not found", "NOT_FOUND", 404);
+  }
+
+  const existingProvenance =
+    typeof current.facts_provenance === "object" && current.facts_provenance !== null
+      ? (current.facts_provenance as Record<string, unknown>)
+      : {};
+
+  const updatedProvenance = {
+    ...existingProvenance,
+    [field]: {
+      confirmed,
+      source: confirmed ? "user_confirmed" : "unverified",
+      confirmed_at: new Date().toISOString(),
+      confirmed_by: callerUserId,
+    },
+  };
+
+  const { data: updated, error: updateError } = await supabase
+    .from("businesses")
+    .update({ facts_provenance: updatedProvenance as Json })
+    .eq("id", businessId)
+    .select("*")
+    .single();
+
+  if (updateError || !updated) {
+    throw new BusinessError(
+      updateError?.message ?? "Failed to update fact confirmation",
+      "FACT_UPDATE_FAILED",
+      500,
+    );
+  }
+
+  // Record audit log for sensitive fact confirmation
+  await supabase.from("audit_logs").insert({
+    business_id: businessId,
+    workspace_id: updated.workspace_id,
+    user_id: callerUserId,
+    action: confirmed ? "business.fact_confirmed" : "business.fact_unconfirmed",
+    resource: "businesses",
+    metadata_json: {
+      field,
+      confirmed,
+      confirmed_at: new Date().toISOString(),
     },
   });
 

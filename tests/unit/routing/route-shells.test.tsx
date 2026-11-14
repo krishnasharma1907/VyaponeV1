@@ -16,6 +16,9 @@ vi.mock("next/navigation", () => ({
   redirect: vi.fn(),
 }));
 
+// Mock server-only module for Client Component tests in Vitest jsdom
+vi.mock("server-only", () => ({}));
+
 // Mock auth server actions to isolate UI tests from server-only backend code
 vi.mock("@/lib/auth/actions", () => ({
   signUpAction: vi.fn(),
@@ -25,6 +28,15 @@ vi.mock("@/lib/auth/actions", () => ({
   requestPasswordResetAction: vi.fn(),
   updatePasswordAction: vi.fn(),
   signOutAction: vi.fn(),
+}));
+
+// Mock business server actions to isolate UI tests from server-only backend code
+vi.mock("@/lib/businesses/actions", () => ({
+  createBusinessAction: vi.fn(),
+  updateBusinessProfileAction: vi.fn(),
+  confirmBusinessFactAction: vi.fn(),
+  createLocationAction: vi.fn(),
+  updateLocationAction: vi.fn(),
 }));
 
 import { render, screen, within } from "@testing-library/react";

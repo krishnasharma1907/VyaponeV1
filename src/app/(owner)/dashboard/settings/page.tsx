@@ -1,5 +1,7 @@
 import React from "react";
 import type { Metadata } from "next";
+import Link from "next/link";
+import { BusinessProfileForm } from "@/components/businesses/business-profile-form";
 import {
   Card,
   CardHeader,
@@ -10,16 +12,82 @@ import {
   Input,
   Button,
 } from "@/components/ui";
+import type { BusinessRow } from "@/lib/businesses/types";
 
 export const metadata: Metadata = {
   title: "Business Settings — Business Owner | VyapOne",
-  description: "Business profile, GSTIN, UPI VPAs, store locations, and staff access PINs.",
+  description:
+    "Business profile, GSTIN, UPI VPAs, timings, contacts, address, and confirmed merchant facts.",
+};
+
+const defaultBusiness: BusinessRow = {
+  id: "00000000-0000-0000-0000-000000000001",
+  workspace_id: null,
+  trade_name: "Sharma Kirana & Sweets",
+  legal_name: "Sharma Enterprises Private Limited",
+  slug: "sharma-kirana-sweets",
+  category: "grocery",
+  description: "Kirana store and daily essentials operating in Bengaluru.",
+  gst_number: "29AAAAA0000A1Z5",
+  pan_number: "AAAAA0000A",
+  tax_scheme: "registered",
+  status: "active",
+  currency_code: "INR",
+  preferred_language: "en",
+  timezone: "Asia/Kolkata",
+  contact_configuration: {
+    primary_phone: "+919876543210",
+    secondary_phone: null,
+    whatsapp_number: "+919876543210",
+    email: "contact@sharmastore.in",
+    website: "https://sharma.vyapone.in",
+  },
+  address_configuration: {
+    address_line1: "100 MG Road",
+    address_line2: "Near Metro Station",
+    city: "Bengaluru",
+    state: "Karnataka",
+    postal_code: "560001",
+    country: "India",
+  },
+  timings_configuration: {
+    monday: { open: "08:00", close: "22:00", closed: false },
+    tuesday: { open: "08:00", close: "22:00", closed: false },
+    wednesday: { open: "08:00", close: "22:00", closed: false },
+    thursday: { open: "08:00", close: "22:00", closed: false },
+    friday: { open: "08:00", close: "22:00", closed: false },
+    saturday: { open: "08:00", close: "22:00", closed: false },
+    sunday: { open: "09:00", close: "21:00", closed: false },
+  },
+  facts_provenance: {
+    trade_name: {
+      confirmed: true,
+      source: "user_confirmed",
+      confirmed_at: "2026-11-13T00:00:00.000Z",
+    },
+    gst_number: { confirmed: true, source: "gst_portal", confirmed_at: "2026-11-13T00:00:00.000Z" },
+    pan_number: {
+      confirmed: true,
+      source: "user_confirmed",
+      confirmed_at: "2026-11-13T00:00:00.000Z",
+    },
+    registered_address: {
+      confirmed: true,
+      source: "user_confirmed",
+      confirmed_at: "2026-11-13T00:00:00.000Z",
+    },
+    primary_contact: { confirmed: false, source: "unverified" },
+    operating_timings: { confirmed: false, source: "ai_extracted" },
+  },
+  sovereign_owner_id: "00000000-0000-0000-0000-000000000002",
+  created_at: "2026-11-13T00:00:00.000Z",
+  updated_at: "2026-11-13T00:00:00.000Z",
 };
 
 export default function OwnerSettingsPage() {
   return (
     <div
-      style={{ display: "flex", flexDirection: "column", gap: "var(--space-6)", maxWidth: "800px" }}
+      style={{ display: "flex", flexDirection: "column", gap: "var(--space-6)", maxWidth: "900px" }}
     >
       <header>
         <h1
@@ -36,23 +104,23 @@ export default function OwnerSettingsPage() {
         </p>
       </header>
 
+      {/* Main Interactive Profile Settings Form */}
+      <BusinessProfileForm
+        business={defaultBusiness}
+        currentUserRole="owner"
+        isSovereignOwner={true}
+      />
+
+      {/* Merchant Bank Settlement UPI VPA Card */}
       <Card variant="default">
         <CardHeader>
-          <CardTitle as="h2">Store Identity</CardTitle>
-          <CardDescription>Legal trade name and tax registration</CardDescription>
+          <CardTitle as="h2">UPI Settlement &amp; Bank VPAs</CardTitle>
+          <CardDescription>
+            Direct merchant bank account VPA handles for instant customer settlements.
+          </CardDescription>
         </CardHeader>
         <CardContent>
-          <form style={{ display: "flex", flexDirection: "column", gap: "var(--space-4)" }}>
-            <Field id="biz-name" label="Trade Name" required>
-              <Input placeholder="e.g., Sharma Kirana & Sweets" disabled />
-            </Field>
-            <Field
-              id="biz-gstin"
-              label="GSTIN (15-character statutory tax ID)"
-              helperText="Server verified against GST portal (Phase P2 / VO-023)"
-            >
-              <Input placeholder="e.g., 27AAAAA0000A1Z5" disabled />
-            </Field>
+          <form style={{ display: "flex", flexDirection: "column", gap: "var(--space-3)" }}>
             <Field
               id="biz-upi"
               label="UPI VPA (Direct Merchant Bank Settlement)"
@@ -60,30 +128,45 @@ export default function OwnerSettingsPage() {
             >
               <Input placeholder="e.g., merchant@bank" disabled />
             </Field>
-            <div>
-              <Button type="button" variant="primary" disabled>
-                Save Configuration
-              </Button>
-            </div>
           </form>
         </CardContent>
       </Card>
 
+      {/* Primary Storefront Location Summary Card */}
       <Card variant="default">
         <CardHeader>
-          <CardTitle as="h2">Primary Store Location</CardTitle>
+          <CardTitle as="h2">Storefront Locations</CardTitle>
           <CardDescription>
-            Physical address, pin code, and fulfillment coordinates for this store.
+            Physical fulfillment points, branch locations, and staff dispatch points.
           </CardDescription>
         </CardHeader>
         <CardContent>
-          <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-3)" }}>
-            <Field id="loc-name-display" label="Location Name">
-              <Input value="Main Store" disabled />
-            </Field>
-            <Field id="loc-addr-display" label="Address">
-              <Input value="100 MG Road, Bengaluru, Karnataka — 560001" disabled />
-            </Field>
+          <div
+            style={{
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "center",
+              flexWrap: "wrap",
+              gap: "var(--space-3)",
+            }}
+          >
+            <div>
+              <p style={{ margin: 0, fontWeight: 600, color: "var(--color-text-primary)" }}>
+                Primary Store: Main Store
+              </p>
+              <p
+                style={{
+                  margin: "var(--space-1) 0 0",
+                  color: "var(--color-text-secondary)",
+                  fontSize: "var(--font-size-body-sm)",
+                }}
+              >
+                100 MG Road, Bengaluru, Karnataka — 560001
+              </p>
+            </div>
+            <Link href="/dashboard">
+              <Button variant="outline">View Dashboard</Button>
+            </Link>
           </div>
         </CardContent>
       </Card>

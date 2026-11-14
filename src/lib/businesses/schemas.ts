@@ -67,6 +67,142 @@ export const businessRoleSchema = z.enum(["owner", "manager", "cashier", "staff"
 export const businessStatusSchema = z.enum(["active", "onboarding", "suspended", "archived"]);
 
 /**
+ * Statutory GST tax scheme.
+ */
+export const businessTaxSchemeSchema = z.enum([
+  "registered",
+  "composition",
+  "unregistered",
+  "exempt",
+]);
+
+/**
+ * Contact configuration schema.
+ */
+export const contactConfigurationSchema = z.object({
+  primary_phone: z
+    .string()
+    .trim()
+    .regex(/^(\+?[0-9]{10,15})$/, "Primary phone must be a valid 10-15 digit phone number")
+    .nullable()
+    .optional(),
+  secondary_phone: z
+    .string()
+    .trim()
+    .regex(/^(\+?[0-9]{10,15})$/, "Secondary phone must be a valid 10-15 digit phone number")
+    .nullable()
+    .optional(),
+  whatsapp_number: z
+    .string()
+    .trim()
+    .regex(/^(\+?[0-9]{10,15})$/, "WhatsApp number must be a valid 10-15 digit phone number")
+    .nullable()
+    .optional(),
+  email: z.string().trim().email("Invalid email address").nullable().optional(),
+  website: z
+    .string()
+    .trim()
+    .regex(/^(https?:\/\/)?([\da-z.-]+)\.([a-z.]{2,6})([/\w .-]*)*\/?$/, "Invalid website URL")
+    .nullable()
+    .optional(),
+});
+
+export type ContactConfigurationInput = z.infer<typeof contactConfigurationSchema>;
+
+/**
+ * Registered business address configuration schema.
+ */
+export const addressConfigurationSchema = z.object({
+  address_line1: z
+    .string()
+    .trim()
+    .max(150, "Address line 1 cannot exceed 150 characters")
+    .nullable()
+    .optional(),
+  address_line2: z
+    .string()
+    .trim()
+    .max(150, "Address line 2 cannot exceed 150 characters")
+    .nullable()
+    .optional(),
+  city: z.string().trim().max(60, "City cannot exceed 60 characters").nullable().optional(),
+  state: z.string().trim().max(60, "State cannot exceed 60 characters").nullable().optional(),
+  postal_code: postalCodeSchema.nullable().optional(),
+  country: z.string().trim().default("India").nullable().optional(),
+});
+
+export type AddressConfigurationInput = z.infer<typeof addressConfigurationSchema>;
+
+/**
+ * Operating timings for a day schema.
+ */
+export const dayTimingsSchema = z.object({
+  open: z
+    .string()
+    .trim()
+    .regex(/^([01]\d|2[0-3]):[0-5]\d$/, "Time must be in HH:MM 24-hour format")
+    .optional(),
+  close: z
+    .string()
+    .trim()
+    .regex(/^([01]\d|2[0-3]):[0-5]\d$/, "Time must be in HH:MM 24-hour format")
+    .optional(),
+  closed: z.boolean().default(false).optional(),
+});
+
+/**
+ * Weekly schedule and timings configuration schema.
+ */
+export const timingsConfigurationSchema = z.object({
+  monday: dayTimingsSchema.optional(),
+  tuesday: dayTimingsSchema.optional(),
+  wednesday: dayTimingsSchema.optional(),
+  thursday: dayTimingsSchema.optional(),
+  friday: dayTimingsSchema.optional(),
+  saturday: dayTimingsSchema.optional(),
+  sunday: dayTimingsSchema.optional(),
+  holiday_notes: z.string().trim().max(250, "Notes cannot exceed 250 characters").optional(),
+});
+
+export type TimingsConfigurationInput = z.infer<typeof timingsConfigurationSchema>;
+
+/**
+ * Fact provenance and verification metadata schema.
+ */
+export const factProvenanceSchema = z.object({
+  confirmed: z.boolean(),
+  source: z.enum([
+    "user_input",
+    "user_confirmed",
+    "ai_extracted",
+    "gst_portal",
+    "imported",
+    "unverified",
+  ]),
+  confirmed_at: z.string().datetime().optional(),
+  confirmed_by: z.string().uuid().optional(),
+});
+
+export type FactProvenanceInput = z.infer<typeof factProvenanceSchema>;
+
+export const factsProvenanceMapSchema = z.record(z.string(), factProvenanceSchema);
+export type FactsProvenanceMapInput = z.infer<typeof factsProvenanceMapSchema>;
+
+/**
+ * Schema for toggling confirmation of a sensitive business fact.
+ */
+export const confirmBusinessFactSchema = z.object({
+  field: z
+    .string()
+    .trim()
+    .min(1, "Field name is required")
+    .max(50, "Field name cannot exceed 50 characters"),
+  confirmed: z.boolean(),
+});
+
+export type ConfirmBusinessFactInput = z.infer<typeof confirmBusinessFactSchema>;
+
+/**
  * Schema for creating a business with its required primary location.
  */
 export const createBusinessSchema = z.object({
@@ -134,8 +270,44 @@ export const updateBusinessProfileSchema = z.object({
     .min(2, "Legal name must be at least 2 characters")
     .max(100, "Legal name cannot exceed 100 characters")
     .optional(),
+  category: z
+    .string()
+    .trim()
+    .min(2, "Category must be at least 2 characters")
+    .max(50, "Category cannot exceed 50 characters")
+    .nullable()
+    .optional(),
+  description: z
+    .string()
+    .trim()
+    .max(500, "Description cannot exceed 500 characters")
+    .nullable()
+    .optional(),
   gst_number: gstinSchema.nullable().optional(),
   pan_number: panSchema.nullable().optional(),
+  tax_scheme: businessTaxSchemeSchema.optional(),
+  currency_code: z
+    .string()
+    .trim()
+    .length(3, "Currency code must be a 3-letter ISO code")
+    .toUpperCase()
+    .optional(),
+  preferred_language: z
+    .string()
+    .trim()
+    .min(2, "Language code must be at least 2 characters")
+    .max(10, "Language code cannot exceed 10 characters")
+    .optional(),
+  timezone: z
+    .string()
+    .trim()
+    .min(2, "Timezone must be at least 2 characters")
+    .max(50, "Timezone cannot exceed 50 characters")
+    .optional(),
+  contact_configuration: contactConfigurationSchema.optional(),
+  address_configuration: addressConfigurationSchema.optional(),
+  timings_configuration: timingsConfigurationSchema.optional(),
+  facts_provenance: z.record(z.string(), factProvenanceSchema).optional(),
   status: businessStatusSchema.optional(),
 });
 
