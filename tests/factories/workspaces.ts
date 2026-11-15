@@ -49,3 +49,59 @@ export function createTestWorkspaceInvitation(
     ...overrides,
   };
 }
+
+export function createTestSubscription(
+  overrides: Partial<TableRow<"subscriptions">> = {},
+): TableRow<"subscriptions"> {
+  const id = overrides.id ?? formatDeterministicId("sub");
+  return {
+    id,
+    workspace_id: overrides.workspace_id ?? formatDeterministicId("ws"),
+    plan_id: "starter",
+    status: "active",
+    current_period_start: BASE_TEST_TIMESTAMP,
+    current_period_end: "2026-12-01T00:00:00.000Z",
+    grace_period_end: null,
+    provider_reference: null,
+    created_at: BASE_TEST_TIMESTAMP,
+    updated_at: BASE_TEST_TIMESTAMP,
+    ...overrides,
+  };
+}
+
+export function createTestEntitlementOverride(
+  overrides: Partial<TableRow<"entitlement_overrides">> = {},
+): TableRow<"entitlement_overrides"> {
+  const id = overrides.id ?? formatDeterministicId("eno");
+  return {
+    id,
+    workspace_id: overrides.workspace_id ?? formatDeterministicId("ws"),
+    business_id: null,
+    feature_key: "custom_domain",
+    is_enabled: true,
+    expires_at: null,
+    reason: "Test override grant",
+    granted_by: overrides.granted_by ?? formatDeterministicId("usr"),
+    created_at: BASE_TEST_TIMESTAMP,
+    updated_at: BASE_TEST_TIMESTAMP,
+    ...overrides,
+  };
+}
+
+export function createTestCapacityOverride(
+  overrides: Partial<TableRow<"capacity_overrides">> = {},
+): TableRow<"capacity_overrides"> {
+  const id = overrides.id ?? formatDeterministicId("cao");
+  return {
+    id,
+    workspace_id: overrides.workspace_id ?? formatDeterministicId("ws"),
+    metric: "live_websites",
+    additional_capacity: 5,
+    expires_at: null,
+    reason: "Test capacity boost",
+    granted_by: overrides.granted_by ?? formatDeterministicId("usr"),
+    created_at: BASE_TEST_TIMESTAMP,
+    updated_at: BASE_TEST_TIMESTAMP,
+    ...overrides,
+  };
+}

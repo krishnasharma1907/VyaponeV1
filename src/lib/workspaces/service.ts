@@ -47,7 +47,7 @@ export async function createWorkspace(
   input: {
     name: string;
     slug?: string;
-    plan?: "starter" | "pro" | "agency";
+    plan?: "starter" | "growth" | "pro" | "agency" | "scale";
     ownerUserId: string;
   },
 ): Promise<WorkspaceRow> {

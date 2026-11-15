@@ -4,6 +4,33 @@ Record implementation changes by task ID. Do not record planned work as complete
 
 ## Unreleased
 
+### [VO-026] — Implement plans, entitlements and capacity service (2026-11-15)
+- Implemented the centralized plans, subscription management, feature entitlement evaluation, and capacity enforcement service strictly according to PRD FINAL v2 (§9.1, §9.2, §16) and `docs/TASK_BACKLOG.md`:
+  - **Database Migration & Schema Enforcement (`supabase/migrations/20261115000001_plans_entitlements_capacity.sql`):**
+    - Created `public.subscriptions` table with foreign key to `workspaces(id)` on delete cascade, status checks, and period timestamps.
+    - Created `public.entitlement_overrides` table supporting explicit business- or workspace-scoped feature grants and add-on overrides with expiration tracking.
+    - Created `public.capacity_overrides` table for purchased slot expansions (e.g. additional live websites or staff seats).
+    - Expanded `public.workspaces.plan` check constraint to support `('starter', 'growth', 'pro', 'agency', 'scale')`.
+    - Expanded `public.sites.status` check constraint to support `'archived'` status per PRD §9.2 counting rules.
+    - Enforced `FORCE ROW LEVEL SECURITY` across all 3 tables with fail-closed policies isolating reads to workspace members and denying unauthorized client writes.
+  - **Plan Model & Entitlement Definitions:**
+    - Configured master plan definitions adhering to PRD §9.1 (`starter`: ₹399/mo, 3 live websites, 10 drafts, 2 seats; `growth`/`pro`: ₹999/mo, 8 live websites, 25 drafts, 5 seats; `agency`: ₹1,999/mo, 20 live websites, 50 drafts, 15 seats; `scale`: quote, 50 live websites, 100 drafts, 50 seats).
+    - Preserved hypothesis pricing status per ADR-011 and PRD §9.1.
+  - **Entitlement & Capacity Service Layer:**
+    - `resolveWorkspacePlan`: Resolves effective plan from subscriptions or workspace attributes, handles grace periods and downgrade fallbacks.
+    - `checkFeatureEntitlement` & `assertFeatureEntitled`: Evaluates business overrides, workspace overrides, and plan defaults; fails closed when tenant context is missing.
+    - `getCapacityUsage` & `assertCapacityAvailable`: Calculates real database consumption; enforces PRD §9.2 counting rules (archived sites/businesses do not consume live slots; custom domains do not consume extra slots; draft allowances separate from live slots).
+    - `checkSiteTransitionCapacity`: Validates site status changes (publishing checks live slot capacity; archiving always permitted).
+    - `getWorkspaceSubscriptionDetails`: Aggregates complete subscription, capacities, and entitlements for a workspace.
+  - **Server Actions Boundary:**
+    - Created `getWorkspaceSubscriptionDetailsAction`, `checkFeatureEntitlementAction`, `assertCapacityAvailableAction`, and `checkSiteTransitionCapacityAction`.
+    - Enforced session-derived caller identification, tenant authorization via `assertWorkspaceAccess`, and database error sanitization.
+  - **Verification & Quality Gates:**
+    - Added 24 new unit tests across 4 test files in `tests/unit/plans/`.
+    - Full Vitest suite contains 49 test files and 533 passing tests with 100% pass rate.
+    - Code coverage meets all required thresholds: Statements 85.12%, Branches 70.21%, Functions 88.94%, Lines 85.12%.
+    - Formatter, linter, typechecker, and production build all pass cleanly.
+
 ### [VO-025] — Implement business profile settings and fact provenance (2026-11-14)
 - Implemented business profile settings, statutory identity management, sensitive fact provenance tracking, and security review gate hardening according to PRD FINAL v2 (§4.1, §4.2, §4.3, §15, §16, §17):
   - **Database Migration & RLS Hardening (`supabase/migrations/20261114000002_business_profile_settings.sql`):**

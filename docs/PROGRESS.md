@@ -1,10 +1,10 @@
 # VyapOne Build Progress
 
 **Current phase:** P2 — Platform identity, authentication and multi-tenancy (`IN_PROGRESS`)  
-**Completed tasks:** VO-000, VO-001, VO-002, VO-003, VO-004, VO-005, VO-006, VO-010, VO-011, VO-012, VO-013, VO-014, VO-015, VO-016, VO-017, VO-018, VO-019, VO-020, VO-021, VO-022, VO-023, VO-024, VO-025  
+**Completed tasks:** VO-000, VO-001, VO-002, VO-003, VO-004, VO-005, VO-006, VO-010, VO-011, VO-012, VO-013, VO-014, VO-015, VO-016, VO-017, VO-018, VO-019, VO-020, VO-021, VO-022, VO-023, VO-024, VO-025, VO-026  
 **Latest fix:** Registration authentication error fix & dynamic Cloudflare environment variable resolution  
-**Next task:** VO-026 — Implement plans, entitlements and capacity service  
-**Project status:** BUSINESS PROFILE SETTINGS & FACT PROVENANCE IMPLEMENTED / IN PHASE P2  
+**Next task:** VO-027 — Implement team invitations and membership lifecycle  
+**Project status:** PLANS, ENTITLEMENTS AND CAPACITY SERVICE IMPLEMENTED / IN PHASE P2  
 
 ## Phase status
 
@@ -12,7 +12,72 @@
 |---|---|---|
 | P0 — Project audit, decisions and architecture | COMPLETE | All tasks VO-000 to VO-006 verified and done; Phase P0 gate passed |
 | P1 — Repository, design system and application shell | COMPLETE | All tasks VO-010 to VO-019 verified and done; Phase P1 gate passed |
-| P2 — Platform identity, authentication and multi-tenancy | IN_PROGRESS | VO-020, VO-021, VO-022, VO-023, VO-024, and VO-025 done; VO-026 is next |
+| P2 — Platform identity, authentication and multi-tenancy | IN_PROGRESS | VO-020, VO-021, VO-022, VO-023, VO-024, VO-025, and VO-026 done; VO-027 is next |
+
+## Task report: VO-026
+
+- **Task ID:** VO-026
+- **Title:** Implement plans, entitlements and capacity service
+- **Status:** DONE
+- **Summary:** Implemented the centralized plans, subscription management, feature entitlement evaluation, and capacity enforcement service strictly according to PRD FINAL v2 (§9.1, §9.2, §16) and `docs/TASK_BACKLOG.md`:
+  1. **Database Schema & RLS Hardening (`20261115000001_plans_entitlements_capacity.sql`):**
+     - Created `public.subscriptions` table for workspace commercial plan assignments with period tracking and grace period management.
+     - Created `public.entitlement_overrides` table supporting explicit business- or workspace-scoped feature grants and add-ons with expiration timestamps.
+     - Created `public.capacity_overrides` table for purchased slot expansions (e.g. additional live websites or staff seats).
+     - Expanded check constraint on `public.workspaces.plan` to support all canonical plans: `('starter', 'growth', 'pro', 'agency', 'scale')`.
+     - Expanded check constraint on `public.sites.status` to support `'archived'` status per PRD §9.2 counting rules.
+     - Enforced `FORCE ROW LEVEL SECURITY` across all 3 new tables with fail-closed policies restricting writes and isolating reads to authorized workspace members.
+  2. **Plan & Entitlement Model (`src/lib/plans/constants.ts`, `src/lib/plans/types.ts`):**
+     - Configured master plan definitions adhering to PRD §9.1:
+       - `starter`: ₹399/mo (hypothesis), 3 live websites, 10 draft websites, 2 team seats, base features.
+       - `growth` / `pro`: ₹999/mo (hypothesis), 8 live websites, 25 draft websites, 5 team seats, custom domain, inventory, appointments, feedback.
+       - `agency`: ₹1,999/mo (hypothesis), 20 live websites, 50 draft websites, 15 team seats, white-label, client billing, priority support.
+       - `scale`: custom quote (hypothesis), 50 live websites, 100 draft websites, 50 team seats, advanced AI bot, WhatsApp broadcasts, GST e-invoicing.
+     - Preserved hypothesis status per ADR-011 and PRD §9.1.
+  3. **Capacity & Entitlement Service (`src/lib/plans/service.ts`):**
+     - `resolveWorkspacePlan`: Resolves active plan from subscriptions or workspace row; handles grace periods and canceled downgrades.
+     - `checkFeatureEntitlement` & `assertFeatureEntitled`: Evaluates business overrides, workspace overrides, and plan defaults; fails closed when tenant context is missing.
+     - `getCapacityUsage` & `assertCapacityAvailable`: Calculates real database consumption; enforces PRD §9.2 counting rules (archived sites and businesses do not consume live slots; custom domains do not consume extra slots; draft allowances separate from live slots).
+     - `checkSiteTransitionCapacity`: Validates site status changes (publishing checks live slot capacity; archiving always permitted).
+     - `getWorkspaceSubscriptionDetails`: Aggregates complete subscription, capacities, and entitlements for a workspace.
+  4. **Server Actions (`src/lib/plans/actions.ts`):**
+     - Created `getWorkspaceSubscriptionDetailsAction`, `checkFeatureEntitlementAction`, `assertCapacityAvailableAction`, and `checkSiteTransitionCapacityAction`.
+     - Enforced session-derived caller identification, tenant authorization via `assertWorkspaceAccess`, and database error sanitization.
+  5. **Verification & Quality Gate:**
+     - 4 new test suites in `tests/unit/plans/` (24 new tests) covering plan resolution, feature overrides, capacity metrics, counting rules, Server Actions, and migration RLS policies.
+     - Full Vitest suite passes: 49 test files, 533/533 tests passed (100%).
+     - Code coverage meets all required thresholds: Statements 85.12%, Branches 70.21%, Functions 88.94%, Lines 85.12% (with `src/lib/plans` achieving 91.23% statements).
+     - Next.js production build succeeds with all 34 routes compiled.
+- **Files added/modified:**
+  - Added: `supabase/migrations/20261115000001_plans_entitlements_capacity.sql`
+  - Added: `src/lib/plans/types.ts`
+  - Added: `src/lib/plans/constants.ts`
+  - Added: `src/lib/plans/schemas.ts`
+  - Added: `src/lib/plans/service.ts`
+  - Added: `src/lib/plans/actions.ts`
+  - Added: `src/lib/plans/index.ts`
+  - Added: `tests/unit/plans/service.test.ts`
+  - Added: `tests/unit/plans/capacity.test.ts`
+  - Added: `tests/unit/plans/actions.test.ts`
+  - Added: `tests/unit/plans/migration.test.ts`
+  - Modified: `supabase/combined_migrations.sql`
+  - Modified: `src/lib/supabase/types.ts`
+  - Modified: `src/lib/workspaces/schemas.ts`
+  - Modified: `src/lib/workspaces/service.ts`
+  - Modified: `tests/factories/workspaces.ts`
+  - Modified: `docs/TASK_BACKLOG.md`
+  - Modified: `docs/PROGRESS.md`
+  - Modified: `docs/CHANGELOG.md`
+- **Verification:**
+  - Prettier: `pnpm format:check` -> PASS (0 issues)
+  - ESLint: `pnpm lint` -> PASS (0 errors, 0 warnings)
+  - TypeScript: `pnpm typecheck` -> PASS (0 errors)
+  - Unit/Integration Tests: `pnpm test` -> PASS (49/49 test files, 533/533 tests)
+  - Coverage: `pnpm test:coverage` -> PASS (Statements 85.12%, Branches 70.21%, Functions 88.94%, Lines 85.12%)
+  - Production Build: `pnpm build` -> PASS (34/34 routes generated)
+- **Acceptance status:** COMPLETE
+- **Blockers:** None
+- **Next task:** VO-027 — Implement team invitations and membership lifecycle
 
 ## Task report: VO-025
 

@@ -90,7 +90,7 @@ export interface Database {
           slug: string;
           owner_user_id: string;
           status: "active" | "suspended" | "archived";
-          plan: "starter" | "pro" | "agency";
+          plan: "starter" | "growth" | "pro" | "agency" | "scale";
           created_at: string;
           updated_at: string;
         };
@@ -100,7 +100,7 @@ export interface Database {
           slug: string;
           owner_user_id: string;
           status?: "active" | "suspended" | "archived";
-          plan?: "starter" | "pro" | "agency";
+          plan?: "starter" | "growth" | "pro" | "agency" | "scale";
           created_at?: string;
           updated_at?: string;
         };
@@ -110,7 +110,7 @@ export interface Database {
           slug?: string;
           owner_user_id?: string;
           status?: "active" | "suspended" | "archived";
-          plan?: "starter" | "pro" | "agency";
+          plan?: "starter" | "growth" | "pro" | "agency" | "scale";
           created_at?: string;
           updated_at?: string;
         };
@@ -455,7 +455,7 @@ export interface Database {
           primary_domain: string | null;
           subdomain: string;
           published_version_id: string | null;
-          status: "draft" | "published" | "suspended";
+          status: "draft" | "published" | "suspended" | "archived";
           created_at: string;
           updated_at: string;
         };
@@ -465,7 +465,7 @@ export interface Database {
           primary_domain?: string | null;
           subdomain: string;
           published_version_id?: string | null;
-          status?: "draft" | "published" | "suspended";
+          status?: "draft" | "published" | "suspended" | "archived";
           created_at?: string;
           updated_at?: string;
         };
@@ -475,7 +475,7 @@ export interface Database {
           primary_domain?: string | null;
           subdomain?: string;
           published_version_id?: string | null;
-          status?: "draft" | "published" | "suspended";
+          status?: "draft" | "published" | "suspended" | "archived";
           created_at?: string;
           updated_at?: string;
         };
@@ -778,6 +778,154 @@ export interface Database {
           created_at?: string;
         };
         Relationships: [];
+      };
+
+      subscriptions: {
+        Row: {
+          id: string;
+          workspace_id: string;
+          plan_id: string;
+          status: "active" | "trialing" | "past_due" | "grace_period" | "canceled";
+          current_period_start: string;
+          current_period_end: string;
+          grace_period_end: string | null;
+          provider_reference: string | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          workspace_id: string;
+          plan_id: string;
+          status?: "active" | "trialing" | "past_due" | "grace_period" | "canceled";
+          current_period_start?: string;
+          current_period_end?: string;
+          grace_period_end?: string | null;
+          provider_reference?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          workspace_id?: string;
+          plan_id?: string;
+          status?: "active" | "trialing" | "past_due" | "grace_period" | "canceled";
+          current_period_start?: string;
+          current_period_end?: string;
+          grace_period_end?: string | null;
+          provider_reference?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "subscriptions_workspace_id_fkey";
+            columns: ["workspace_id"];
+            isOneToOne: true;
+            referencedRelation: "workspaces";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+
+      entitlement_overrides: {
+        Row: {
+          id: string;
+          workspace_id: string | null;
+          business_id: string | null;
+          feature_key: string;
+          is_enabled: boolean;
+          expires_at: string | null;
+          reason: string | null;
+          granted_by: string | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          workspace_id?: string | null;
+          business_id?: string | null;
+          feature_key: string;
+          is_enabled?: boolean;
+          expires_at?: string | null;
+          reason?: string | null;
+          granted_by?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          workspace_id?: string | null;
+          business_id?: string | null;
+          feature_key?: string;
+          is_enabled?: boolean;
+          expires_at?: string | null;
+          reason?: string | null;
+          granted_by?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "entitlement_overrides_workspace_id_fkey";
+            columns: ["workspace_id"];
+            isOneToOne: false;
+            referencedRelation: "workspaces";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "entitlement_overrides_business_id_fkey";
+            columns: ["business_id"];
+            isOneToOne: false;
+            referencedRelation: "businesses";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+
+      capacity_overrides: {
+        Row: {
+          id: string;
+          workspace_id: string;
+          metric: string;
+          additional_capacity: number;
+          expires_at: string | null;
+          reason: string | null;
+          granted_by: string | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          workspace_id: string;
+          metric: string;
+          additional_capacity?: number;
+          expires_at?: string | null;
+          reason?: string | null;
+          granted_by?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          workspace_id?: string;
+          metric?: string;
+          additional_capacity?: number;
+          expires_at?: string | null;
+          reason?: string | null;
+          granted_by?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "capacity_overrides_workspace_id_fkey";
+            columns: ["workspace_id"];
+            isOneToOne: false;
+            referencedRelation: "workspaces";
+            referencedColumns: ["id"];
+          },
+        ];
       };
     };
     Views: {

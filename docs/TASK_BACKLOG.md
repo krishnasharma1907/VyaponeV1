@@ -200,13 +200,13 @@
 
 **Status:** `DONE`
 
-### [ ] VO-026 — Implement plans, entitlements and capacity service
+### [x] VO-026 — Implement plans, entitlements and capacity service
 
 **Scope:** Create plan/feature entitlement model, website-slot counts, usage quotas and server enforcement. Treat pricing/caps as configurable hypotheses until approved.
 
 **Acceptance:** Server rejects over-limit operations; drafts/live sites and archived sites follow documented rules.
 
-**Status:** `NOT_STARTED`
+**Status:** `DONE`
 
 ### [ ] VO-027 — Implement team invitations and membership lifecycle
 

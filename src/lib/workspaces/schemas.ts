@@ -29,7 +29,7 @@ export const createWorkspaceSchema = z.object({
     .min(2, "Slug must be at least 2 characters")
     .max(50, "Slug must be under 50 characters")
     .optional(),
-  plan: z.enum(["starter", "pro", "agency"]).default("starter"),
+  plan: z.enum(["starter", "growth", "pro", "agency", "scale"]).default("starter"),
 });
 
 export const updateWorkspaceProfileSchema = z.object({
