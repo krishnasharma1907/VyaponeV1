@@ -6,13 +6,32 @@
 --        Least-privilege SQL grants, Resilient profile creation, Collision safety.
 -- ==============================================================================
 
--- 1. Revoke all write privileges from anon role on auth profile tables
--- An unauthenticated client must NEVER have direct INSERT, UPDATE, or DELETE privileges
--- on public.users or public.user_auth_identities.
-REVOKE INSERT, UPDATE, DELETE, TRUNCATE ON public.users FROM anon;
-REVOKE INSERT, UPDATE, DELETE, TRUNCATE ON public.user_auth_identities FROM anon;
+-- 1. Revoke write privileges from anon across ALL public tables
+REVOKE INSERT, UPDATE, DELETE, TRUNCATE ON ALL TABLES IN SCHEMA public FROM anon;
 
--- 2. Restrict INSERT and UPDATE on public.users strictly to authenticated user's own row
+-- 2. Revoke SELECT privileges from anon on all private / tenant tables
+-- Retains SELECT on sites and catalogue_items for public web storefront browsing.
+REVOKE SELECT ON public.audit_logs, public.bills, public.invoice_sequences,
+                 public.customers, public.orders, public.users,
+                 public.user_auth_identities, public.workspace_invitations,
+                 public.workspace_members, public.workspaces,
+                 public.business_members, public.businesses, public.locations
+FROM anon;
+
+GRANT SELECT ON public.sites, public.catalogue_items TO anon;
+
+-- 3. Revoke excessive maintenance privileges (TRUNCATE, TRIGGER) from authenticated
+REVOKE TRUNCATE, TRIGGER ON ALL TABLES IN SCHEMA public FROM authenticated;
+
+-- 4. Scope supabase_auth_admin privileges strictly to auth profile provisioning
+REVOKE ALL ON ALL TABLES IN SCHEMA public FROM supabase_auth_admin;
+GRANT SELECT, INSERT, UPDATE ON public.users, public.user_auth_identities TO supabase_auth_admin;
+GRANT USAGE ON SCHEMA public TO supabase_auth_admin;
+
+-- 5. Harden default privileges for future tables
+ALTER DEFAULT PRIVILEGES IN SCHEMA public REVOKE INSERT, UPDATE, DELETE, TRUNCATE ON TABLES FROM anon;
+
+-- 6. Restrict INSERT and UPDATE on public.users strictly to authenticated user's own row
 DROP POLICY IF EXISTS "users_insert_policy" ON public.users;
 CREATE POLICY "users_insert_policy" ON public.users
     FOR INSERT
@@ -26,7 +45,7 @@ CREATE POLICY "users_update_policy" ON public.users
     USING (id = auth.uid())
     WITH CHECK (id = auth.uid());
 
--- 3. Restrict INSERT and UPDATE on public.user_auth_identities strictly to authenticated user
+-- 7. Restrict INSERT and UPDATE on public.user_auth_identities strictly to authenticated user
 DROP POLICY IF EXISTS "user_auth_identities_insert_policy" ON public.user_auth_identities;
 CREATE POLICY "user_auth_identities_insert_policy" ON public.user_auth_identities
     FOR INSERT
@@ -40,9 +59,10 @@ CREATE POLICY "user_auth_identities_update_policy" ON public.user_auth_identitie
     USING (user_id = auth.uid())
     WITH CHECK (user_id = auth.uid());
 
--- 4. Hardened, Resilient Auth Trigger Function
+-- 8. Hardened, Resilient Auth Trigger Function
 -- - Runs as SECURITY DEFINER owned by postgres (bypasses RLS naturally without FORCE RLS)
 -- - Explicit search_path = public, pg_catalog protects against search_path hijacking
+-- - Uses standard SQL constructs (coalesce, nullif, trim) to prevent SQLSTATE 42883
 -- - Proactively checks and resolves phone collisions so registration never crashes or orphans users
 -- - Implements fallback bootstrap guarantee in EXCEPTION block so an Auth user is never left without a profile
 CREATE OR REPLACE FUNCTION public.handle_new_auth_user()
@@ -54,22 +74,22 @@ DECLARE
     v_existing_id UUID;
 BEGIN
     -- 1. Sanitize and extract display name
-    v_display_name := pg_catalog.coalesce(
-        pg_catalog.nullif(pg_catalog.trim(NEW.raw_user_meta_data->>'display_name'), ''),
-        pg_catalog.nullif(pg_catalog.trim(NEW.raw_user_meta_data->>'full_name'), ''),
-        pg_catalog.nullif(pg_catalog.trim(pg_catalog.split_part(NEW.email, '@', 1)), ''),
-        pg_catalog.nullif(pg_catalog.trim(NEW.phone), ''),
+    v_display_name := coalesce(
+        nullif(trim(NEW.raw_user_meta_data->>'display_name'), ''),
+        nullif(trim(NEW.raw_user_meta_data->>'full_name'), ''),
+        nullif(trim(split_part(NEW.email, '@', 1)), ''),
+        nullif(trim(NEW.phone), ''),
         'VyapOne User'
     );
 
-    v_preferred_lang := pg_catalog.coalesce(
-        pg_catalog.nullif(pg_catalog.trim(NEW.raw_user_meta_data->>'preferred_language'), ''),
+    v_preferred_lang := coalesce(
+        nullif(trim(NEW.raw_user_meta_data->>'preferred_language'), ''),
         'en'
     );
 
-    v_phone := pg_catalog.coalesce(
-        pg_catalog.nullif(pg_catalog.trim(NEW.phone), ''),
-        pg_catalog.nullif(pg_catalog.trim(NEW.raw_user_meta_data->>'phone'), '')
+    v_phone := coalesce(
+        nullif(trim(NEW.phone), ''),
+        nullif(trim(NEW.raw_user_meta_data->>'phone'), '')
     );
 
     -- 2. Guard against phone number collision with another user
@@ -103,14 +123,14 @@ BEGIN
         v_phone,
         'active',
         v_preferred_lang,
-        pg_catalog.now(),
-        pg_catalog.now()
+        now(),
+        now()
     )
     ON CONFLICT (id) DO UPDATE SET
-        display_name = pg_catalog.coalesce(EXCLUDED.display_name, public.users.display_name),
-        email = pg_catalog.coalesce(EXCLUDED.email, public.users.email),
-        phone_number = pg_catalog.coalesce(EXCLUDED.phone_number, public.users.phone_number),
-        updated_at = pg_catalog.now();
+        display_name = coalesce(EXCLUDED.display_name, public.users.display_name),
+        email = coalesce(EXCLUDED.email, public.users.email),
+        phone_number = coalesce(EXCLUDED.phone_number, public.users.phone_number),
+        updated_at = now();
 
     -- 4. Upsert phone identity if valid and non-colliding
     IF v_phone IS NOT NULL AND v_phone <> '' THEN
@@ -126,10 +146,10 @@ BEGIN
             'phone_otp',
             v_phone,
             NEW.phone_confirmed_at,
-            pg_catalog.now()
+            now()
         )
         ON CONFLICT (provider, identifier) DO UPDATE SET
-            verified_at = pg_catalog.coalesce(EXCLUDED.verified_at, public.user_auth_identities.verified_at);
+            verified_at = coalesce(EXCLUDED.verified_at, public.user_auth_identities.verified_at);
     END IF;
 
     -- 5. Upsert email identity if present
@@ -146,10 +166,10 @@ BEGIN
             'email_password',
             NEW.email,
             NEW.email_confirmed_at,
-            pg_catalog.now()
+            now()
         )
         ON CONFLICT (provider, identifier) DO UPDATE SET
-            verified_at = pg_catalog.coalesce(EXCLUDED.verified_at, public.user_auth_identities.verified_at);
+            verified_at = coalesce(EXCLUDED.verified_at, public.user_auth_identities.verified_at);
     END IF;
 
     RETURN NEW;
@@ -158,7 +178,7 @@ EXCEPTION WHEN OTHERS THEN
     RAISE WARNING 'handle_new_auth_user error: %, SQLSTATE: %', SQLERRM, SQLSTATE;
     BEGIN
         INSERT INTO public.users (id, display_name, email, status, preferred_language, created_at, updated_at)
-        VALUES (NEW.id, 'VyapOne User', NEW.email, 'active', 'en', pg_catalog.now(), pg_catalog.now())
+        VALUES (NEW.id, 'VyapOne User', NEW.email, 'active', 'en', now(), now())
         ON CONFLICT (id) DO NOTHING;
     EXCEPTION WHEN OTHERS THEN
         NULL;
@@ -167,7 +187,7 @@ EXCEPTION WHEN OTHERS THEN
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, pg_catalog;
 
--- 5. Restrict trigger execution privileges (least privilege)
+-- 9. Restrict trigger execution privileges (least privilege)
 REVOKE ALL ON FUNCTION public.handle_new_auth_user() FROM PUBLIC;
 REVOKE ALL ON FUNCTION public.handle_new_auth_user() FROM anon;
 REVOKE ALL ON FUNCTION public.handle_new_auth_user() FROM authenticated;

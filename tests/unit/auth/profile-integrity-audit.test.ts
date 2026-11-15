@@ -256,24 +256,42 @@ describe("Auth Trigger & Profile Integrity Security Audit", () => {
 
     const sql = fs.readFileSync(migrationPath, "utf8");
 
-    // 1. Must explicitly revoke write permissions from anon
-    expect(sql).toContain("REVOKE INSERT, UPDATE, DELETE, TRUNCATE ON public.users FROM anon;");
+    // 1. Must explicitly revoke write permissions from anon across all tables
     expect(sql).toContain(
-      "REVOKE INSERT, UPDATE, DELETE, TRUNCATE ON public.user_auth_identities FROM anon;",
+      "REVOKE INSERT, UPDATE, DELETE, TRUNCATE ON ALL TABLES IN SCHEMA public FROM anon;",
+    );
+    expect(sql).toContain(
+      "ALTER DEFAULT PRIVILEGES IN SCHEMA public REVOKE INSERT, UPDATE, DELETE, TRUNCATE ON TABLES FROM anon;",
     );
 
-    // 2. Must restrict INSERT strictly to authenticated user's own id
+    // 2. Must revoke truncate and trigger from authenticated
+    expect(sql).toContain(
+      "REVOKE TRUNCATE, TRIGGER ON ALL TABLES IN SCHEMA public FROM authenticated;",
+    );
+
+    // 3. Must scope supabase_auth_admin privileges
+    expect(sql).toContain(
+      "GRANT SELECT, INSERT, UPDATE ON public.users, public.user_auth_identities TO supabase_auth_admin;",
+    );
+    expect(sql).toContain("GRANT USAGE ON SCHEMA public TO supabase_auth_admin;");
+
+    // 4. Must restrict INSERT strictly to authenticated user's own id
     expect(sql).toContain("TO authenticated");
     expect(sql).toContain("WITH CHECK (id = auth.uid())");
     expect(sql).not.toContain("auth.uid() IS NULL"); // Unauthenticated bypass must NOT be in the RLS policy
 
-    // 3. Must restrict handle_new_auth_user execution privileges
+    // 5. Must restrict handle_new_auth_user execution privileges
     expect(sql).toContain("REVOKE ALL ON FUNCTION public.handle_new_auth_user() FROM anon;");
     expect(sql).toContain(
       "GRANT EXECUTE ON FUNCTION public.handle_new_auth_user() TO postgres, supabase_auth_admin, service_role;",
     );
 
-    // 4. Must specify safe explicit search path
+    // 6. Must specify safe explicit search path
     expect(sql).toContain("SET search_path = public, pg_catalog");
+
+    // 7. Must avoid invalid pg_catalog prefixes on SQL-standard constructs
+    expect(sql).not.toContain("pg_catalog.nullif");
+    expect(sql).not.toContain("pg_catalog.trim");
+    expect(sql).not.toContain("pg_catalog.coalesce");
   });
 });
