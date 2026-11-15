@@ -247,7 +247,7 @@ describe("Auth Trigger & Profile Integrity Security Audit", () => {
     expect((insertedUsers[0] as { id: string }).id).toBe(mockUser.id);
   });
 
-  it("8. SQL Migrations strictly enforce least privilege and prevent anonymous writes", () => {
+  it("8. SQL Migrations strictly enforce least privilege and prevent unauthorized writes", () => {
     const migrationPath = path.join(
       process.cwd(),
       "supabase/migrations/20261115000002_harden_auth_trigger_and_profile_rls.sql",
@@ -256,42 +256,88 @@ describe("Auth Trigger & Profile Integrity Security Audit", () => {
 
     const sql = fs.readFileSync(migrationPath, "utf8");
 
-    // 1. Must explicitly revoke write permissions from anon across all tables
+    // 1. Must explicitly revoke all permissions from anon & PUBLIC across all tables
+    expect(sql).toContain("REVOKE ALL ON ALL TABLES IN SCHEMA public FROM anon, PUBLIC;");
     expect(sql).toContain(
-      "REVOKE INSERT, UPDATE, DELETE, TRUNCATE ON ALL TABLES IN SCHEMA public FROM anon;",
-    );
-    expect(sql).toContain(
-      "ALTER DEFAULT PRIVILEGES IN SCHEMA public REVOKE INSERT, UPDATE, DELETE, TRUNCATE ON TABLES FROM anon;",
+      "ALTER DEFAULT PRIVILEGES IN SCHEMA public REVOKE ALL ON TABLES FROM anon, PUBLIC;",
     );
 
     // 2. Must revoke truncate and trigger from authenticated
     expect(sql).toContain(
-      "REVOKE TRUNCATE, TRIGGER ON ALL TABLES IN SCHEMA public FROM authenticated;",
+      "REVOKE TRUNCATE, TRIGGER ON ALL TABLES IN SCHEMA public FROM authenticated, anon, PUBLIC;",
     );
 
-    // 3. Must scope supabase_auth_admin privileges
+    // 3. Must protect audit logs as append-only
+    expect(sql).toContain(
+      "REVOKE UPDATE, DELETE, TRUNCATE ON public.audit_logs FROM authenticated, anon, PUBLIC;",
+    );
+
+    // 4. Must enforce column-level privileges on public.users
+    expect(sql).toContain("REVOKE ALL ON public.users FROM anon, authenticated, PUBLIC;");
+    expect(sql).toContain("GRANT SELECT ON public.users TO authenticated;");
+    expect(sql).toContain(
+      "GRANT UPDATE (display_name, preferred_language) ON public.users TO authenticated;",
+    );
+
+    // 5. Must enforce strict privilege protection on user_auth_identities
+    expect(sql).toContain(
+      "REVOKE ALL ON public.user_auth_identities FROM anon, authenticated, PUBLIC;",
+    );
+    expect(sql).toContain("GRANT SELECT ON public.user_auth_identities TO authenticated;");
+
+    // 6. Must scope supabase_auth_admin privileges
     expect(sql).toContain(
       "GRANT SELECT, INSERT, UPDATE ON public.users, public.user_auth_identities TO supabase_auth_admin;",
     );
     expect(sql).toContain("GRANT USAGE ON SCHEMA public TO supabase_auth_admin;");
 
-    // 4. Must restrict INSERT strictly to authenticated user's own id
-    expect(sql).toContain("TO authenticated");
-    expect(sql).toContain("WITH CHECK (id = auth.uid())");
-    expect(sql).not.toContain("auth.uid() IS NULL"); // Unauthenticated bypass must NOT be in the RLS policy
-
-    // 5. Must restrict handle_new_auth_user execution privileges
+    // 7. Must restrict handle_new_auth_user execution privileges
+    expect(sql).toContain("REVOKE ALL ON FUNCTION public.handle_new_auth_user() FROM PUBLIC;");
     expect(sql).toContain("REVOKE ALL ON FUNCTION public.handle_new_auth_user() FROM anon;");
     expect(sql).toContain(
       "GRANT EXECUTE ON FUNCTION public.handle_new_auth_user() TO postgres, supabase_auth_admin, service_role;",
     );
 
-    // 6. Must specify safe explicit search path
-    expect(sql).toContain("SET search_path = public, pg_catalog");
+    // 8. Must use SET search_path = '' for SECURITY DEFINER functions
+    expect(sql).toContain("SET search_path = ''");
 
-    // 7. Must avoid invalid pg_catalog prefixes on SQL-standard constructs
-    expect(sql).not.toContain("pg_catalog.nullif");
-    expect(sql).not.toContain("pg_catalog.trim");
-    expect(sql).not.toContain("pg_catalog.coalesce");
+    // 9. Must protect against identity hijacking with explicit user_id equality check
+    expect(sql).toContain("WHERE public.user_auth_identities.user_id = EXCLUDED.user_id;");
+
+    // 10. Must provide secure ensure_user_profile RPC for profile recovery
+    expect(sql).toContain("CREATE OR REPLACE FUNCTION public.ensure_user_profile(");
+    expect(sql).toContain(
+      "GRANT EXECUTE ON FUNCTION public.ensure_user_profile(pg_catalog.text, pg_catalog.text) TO authenticated, service_role;",
+    );
+  });
+
+  it("9. ensureUserProfile preferentially recovers profiles via secure RPC", async () => {
+    const rpcMock = vi.fn(async () => ({
+      data: { success: true, user_id: mockUser.id },
+      error: null,
+    }));
+
+    const mockClient = {
+      from: vi.fn(() => ({
+        select: vi.fn(() => ({
+          eq: vi.fn(() => ({
+            maybeSingle: vi.fn(async () => ({ data: null, error: null })),
+          })),
+        })),
+        insert: vi.fn(async () => ({ error: null })),
+      })),
+      rpc: rpcMock,
+    } as unknown as SupabaseClient<Database>;
+
+    const result = await ensureUserProfile(mockClient, mockUser, {
+      fullName: "Recovered User",
+      preferredLanguage: "hi",
+    });
+
+    expect(result.success).toBe(true);
+    expect(rpcMock).toHaveBeenCalledWith("ensure_user_profile", {
+      p_display_name: "Recovered User",
+      p_preferred_language: "hi",
+    });
   });
 });

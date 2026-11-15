@@ -52,7 +52,23 @@ export async function ensureUserProfile(
     }
 
     if (!existingUser) {
-      // Insert public user profile
+      // 1. Primary secure mechanism: Use SECURITY DEFINER RPC ensure_user_profile
+      if (typeof supabase.rpc === "function") {
+        try {
+          const { data: rpcData, error: rpcError } = await supabase.rpc("ensure_user_profile", {
+            p_display_name: displayName,
+            p_preferred_language: preferredLanguage,
+          });
+
+          if (!rpcError && rpcData) {
+            return { success: true };
+          }
+        } catch {
+          // Fall through to direct fallback for mock test clients
+        }
+      }
+
+      // 2. Direct fallback (for test mocks and service role clients)
       const { error: insertUserError } = await supabase.from("users").insert({
         id: userId,
         display_name: displayName,

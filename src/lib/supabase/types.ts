@@ -1005,6 +1005,13 @@ export interface Database {
         };
         Returns: boolean;
       };
+      ensure_user_profile: {
+        Args: {
+          p_display_name?: string | null;
+          p_preferred_language?: string | null;
+        };
+        Returns: Json;
+      };
     };
     Enums: {
       [_ in never]: never;
