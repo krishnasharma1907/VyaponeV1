@@ -63,7 +63,23 @@ export async function ensureUserProfile(
       });
 
       if (insertUserError) {
-        return { success: false, error: insertUserError.message };
+        // If the error was due to a phone collision with an existing account, retry without phone
+        if (phone && insertUserError.message?.toLowerCase().includes("users_phone_number_key")) {
+          const { error: retryError } = await supabase.from("users").insert({
+            id: userId,
+            display_name: displayName,
+            email: email,
+            phone_number: null,
+            status: "active",
+            preferred_language: preferredLanguage,
+          });
+
+          if (retryError) {
+            return { success: false, error: retryError.message };
+          }
+        } else {
+          return { success: false, error: insertUserError.message };
+        }
       }
     }
 
