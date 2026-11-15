@@ -2064,6 +2064,7 @@ SECURITY DEFINER
 SET search_path = ''
 AS $$
 DECLARE
+    v_caller_id UUID;
     v_plan_id TEXT;
     v_base_limit INT := 0;
     v_override INT := 0;
@@ -2071,21 +2072,53 @@ DECLARE
     v_current INT := 0;
     v_now TIMESTAMPTZ := pg_catalog.now();
 BEGIN
-    -- 1. Transaction-scoped row lock on the workspace to serialize concurrent operations
+    -- 1. Caller Authorization (prevent cross-tenant snooping)
+    v_caller_id := auth.uid();
+    IF v_caller_id IS NULL THEN
+        IF current_user NOT IN ('postgres', 'service_role') THEN
+            RAISE EXCEPTION 'Unauthenticated execution' USING ERRCODE = '28000';
+        END IF;
+    ELSE
+        IF NOT EXISTS (
+            SELECT 1 FROM public.workspaces w
+            WHERE w.id = p_workspace_id AND w.owner_user_id = v_caller_id
+        ) AND NOT EXISTS (
+            SELECT 1 FROM public.workspace_members wm
+            WHERE wm.workspace_id = p_workspace_id 
+              AND wm.user_id = v_caller_id 
+              AND wm.status = 'active'
+        ) THEN
+            RAISE EXCEPTION 'Access denied to workspace %', p_workspace_id USING ERRCODE = '42501';
+        END IF;
+    END IF;
+
+    -- 2. Transaction-scoped row lock on the workspace to serialize concurrent operations
     PERFORM 1 FROM public.workspaces WHERE id = p_workspace_id FOR UPDATE;
 
-    -- 2. Resolve plan from active subscription or workspace plan attribute
-    SELECT coalesce(s.plan_id, w.plan) INTO v_plan_id
-    FROM public.workspaces w
-    LEFT JOIN public.subscriptions s ON s.workspace_id = w.id AND s.status IN ('active', 'trialing', 'past_due', 'grace_period')
-    WHERE w.id = p_workspace_id;
+    -- 3. Resolve plan from active/grace subscription or workspace plan fallback
+    SELECT s.plan_id INTO v_plan_id
+    FROM public.subscriptions s
+    WHERE s.workspace_id = p_workspace_id
+      AND (
+          s.status = 'active'
+          OR (s.status = 'trialing' AND (s.current_period_end IS NULL OR s.current_period_end > v_now))
+          OR (s.status = 'past_due' AND s.grace_period_end IS NOT NULL AND s.grace_period_end > v_now)
+          OR (s.status = 'grace_period' AND (s.grace_period_end IS NULL OR s.grace_period_end > v_now))
+      )
+    ORDER BY s.created_at DESC
+    LIMIT 1;
+
+    IF v_plan_id IS NULL THEN
+        SELECT plan INTO v_plan_id FROM public.workspaces WHERE id = p_workspace_id;
+    END IF;
 
     IF v_plan_id IS NULL THEN
         RETURN QUERY SELECT false, 0, 0, 0, 'Workspace not found';
         RETURN;
     END IF;
 
-    -- Normalize plan to base limits (PRD §9.1)
+    -- 4. Normalize canonical plan to base limits (PRD §9.1)
+    -- Unknown plans FAIL CLOSED per strict security invariants
     IF v_plan_id = 'starter' THEN
         IF p_metric = 'live_websites' THEN v_base_limit := 3;
         ELSIF p_metric = 'draft_websites' THEN v_base_limit := 10;
@@ -2115,16 +2148,12 @@ BEGIN
         ELSIF p_metric = 'catalogue_items_per_business' THEN v_base_limit := 5000;
         END IF;
     ELSE
-        -- Default starter
-        IF p_metric = 'live_websites' THEN v_base_limit := 3;
-        ELSIF p_metric = 'draft_websites' THEN v_base_limit := 10;
-        ELSIF p_metric = 'team_seats' THEN v_base_limit := 2;
-        ELSIF p_metric = 'locations_per_business' THEN v_base_limit := 1;
-        ELSIF p_metric = 'catalogue_items_per_business' THEN v_base_limit := 50;
-        END IF;
+        -- Unknown plan ID: FAIL CLOSED
+        RETURN QUERY SELECT false, 0, 0, 0, 'Unknown or unsupported plan identifier: ' || coalesce(v_plan_id, 'none');
+        RETURN;
     END IF;
 
-    -- 3. Check capacity overrides
+    -- 5. Check capacity overrides
     SELECT coalesce(additional_capacity, 0) INTO v_override
     FROM public.capacity_overrides
     WHERE workspace_id = p_workspace_id
@@ -2133,8 +2162,9 @@ BEGIN
 
     v_effective_limit := v_base_limit + v_override;
 
-    -- 4. Count current live/draft sites or team seats
+    -- 6. Count current live/draft sites or team seats (PRD §9.2 Counting Rules)
     IF p_metric = 'live_websites' THEN
+        -- Distinct live businesses (archived businesses excluded)
         SELECT count(DISTINCT s.business_id)::INT INTO v_current
         FROM public.sites s
         JOIN public.businesses b ON b.id = s.business_id
@@ -2155,7 +2185,7 @@ BEGIN
           AND status = 'active';
     END IF;
 
-    -- 5. Evaluate remaining capacity
+    -- 7. Evaluate remaining capacity
     IF v_current + p_requested_quantity > v_effective_limit THEN
         RETURN QUERY SELECT
             false,
@@ -2188,13 +2218,17 @@ SECURITY DEFINER
 SET search_path = ''
 AS $$
 DECLARE
+    v_caller_id UUID;
+    v_business_id UUID;
     v_workspace_id UUID;
     v_current_status TEXT;
+    v_biz_status TEXT;
     v_allowed BOOLEAN;
     v_reason TEXT;
 BEGIN
-    -- 1. Fetch site and parent workspace
-    SELECT b.workspace_id, s.status INTO v_workspace_id, v_current_status
+    -- 1. Fetch site, business, and parent workspace
+    SELECT s.business_id, s.status, b.workspace_id, b.status
+    INTO v_business_id, v_current_status, v_workspace_id, v_biz_status
     FROM public.sites s
     JOIN public.businesses b ON b.id = s.business_id
     WHERE s.id = p_site_id;
@@ -2204,21 +2238,60 @@ BEGIN
         RETURN;
     END IF;
 
-    -- If already in target status, idempotent success
+    -- 2. Caller Authorization
+    v_caller_id := auth.uid();
+    IF v_caller_id IS NULL THEN
+        IF current_user NOT IN ('postgres', 'service_role') THEN
+            RAISE EXCEPTION 'Unauthenticated execution' USING ERRCODE = '28000';
+        END IF;
+    ELSE
+        IF NOT EXISTS (
+            SELECT 1 FROM public.workspaces w
+            WHERE w.id = v_workspace_id AND w.owner_user_id = v_caller_id
+        ) AND NOT EXISTS (
+            SELECT 1 FROM public.workspace_members wm
+            WHERE wm.workspace_id = v_workspace_id 
+              AND wm.user_id = v_caller_id 
+              AND wm.status = 'active'
+        ) AND NOT EXISTS (
+            SELECT 1 FROM public.business_members bm
+            WHERE bm.business_id = v_business_id
+              AND bm.user_id = v_caller_id
+              AND bm.role IN ('owner', 'admin')
+        ) THEN
+            RAISE EXCEPTION 'Access denied to site %', p_site_id USING ERRCODE = '42501';
+        END IF;
+    END IF;
+
+    -- 3. Invariant: Archived businesses cannot publish or modify storefronts
+    IF v_biz_status = 'archived' THEN
+        RETURN QUERY SELECT false, v_current_status, 'Cannot modify site for an archived business'::TEXT;
+        RETURN;
+    END IF;
+
+    -- 4. If already in target status, idempotent success
     IF v_current_status = p_target_status THEN
         RETURN QUERY SELECT true, v_current_status, 'Already in target status'::TEXT;
         RETURN;
     END IF;
 
-    -- Archiving or suspending is always permitted and frees capacity (PRD §9.2)
+    -- 5. Archiving or suspending is always permitted and frees capacity (PRD §9.2)
     IF p_target_status IN ('archived', 'suspended') THEN
         UPDATE public.sites SET status = p_target_status, updated_at = pg_catalog.now() WHERE id = p_site_id;
         RETURN QUERY SELECT true, p_target_status, 'Status updated'::TEXT;
         RETURN;
     END IF;
 
-    -- 2. If publishing, lock workspace and check capacity atomically
+    -- 6. If publishing: acquire workspace lock, check capacity, and mutate in the same transaction
     IF p_target_status = 'published' THEN
+        -- Unpublish any existing published site for the same business (1 live site per business)
+        UPDATE public.sites
+        SET status = 'draft', updated_at = pg_catalog.now()
+        WHERE business_id = v_business_id
+          AND status = 'published'
+          AND id <> p_site_id;
+
+        -- Lock workspace & check live website capacity
         SELECT c.allowed, c.reason INTO v_allowed, v_reason
         FROM public.assert_and_lock_workspace_capacity(v_workspace_id, 'live_websites', 1) c;
 
@@ -2227,12 +2300,17 @@ BEGIN
             RETURN;
         END IF;
 
-        UPDATE public.sites SET status = 'published', updated_at = pg_catalog.now() WHERE id = p_site_id;
+        UPDATE public.sites 
+        SET status = 'published', 
+            published_at = coalesce(published_at, pg_catalog.now()),
+            updated_at = pg_catalog.now() 
+        WHERE id = p_site_id;
+
         RETURN QUERY SELECT true, 'published'::TEXT, 'Site published successfully'::TEXT;
         RETURN;
     END IF;
 
-    -- 3. If restoring archived to draft, check draft capacity atomically
+    -- 7. If restoring archived to draft: check draft capacity atomically
     IF p_target_status = 'draft' AND v_current_status = 'archived' THEN
         SELECT c.allowed, c.reason INTO v_allowed, v_reason
         FROM public.assert_and_lock_workspace_capacity(v_workspace_id, 'draft_websites', 1) c;
@@ -2252,12 +2330,65 @@ BEGIN
 END;
 $$;
 
+-- ------------------------------------------------------------------------------
+-- Direct Mutation Trigger Guard (Zero-Bypass Capacity Defense)
+-- ------------------------------------------------------------------------------
+CREATE OR REPLACE FUNCTION public.check_site_publish_capacity_trigger()
+RETURNS TRIGGER
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+    v_workspace_id UUID;
+    v_biz_status TEXT;
+    v_allowed BOOLEAN;
+    v_reason TEXT;
+BEGIN
+    IF NEW.status = 'published' AND (OLD.status IS NULL OR OLD.status <> 'published') THEN
+        SELECT b.workspace_id, b.status INTO v_workspace_id, v_biz_status
+        FROM public.businesses b
+        WHERE b.id = NEW.business_id;
+
+        IF v_biz_status = 'archived' THEN
+            RAISE EXCEPTION 'Cannot publish site for an archived business' USING ERRCODE = 'P0004';
+        END IF;
+
+        -- Unpublish other sites for this business to uphold PRD §9.2 rule 1
+        UPDATE public.sites
+        SET status = 'draft', updated_at = pg_catalog.now()
+        WHERE business_id = NEW.business_id
+          AND status = 'published'
+          AND id <> NEW.id;
+
+        -- Validate capacity with workspace row lock
+        SELECT c.allowed, c.reason INTO v_allowed, v_reason
+        FROM public.assert_and_lock_workspace_capacity(v_workspace_id, 'live_websites', 1) c;
+
+        IF NOT v_allowed THEN
+            RAISE EXCEPTION '%', v_reason USING ERRCODE = 'P0003';
+        END IF;
+    END IF;
+
+    RETURN NEW;
+END;
+$$;
+
+DROP TRIGGER IF EXISTS trg_check_site_publish_capacity ON public.sites;
+CREATE TRIGGER trg_check_site_publish_capacity
+    BEFORE INSERT OR UPDATE OF status ON public.sites
+    FOR EACH ROW
+    EXECUTE FUNCTION public.check_site_publish_capacity_trigger();
+
 -- Function Execution Privileges
 REVOKE ALL ON FUNCTION public.assert_and_lock_workspace_capacity(UUID, TEXT, INT) FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION public.assert_and_lock_workspace_capacity(UUID, TEXT, INT) TO authenticated, service_role;
 
 REVOKE ALL ON FUNCTION public.transition_site_status_atomic(UUID, TEXT) FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION public.transition_site_status_atomic(UUID, TEXT) TO authenticated, service_role;
+
+REVOKE ALL ON FUNCTION public.check_site_publish_capacity_trigger() FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.check_site_publish_capacity_trigger() TO postgres, service_role;
 
 
 -- ==============================================================================

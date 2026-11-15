@@ -64,6 +64,7 @@ export interface CapacityUsage {
   overrideCapacity: number;
   effectiveLimit: number;
   remaining: number;
+  isUnlimited: boolean;
   isExceeded: boolean;
 }
 

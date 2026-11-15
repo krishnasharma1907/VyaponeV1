@@ -1,6 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/lib/supabase/types";
-import { DEFAULT_PLAN_ID, normalizePlanId, PLANS } from "./constants";
+import { DEFAULT_PLAN_ID, parsePlanId, PLANS } from "./constants";
 import {
   CapacityExceededError,
   PlanEntitlementError,
@@ -42,6 +42,15 @@ export async function resolveWorkspacePlan(
     );
   }
 
+  const workspacePlanId = parsePlanId(workspace.plan);
+  if (!workspacePlanId) {
+    throw new PlanEntitlementError(
+      `Invalid or unknown workspace plan: ${workspace.plan}`,
+      "INVALID_PLAN_IDENTIFIER",
+      400,
+    );
+  }
+
   // 2. Fetch active subscription record if present
   const { data: subscription } = await supabase
     .from("subscriptions")
@@ -50,9 +59,18 @@ export async function resolveWorkspacePlan(
     .maybeSingle();
 
   let isGracePeriod = false;
-  let resolvedPlanId: PlanId = normalizePlanId(workspace.plan);
+  let resolvedPlanId: PlanId = workspacePlanId;
 
   if (subscription) {
+    const parsedSubPlan = parsePlanId(subscription.plan_id);
+    if (!parsedSubPlan) {
+      throw new PlanEntitlementError(
+        `Invalid or unknown subscription plan: ${subscription.plan_id}`,
+        "INVALID_PLAN_IDENTIFIER",
+        400,
+      );
+    }
+
     const now = new Date().toISOString();
     const isPastDue = subscription.status === "past_due";
     const inGrace =
@@ -61,15 +79,31 @@ export async function resolveWorkspacePlan(
 
     isGracePeriod = inGrace;
 
-    // If subscription is canceled, degrade to default starter plan
-    if (subscription.status === "canceled") {
-      resolvedPlanId = DEFAULT_PLAN_ID;
+    if (subscription.status === "active") {
+      resolvedPlanId = parsedSubPlan;
+    } else if (subscription.status === "trialing") {
+      if (!subscription.current_period_end || subscription.current_period_end > now) {
+        resolvedPlanId = parsedSubPlan;
+      } else {
+        // Trial expired: degrade to default starter plan
+        resolvedPlanId = DEFAULT_PLAN_ID;
+      }
+    } else if (inGrace) {
+      resolvedPlanId = parsedSubPlan;
     } else {
-      resolvedPlanId = normalizePlanId(subscription.plan_id);
+      // Canceled or expired grace period: degrade to default starter plan
+      resolvedPlanId = DEFAULT_PLAN_ID;
     }
   }
 
-  const plan = PLANS[resolvedPlanId] ?? PLANS[DEFAULT_PLAN_ID];
+  const plan = PLANS[resolvedPlanId];
+  if (!plan) {
+    throw new PlanEntitlementError(
+      `Resolved plan ${resolvedPlanId} is not configured`,
+      "INVALID_PLAN_IDENTIFIER",
+      500,
+    );
+  }
 
   return {
     plan,
@@ -341,6 +375,7 @@ export async function getCapacityUsage(
     overrideCapacity,
     effectiveLimit,
     remaining,
+    isUnlimited: false,
     isExceeded,
   };
 }
@@ -384,6 +419,7 @@ export async function assertCapacityAvailable(
           overrideCapacity: 0,
           effectiveLimit: result.effective_limit,
           remaining: result.remaining,
+          isUnlimited: false,
           isExceeded: false,
         };
       }

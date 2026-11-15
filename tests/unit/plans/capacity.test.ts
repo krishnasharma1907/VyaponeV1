@@ -764,5 +764,106 @@ describe("VO-026 Capacity Service & Counting Rules (§9.2)", () => {
       expect(usage.current).toBe(1);
       expect(usage.effectiveLimit).toBe(3);
     });
+
+    it("fails closed when workspace has an invalid or unknown plan ID", async () => {
+      const mockSupabase = {
+        from: vi.fn((table: string) => {
+          if (table === "workspaces") {
+            return {
+              select: vi.fn(() => ({
+                eq: vi.fn(() => ({
+                  maybeSingle: vi.fn(async () => ({
+                    data: {
+                      id: mockWorkspaceId,
+                      plan: "unsupported_enterprise_custom",
+                      status: "active",
+                    },
+                    error: null,
+                  })),
+                })),
+              })),
+            };
+          }
+          if (table === "subscriptions") {
+            return {
+              select: vi.fn(() => ({
+                eq: vi.fn(() => ({
+                  maybeSingle: vi.fn(async () => ({ data: null, error: null })),
+                })),
+              })),
+            };
+          }
+          return {};
+        }),
+      } as unknown as SupabaseClient<Database>;
+
+      await expect(
+        getCapacityUsage(mockSupabase, mockWorkspaceId, "live_websites"),
+      ).rejects.toThrow("Invalid or unknown workspace plan: unsupported_enterprise_custom");
+    });
+
+    it("excludes sites belonging to archived businesses from live website capacity", async () => {
+      const mockSupabase = {
+        from: vi.fn((table: string) => {
+          if (table === "workspaces") {
+            return {
+              select: vi.fn(() => ({
+                eq: vi.fn(() => ({
+                  maybeSingle: vi.fn(async () => ({
+                    data: { id: mockWorkspaceId, plan: "starter", status: "active" },
+                    error: null,
+                  })),
+                })),
+              })),
+            };
+          }
+          if (table === "subscriptions" || table === "capacity_overrides") {
+            return {
+              select: vi.fn(() => ({
+                eq: vi.fn(() => ({
+                  maybeSingle: vi.fn(async () => ({ data: null, error: null })),
+                  eq: vi.fn(() => ({
+                    maybeSingle: vi.fn(async () => ({ data: null, error: null })),
+                  })),
+                })),
+              })),
+            };
+          }
+          if (table === "businesses") {
+            return {
+              select: vi.fn(() => ({
+                eq: vi.fn(() => ({
+                  neq: vi.fn(async () => ({
+                    // Only biz-active is returned by .neq("status", "archived")
+                    data: [{ id: "biz-active" }],
+                    error: null,
+                  })),
+                })),
+              })),
+            };
+          }
+          if (table === "sites") {
+            return {
+              select: vi.fn(() => ({
+                in: vi.fn((_col: string, ids: string[]) => ({
+                  eq: vi.fn(async () => ({
+                    // Only sites belonging to active businesses are returned
+                    data: ids.includes("biz-active") ? [{ business_id: "biz-active" }] : [],
+                    error: null,
+                  })),
+                })),
+              })),
+            };
+          }
+          return {};
+        }),
+      } as unknown as SupabaseClient<Database>;
+
+      const usage = await getCapacityUsage(mockSupabase, mockWorkspaceId, "live_websites");
+      expect(usage.current).toBe(1);
+      expect(usage.baseLimit).toBe(3);
+      expect(usage.remaining).toBe(2);
+      expect(usage.isUnlimited).toBe(false);
+    });
   });
 });

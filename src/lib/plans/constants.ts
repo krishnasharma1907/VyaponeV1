@@ -154,13 +154,30 @@ export const PLANS: Record<PlanId, PlanDefinition> = {
 export const DEFAULT_PLAN_ID: PlanId = "starter";
 
 /**
- * Normalizes legacy plan keys (e.g. 'pro' -> 'growth') while maintaining backward compatibility.
+ * Checks whether a given string is a valid recognized plan identifier.
  */
-export function normalizePlanId(planId: string | null | undefined): PlanId {
-  if (!planId) return DEFAULT_PLAN_ID;
+export function isValidPlanId(planId: string | null | undefined): planId is PlanId {
+  if (!planId) return false;
+  return planId.toLowerCase() in PLANS;
+}
+
+/**
+ * Parses and returns the recognized PlanId, or null if unknown (fail-closed).
+ */
+export function parsePlanId(planId: string | null | undefined): PlanId | null {
+  if (!planId) return null;
   const lower = planId.toLowerCase();
   if (lower in PLANS) {
     return lower as PlanId;
   }
-  return DEFAULT_PLAN_ID;
+  return null;
+}
+
+/**
+ * Normalizes legacy plan keys (e.g. 'pro' -> 'growth') while maintaining backward compatibility.
+ */
+export function normalizePlanId(planId: string | null | undefined): PlanId {
+  if (!planId) return DEFAULT_PLAN_ID;
+  const parsed = parsePlanId(planId);
+  return parsed ?? DEFAULT_PLAN_ID;
 }
