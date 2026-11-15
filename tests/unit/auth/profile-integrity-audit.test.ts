@@ -259,7 +259,13 @@ describe("Auth Trigger & Profile Integrity Security Audit", () => {
     // 1. Must explicitly revoke all permissions from anon & PUBLIC across all tables
     expect(sql).toContain("REVOKE ALL ON ALL TABLES IN SCHEMA public FROM anon, PUBLIC;");
     expect(sql).toContain(
-      "ALTER DEFAULT PRIVILEGES IN SCHEMA public REVOKE ALL ON TABLES FROM anon, PUBLIC;",
+      "ALTER DEFAULT PRIVILEGES IN SCHEMA public REVOKE ALL ON TABLES FROM anon, authenticated, PUBLIC;",
+    );
+    expect(sql).toContain(
+      "ALTER DEFAULT PRIVILEGES IN SCHEMA public REVOKE ALL ON SEQUENCES FROM anon, authenticated, PUBLIC;",
+    );
+    expect(sql).toContain(
+      "ALTER DEFAULT PRIVILEGES IN SCHEMA public REVOKE ALL ON ROUTINES FROM anon, PUBLIC;",
     );
 
     // 2. Must revoke truncate and trigger from authenticated
@@ -292,8 +298,9 @@ describe("Auth Trigger & Profile Integrity Security Audit", () => {
     expect(sql).toContain("GRANT USAGE ON SCHEMA public TO supabase_auth_admin;");
 
     // 7. Must restrict handle_new_auth_user execution privileges
-    expect(sql).toContain("REVOKE ALL ON FUNCTION public.handle_new_auth_user() FROM PUBLIC;");
-    expect(sql).toContain("REVOKE ALL ON FUNCTION public.handle_new_auth_user() FROM anon;");
+    expect(sql).toContain(
+      "REVOKE ALL ON FUNCTION public.handle_new_auth_user() FROM PUBLIC, anon, authenticated;",
+    );
     expect(sql).toContain(
       "GRANT EXECUTE ON FUNCTION public.handle_new_auth_user() TO postgres, supabase_auth_admin, service_role;",
     );
@@ -307,8 +314,19 @@ describe("Auth Trigger & Profile Integrity Security Audit", () => {
     // 10. Must provide secure ensure_user_profile RPC for profile recovery
     expect(sql).toContain("CREATE OR REPLACE FUNCTION public.ensure_user_profile(");
     expect(sql).toContain(
+      "REVOKE ALL ON FUNCTION public.ensure_user_profile(pg_catalog.text, pg_catalog.text) FROM PUBLIC, anon;",
+    );
+    expect(sql).toContain(
       "GRANT EXECUTE ON FUNCTION public.ensure_user_profile(pg_catalog.text, pg_catalog.text) TO authenticated, service_role;",
     );
+
+    // 11. Must eliminate dead users_delete_policy and avoid granting DELETE
+    expect(sql).toContain('DROP POLICY IF EXISTS "users_delete_policy" ON public.users;');
+    expect(sql).not.toContain('CREATE POLICY "users_delete_policy"');
+
+    // 12. Must provide safe user_directory projection view for team collaboration without contact PII
+    expect(sql).toContain("CREATE OR REPLACE VIEW public.user_directory AS");
+    expect(sql).toContain("GRANT SELECT ON public.user_directory TO authenticated;");
   });
 
   it("9. ensureUserProfile preferentially recovers profiles via secure RPC", async () => {
@@ -339,5 +357,85 @@ describe("Auth Trigger & Profile Integrity Security Audit", () => {
       p_display_name: "Recovered User",
       p_preferred_language: "hi",
     });
+  });
+
+  it("10. User directory projection view strictly protects contact PII (email, phone_number)", () => {
+    const migrationPath = path.join(
+      process.cwd(),
+      "supabase/migrations/20261115000002_harden_auth_trigger_and_profile_rls.sql",
+    );
+    const sql = fs.readFileSync(migrationPath, "utf8");
+
+    // Extract the VIEW definition
+    const viewMatch = sql.match(/CREATE OR REPLACE VIEW public\.user_directory AS([\s\S]*?);/);
+    expect(viewMatch).not.toBeNull();
+    const viewSql = viewMatch![1];
+
+    // Allowed non-sensitive projection columns
+    expect(viewSql).toContain("u.id");
+    expect(viewSql).toContain("u.display_name");
+    expect(viewSql).toContain("u.status");
+    expect(viewSql).toContain("u.preferred_language");
+
+    // Strictly forbidden PII columns in directory view
+    expect(viewSql).not.toContain("u.email");
+    expect(viewSql).not.toContain("u.phone_number");
+  });
+
+  it("11. Auth trigger propagates unexpected fatal errors atomically without silent suppression", () => {
+    const migrationPath = path.join(
+      process.cwd(),
+      "supabase/migrations/20261115000002_harden_auth_trigger_and_profile_rls.sql",
+    );
+    const sql = fs.readFileSync(migrationPath, "utf8");
+
+    // Extract trigger function body
+    const triggerMatch = sql.match(
+      /CREATE OR REPLACE FUNCTION public\.handle_new_auth_user\(\)[\s\S]*?\$\$(.*?)\$\$;/s,
+    );
+    expect(triggerMatch).not.toBeNull();
+    const triggerSql = triggerMatch![1];
+
+    // Must NOT contain silent error suppression (EXCEPTION WHEN OTHERS THEN ... RETURN NEW)
+    expect(triggerSql).not.toMatch(/EXCEPTION\s+WHEN\s+OTHERS\s+THEN[\s\S]*?RETURN\s+NEW;/i);
+  });
+
+  it("12. Identity conflict protection ensures existing user identity cannot be hijacked", () => {
+    const migrationPath = path.join(
+      process.cwd(),
+      "supabase/migrations/20261115000002_harden_auth_trigger_and_profile_rls.sql",
+    );
+    const sql = fs.readFileSync(migrationPath, "utf8");
+
+    // Both phone and email identity upserts must guard with user_id match
+    const identityUpsertMatches = [
+      ...sql.matchAll(
+        /ON CONFLICT \(provider, identifier\) DO UPDATE SET[\s\S]*?WHERE public\.user_auth_identities\.user_id = EXCLUDED\.user_id;/g,
+      ),
+    ];
+    // Both phone_otp and email_password upserts must have this guard
+    expect(identityUpsertMatches.length).toBeGreaterThanOrEqual(2);
+  });
+
+  it("13. Unexpected failure during ensureUserProfile returns safe failure without leaking sensitive internals", async () => {
+    const mockClient = {
+      from: vi.fn(() => ({
+        select: vi.fn(() => ({
+          eq: vi.fn(() => ({
+            maybeSingle: vi.fn(async () => {
+              throw new Error("Unexpected fatal connection drop");
+            }),
+          })),
+        })),
+      })),
+      rpc: vi.fn(async () => {
+        throw new Error("Unexpected fatal RPC failure");
+      }),
+    } as unknown as SupabaseClient<Database>;
+
+    const result = await ensureUserProfile(mockClient, mockUser);
+    expect(result.success).toBe(false);
+    expect(result.error).toBeDefined();
+    expect(result.error).toContain("Unexpected fatal");
   });
 });

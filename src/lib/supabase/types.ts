@@ -929,7 +929,15 @@ export interface Database {
       };
     };
     Views: {
-      [_ in never]: never;
+      user_directory: {
+        Row: {
+          id: string;
+          display_name: string;
+          status: string;
+          preferred_language: string;
+        };
+        Relationships: [];
+      };
     };
     Functions: {
       create_business_with_primary_location: {

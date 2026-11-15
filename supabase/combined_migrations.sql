@@ -2021,7 +2021,7 @@ CREATE POLICY "capacity_overrides_delete_policy" ON public.capacity_overrides
 
 
 -- ==============================================================================
--- 9. Section 9: Harden Auth Trigger, Prevent Anonymous RLS Insert & Profile Integrity
+-- 9. Section 9: Harden Auth Trigger, Prevent Anonymous Writes & Profile Integrity
 -- Migration: 20261115000002_harden_auth_trigger_and_profile_rls.sql
 -- ==============================================================================
 
@@ -2054,13 +2054,25 @@ REVOKE ALL ON ALL TABLES IN SCHEMA public FROM supabase_auth_admin;
 GRANT USAGE ON SCHEMA public TO supabase_auth_admin;
 GRANT SELECT, INSERT, UPDATE ON public.users, public.user_auth_identities TO supabase_auth_admin;
 
--- 8. Harden default privileges for future tables
-ALTER DEFAULT PRIVILEGES IN SCHEMA public REVOKE ALL ON TABLES FROM anon, PUBLIC;
-ALTER DEFAULT PRIVILEGES IN SCHEMA public REVOKE TRUNCATE, TRIGGER ON TABLES FROM authenticated;
+-- 8. Harden default privileges for future objects
+-- Explicit least privilege: revoke all default table, sequence, and routine privileges from anon, authenticated, and PUBLIC.
+-- Every future table must receive its own explicit GRANT and RLS policies in its feature migration.
+ALTER DEFAULT PRIVILEGES IN SCHEMA public REVOKE ALL ON TABLES FROM anon, authenticated, PUBLIC;
+ALTER DEFAULT PRIVILEGES IN SCHEMA public REVOKE ALL ON SEQUENCES FROM anon, authenticated, PUBLIC;
+ALTER DEFAULT PRIVILEGES IN SCHEMA public REVOKE ALL ON ROUTINES FROM anon, PUBLIC;
+ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON TABLES TO service_role;
+ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON SEQUENCES TO service_role;
+ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON ROUTINES TO service_role;
 
 -- 9. Row-Level Security Policies for public.users and public.user_auth_identities
 -- Drop direct INSERT policies (profile creation is governed by trigger and secure RPC)
 DROP POLICY IF EXISTS "users_insert_policy" ON public.users;
+
+-- Explicitly drop users_delete_policy.
+-- In VyapOne, hard deletion of user accounts by end-users is intentionally prohibited.
+-- User deactivation/suspension is performed via status transitions ('suspended').
+-- Sovereign data deletion is governed by administrative DPDP compliance workflows (VO-124).
+-- Because DELETE privilege is revoked from authenticated on public.users, no DELETE policy is created.
 DROP POLICY IF EXISTS "users_delete_policy" ON public.users;
 
 DROP POLICY IF EXISTS "users_update_policy" ON public.users;
@@ -2069,6 +2081,32 @@ CREATE POLICY "users_update_policy" ON public.users
     TO authenticated
     USING (id = auth.uid())
     WITH CHECK (id = auth.uid());
+
+-- Tighten users_select_policy:
+-- Users can always view their own profile.
+-- Workspace and Business owners/admins can view member profiles within their tenant.
+-- Regular peers cannot view other users' private contact details directly from public.users.
+DROP POLICY IF EXISTS "users_select_policy" ON public.users;
+CREATE POLICY "users_select_policy" ON public.users
+    FOR SELECT
+    TO authenticated
+    USING (
+        id = auth.uid() OR
+        EXISTS (
+            SELECT 1 FROM public.workspace_members wm_admin
+            JOIN public.workspace_members wm_target ON wm_target.workspace_id = wm_admin.workspace_id
+            WHERE wm_admin.user_id = auth.uid()
+              AND wm_admin.role IN ('owner', 'workspace_owner', 'admin', 'workspace_admin', 'reseller_owner', 'reseller_admin')
+              AND wm_target.user_id = public.users.id
+        ) OR
+        EXISTS (
+            SELECT 1 FROM public.business_members bm_admin
+            JOIN public.business_members bm_target ON bm_target.business_id = bm_admin.business_id
+            WHERE bm_admin.user_id = auth.uid()
+              AND bm_admin.role IN ('owner', 'manager')
+              AND bm_target.user_id = public.users.id
+        )
+    );
 
 DROP POLICY IF EXISTS "user_auth_identities_insert_policy" ON public.user_auth_identities;
 DROP POLICY IF EXISTS "user_auth_identities_update_policy" ON public.user_auth_identities;
@@ -2080,13 +2118,39 @@ CREATE POLICY "user_auth_identities_select_policy" ON public.user_auth_identitie
     TO authenticated
     USING (user_id = auth.uid());
 
--- 10. Hardened Auth Trigger Function
+-- 10. User Directory Projection View
+-- Exposes non-sensitive profile information for workspace and business team directories.
+-- Strictly omits private contact details (email, phone_number) from peer members.
+CREATE OR REPLACE VIEW public.user_directory AS
+SELECT
+    u.id,
+    u.display_name,
+    u.status,
+    u.preferred_language
+FROM public.users u
+WHERE
+    u.id = auth.uid() OR
+    EXISTS (
+        SELECT 1 FROM public.workspace_members wm
+        WHERE wm.user_id = u.id
+          AND public.is_workspace_member(wm.workspace_id, auth.uid())
+    ) OR
+    EXISTS (
+        SELECT 1 FROM public.business_members bm
+        WHERE bm.user_id = u.id
+          AND public.is_business_member(bm.business_id, auth.uid())
+    );
+
+GRANT SELECT ON public.user_directory TO authenticated;
+
+-- 11. Hardened Auth Trigger Function
 -- - SECURITY DEFINER owned by postgres (bypasses RLS naturally)
 -- - SET search_path = '' strictly protects against search_path hijacking
 -- - All relation and function references are schema-qualified
 -- - Standard SQL constructs (coalesce, nullif, trim) used without invalid pg_catalog prefix
 -- - Dual-check phone collision handling ensures duplicate phone numbers do not violate unique constraints
 -- - Identity conflict protection: ON CONFLICT ... WHERE user_id = EXCLUDED.user_id prevents identity theft
+-- - Unexpected fatal errors are propagated so GoTrue transactions abort atomically (zero silent suppression)
 CREATE OR REPLACE FUNCTION public.handle_new_auth_user()
 RETURNS trigger
 LANGUAGE plpgsql
@@ -2214,13 +2278,12 @@ BEGIN
 END;
 $$;
 
--- 11. Restrict trigger execution privileges (least privilege)
-REVOKE ALL ON FUNCTION public.handle_new_auth_user() FROM PUBLIC;
-REVOKE ALL ON FUNCTION public.handle_new_auth_user() FROM anon;
-REVOKE ALL ON FUNCTION public.handle_new_auth_user() FROM authenticated;
+-- 12. Restrict trigger execution privileges (least privilege)
+-- Trigger functions must not be directly invocable by anon or authenticated RPC
+REVOKE ALL ON FUNCTION public.handle_new_auth_user() FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION public.handle_new_auth_user() TO postgres, supabase_auth_admin, service_role;
 
--- 12. Secure Profile Recovery RPC
+-- 13. Secure Profile Recovery RPC
 -- Allows authenticated users to safely provision or recover their profile if missing
 -- Strictly uses auth.uid() and auth.users verified data; caller cannot forge another user's profile
 CREATE OR REPLACE FUNCTION public.ensure_user_profile(
@@ -2320,6 +2383,5 @@ BEGIN
 END;
 $$;
 
-REVOKE ALL ON FUNCTION public.ensure_user_profile(pg_catalog.text, pg_catalog.text) FROM PUBLIC;
-REVOKE ALL ON FUNCTION public.ensure_user_profile(pg_catalog.text, pg_catalog.text) FROM anon;
+REVOKE ALL ON FUNCTION public.ensure_user_profile(pg_catalog.text, pg_catalog.text) FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION public.ensure_user_profile(pg_catalog.text, pg_catalog.text) TO authenticated, service_role;
