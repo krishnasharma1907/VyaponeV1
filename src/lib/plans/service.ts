@@ -256,13 +256,30 @@ export async function getCapacityUsage(
     const businessIds = (businesses ?? []).map((b) => b.id);
 
     if (businessIds.length > 0) {
-      const { count } = await supabase
-        .from("sites")
-        .select("id", { count: "exact", head: true })
-        .in("business_id", businessIds)
-        .eq("status", targetStatus);
+      if (metric === "live_websites") {
+        // PRD §9.2 rule 1: One website slot represents one live business.
+        // Support both detailed row data (for deduplication) and head-only count.
+        const { data: publishedSites, count } = await supabase
+          .from("sites")
+          .select("business_id", { count: "exact" })
+          .in("business_id", businessIds)
+          .eq("status", "published");
 
-      current = count ?? 0;
+        if (Array.isArray(publishedSites) && publishedSites.length > 0) {
+          const uniqueBusinesses = new Set(publishedSites.map((s) => s.business_id));
+          current = uniqueBusinesses.size;
+        } else {
+          current = count ?? 0;
+        }
+      } else {
+        const { count } = await supabase
+          .from("sites")
+          .select("id", { count: "exact", head: true })
+          .in("business_id", businessIds)
+          .eq("status", targetStatus);
+
+        current = count ?? 0;
+      }
     }
   } else if (metric === "team_seats") {
     const { count } = await supabase
@@ -330,6 +347,7 @@ export async function getCapacityUsage(
 
 /**
  * Asserts that capacity is available for a proposed operation.
+ * Concurrency-safe: attempts atomic database locking RPC first, falling back to application calculation.
  * Throws CapacityExceededError if operation would exceed the effective limit.
  */
 export async function assertCapacityAvailable(
@@ -338,6 +356,46 @@ export async function assertCapacityAvailable(
   metric: CapacityMetric,
   requestedQuantity = 1,
 ): Promise<CapacityUsage> {
+  // 1. Concurrency-Safe: Attempt atomic database locking RPC if available
+  if (typeof supabase.rpc === "function") {
+    try {
+      const { data, error } = await supabase.rpc("assert_and_lock_workspace_capacity", {
+        p_workspace_id: workspaceId,
+        p_metric: metric,
+        p_requested_quantity: requestedQuantity,
+      });
+
+      if (!error && Array.isArray(data) && data.length > 0) {
+        const result = data[0];
+
+        if (!result.allowed) {
+          throw new CapacityExceededError(
+            result.reason || `Capacity limit reached for ${metric}`,
+            metric,
+            result.current_count,
+            result.effective_limit,
+          );
+        }
+
+        return {
+          metric,
+          current: result.current_count,
+          baseLimit: result.effective_limit,
+          overrideCapacity: 0,
+          effectiveLimit: result.effective_limit,
+          remaining: result.remaining,
+          isExceeded: false,
+        };
+      }
+    } catch (rpcErr) {
+      if (rpcErr instanceof CapacityExceededError) {
+        throw rpcErr;
+      }
+      // Fall through to application-layer calculation for mock/offline clients
+    }
+  }
+
+  // 2. Application-layer capacity calculation fallback
   const usage = await getCapacityUsage(supabase, workspaceId, metric);
 
   if (usage.current + requestedQuantity > usage.effectiveLimit) {
@@ -354,6 +412,7 @@ export async function assertCapacityAvailable(
 
 /**
  * Validates whether a site status transition conforms to capacity rules.
+ * Concurrency-safe: attempts atomic database site transition RPC first, falling back to application calculation.
  * Documented rules (§9.2):
  * - Transition to 'archived' or 'suspended' is ALWAYS permitted (frees capacity).
  * - Transition from 'draft' to 'published' requires live_websites capacity.
@@ -371,6 +430,27 @@ export async function checkSiteTransitionCapacity(
     return { allowed: true };
   }
 
+  // 1. Concurrency-Safe: Attempt atomic database RPC if available
+  if (typeof supabase.rpc === "function") {
+    try {
+      const { data, error } = await supabase.rpc("transition_site_status_atomic", {
+        p_site_id: siteId,
+        p_target_status: targetStatus,
+      });
+
+      if (!error && Array.isArray(data) && data.length > 0) {
+        const result = data[0];
+        return {
+          allowed: result.success,
+          reason: result.success ? undefined : result.reason,
+        };
+      }
+    } catch {
+      // Fall through to application-layer calculation for mock/offline clients
+    }
+  }
+
+  // 2. Application-layer site transition evaluation fallback
   // Fetch current site status
   const { data: site } = await supabase
     .from("sites")

@@ -1020,6 +1020,31 @@ export interface Database {
         };
         Returns: Json;
       };
+      assert_and_lock_workspace_capacity: {
+        Args: {
+          p_workspace_id: string;
+          p_metric: string;
+          p_requested_quantity?: number;
+        };
+        Returns: {
+          allowed: boolean;
+          current_count: number;
+          effective_limit: number;
+          remaining: number;
+          reason: string;
+        }[];
+      };
+      transition_site_status_atomic: {
+        Args: {
+          p_site_id: string;
+          p_target_status: string;
+        };
+        Returns: {
+          success: boolean;
+          status: string;
+          reason: string;
+        }[];
+      };
     };
     Enums: {
       [_ in never]: never;

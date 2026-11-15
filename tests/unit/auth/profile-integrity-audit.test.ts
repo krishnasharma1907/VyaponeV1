@@ -325,7 +325,9 @@ describe("Auth Trigger & Profile Integrity Security Audit", () => {
     expect(sql).not.toContain('CREATE POLICY "users_delete_policy"');
 
     // 12. Must provide safe user_directory projection view for team collaboration without contact PII
-    expect(sql).toContain("CREATE OR REPLACE VIEW public.user_directory AS");
+    expect(sql).toMatch(
+      /CREATE OR REPLACE VIEW public\.user_directory(?:\s+WITH\s*\(security_invoker\s*=\s*true\))?\s+AS/,
+    );
     expect(sql).toContain("GRANT SELECT ON public.user_directory TO authenticated;");
   });
 
@@ -367,7 +369,9 @@ describe("Auth Trigger & Profile Integrity Security Audit", () => {
     const sql = fs.readFileSync(migrationPath, "utf8");
 
     // Extract the VIEW definition
-    const viewMatch = sql.match(/CREATE OR REPLACE VIEW public\.user_directory AS([\s\S]*?);/);
+    const viewMatch = sql.match(
+      /CREATE OR REPLACE VIEW public\.user_directory(?:\s+WITH\s*\(security_invoker\s*=\s*true\))?\s+AS([\s\S]*?);/,
+    );
     expect(viewMatch).not.toBeNull();
     const viewSql = viewMatch![1];
 

@@ -516,4 +516,253 @@ describe("VO-026 Capacity Service & Counting Rules (§9.2)", () => {
       expect(catUsage.current).toBe(25);
     });
   });
+
+  describe("4. Concurrency Safety & Simultaneous Operations", () => {
+    it("strictly isolates and counts unique businesses even if multiple published sites exist (PRD §9.2 rule 1)", async () => {
+      const mockSupabase = {
+        from: vi.fn((table: string) => {
+          if (table === "workspaces") {
+            return {
+              select: vi.fn(() => ({
+                eq: vi.fn(() => ({
+                  maybeSingle: vi.fn(async () => ({
+                    data: { id: mockWorkspaceId, plan: "starter", status: "active" },
+                    error: null,
+                  })),
+                })),
+              })),
+            };
+          }
+          if (table === "subscriptions" || table === "capacity_overrides") {
+            return {
+              select: vi.fn(() => ({
+                eq: vi.fn(() => ({
+                  maybeSingle: vi.fn(async () => ({ data: null, error: null })),
+                  eq: vi.fn(() => ({
+                    maybeSingle: vi.fn(async () => ({ data: null, error: null })),
+                  })),
+                })),
+              })),
+            };
+          }
+          if (table === "businesses") {
+            return {
+              select: vi.fn(() => ({
+                eq: vi.fn(() => ({
+                  neq: vi.fn(async () => ({
+                    data: [{ id: "biz-1" }],
+                    error: null,
+                  })),
+                })),
+              })),
+            };
+          }
+          if (table === "sites") {
+            return {
+              select: vi.fn(() => ({
+                in: vi.fn(() => ({
+                  eq: vi.fn(async () => ({
+                    // Simulate 2 published site rows for the same business (biz-1)
+                    data: [{ business_id: "biz-1" }, { business_id: "biz-1" }],
+                    error: null,
+                  })),
+                })),
+              })),
+            };
+          }
+          return {};
+        }),
+      } as unknown as SupabaseClient<Database>;
+
+      const usage = await getCapacityUsage(mockSupabase, mockWorkspaceId, "live_websites");
+
+      // PRD §9.2: One live slot per business. Even with 2 published rows, current = 1
+      expect(usage.current).toBe(1);
+      expect(usage.baseLimit).toBe(3);
+      expect(usage.remaining).toBe(2);
+    });
+
+    it("enforces atomic serialization when two simultaneous requests race for the last remaining live website slot", async () => {
+      let slotTaken = false;
+
+      // Mock client that simulates PostgreSQL row locking & atomic RPC transition_site_status_atomic
+      const mockSupabase = {
+        rpc: vi.fn(
+          async (funcName: string, args: { p_site_id: string; p_target_status: string }) => {
+            if (funcName === "transition_site_status_atomic") {
+              if (args.p_target_status === "published") {
+                if (!slotTaken) {
+                  slotTaken = true;
+                  return {
+                    data: [
+                      { success: true, status: "published", reason: "Site published successfully" },
+                    ],
+                    error: null,
+                  };
+                } else {
+                  return {
+                    data: [
+                      {
+                        success: false,
+                        status: "draft",
+                        reason: "Capacity limit reached for live_websites",
+                      },
+                    ],
+                    error: null,
+                  };
+                }
+              }
+            }
+            return { data: null, error: null };
+          },
+        ),
+      } as unknown as SupabaseClient<Database>;
+
+      // Two simultaneous requests race to publish their site when only 1 slot is remaining
+      const [req1, req2] = await Promise.all([
+        checkSiteTransitionCapacity(mockSupabase, mockWorkspaceId, "site-1", "published"),
+        checkSiteTransitionCapacity(mockSupabase, mockWorkspaceId, "site-2", "published"),
+      ]);
+
+      // Exactly one request must succeed, and the other must be rejected
+      const successes = [req1, req2].filter((r) => r.allowed);
+      const rejections = [req1, req2].filter((r) => !r.allowed);
+
+      expect(successes).toHaveLength(1);
+      expect(rejections).toHaveLength(1);
+      expect(rejections[0].reason).toContain("Capacity limit reached for live_websites");
+    });
+
+    it("enforces atomic capacity assertion with row-lock RPC", async () => {
+      let remainingSlots = 1;
+
+      const mockSupabase = {
+        rpc: vi.fn(
+          async (funcName: string, args: { p_metric: string; p_requested_quantity: number }) => {
+            if (funcName === "assert_and_lock_workspace_capacity") {
+              if (remainingSlots >= args.p_requested_quantity) {
+                remainingSlots -= args.p_requested_quantity;
+                return {
+                  data: [
+                    {
+                      allowed: true,
+                      current_count: 2,
+                      effective_limit: 3,
+                      remaining: remainingSlots,
+                      reason: "Capacity available",
+                    },
+                  ],
+                  error: null,
+                };
+              } else {
+                return {
+                  data: [
+                    {
+                      allowed: false,
+                      current_count: 3,
+                      effective_limit: 3,
+                      remaining: 0,
+                      reason: "Capacity limit reached for " + args.p_metric,
+                    },
+                  ],
+                  error: null,
+                };
+              }
+            }
+            return { data: null, error: null };
+          },
+        ),
+      } as unknown as SupabaseClient<Database>;
+
+      // Request 1 succeeds
+      const result1 = await assertCapacityAvailable(
+        mockSupabase,
+        mockWorkspaceId,
+        "live_websites",
+        1,
+      );
+      expect(result1.current).toBe(2);
+      expect(result1.effectiveLimit).toBe(3);
+
+      // Simultaneous Request 2 fails because capacity is now exhausted
+      await expect(
+        assertCapacityAvailable(mockSupabase, mockWorkspaceId, "live_websites", 1),
+      ).rejects.toThrow(CapacityExceededError);
+    });
+
+    it("gracefully falls back to application calculation if atomic RPC is not yet deployed on remote database", async () => {
+      const mockSupabase = {
+        rpc: vi.fn(async () => {
+          // Simulate missing remote RPC (PGRST202)
+          return {
+            data: null,
+            error: {
+              code: "PGRST202",
+              message: "Could not find the function public.assert_and_lock_workspace_capacity",
+            },
+          };
+        }),
+        from: vi.fn((table: string) => {
+          if (table === "workspaces") {
+            return {
+              select: vi.fn(() => ({
+                eq: vi.fn(() => ({
+                  maybeSingle: vi.fn(async () => ({
+                    data: { id: mockWorkspaceId, plan: "starter", status: "active" },
+                    error: null,
+                  })),
+                })),
+              })),
+            };
+          }
+          if (table === "subscriptions" || table === "capacity_overrides") {
+            return {
+              select: vi.fn(() => ({
+                eq: vi.fn(() => ({
+                  maybeSingle: vi.fn(async () => ({ data: null, error: null })),
+                  eq: vi.fn(() => ({
+                    maybeSingle: vi.fn(async () => ({ data: null, error: null })),
+                  })),
+                })),
+              })),
+            };
+          }
+          if (table === "businesses") {
+            return {
+              select: vi.fn(() => ({
+                eq: vi.fn(() => ({
+                  neq: vi.fn(async () => ({
+                    data: [{ id: "biz-1" }],
+                    error: null,
+                  })),
+                })),
+              })),
+            };
+          }
+          if (table === "sites") {
+            return {
+              select: vi.fn(() => ({
+                in: vi.fn(() => ({
+                  eq: vi.fn(async () => ({
+                    data: [{ business_id: "biz-1" }],
+                    error: null,
+                  })),
+                })),
+              })),
+            };
+          }
+          return {};
+        }),
+      } as unknown as SupabaseClient<Database>;
+
+      const usage = await assertCapacityAvailable(
+        mockSupabase,
+        mockWorkspaceId,
+        "live_websites",
+        1,
+      );
+      expect(usage.current).toBe(1);
+      expect(usage.effectiveLimit).toBe(3);
+    });
+  });
 });

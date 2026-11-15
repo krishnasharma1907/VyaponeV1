@@ -18,6 +18,12 @@ ALTER TABLE public.sites DROP CONSTRAINT IF EXISTS sites_status_check;
 ALTER TABLE public.sites ADD CONSTRAINT sites_status_check 
     CHECK (status IN ('draft', 'published', 'suspended', 'archived'));
 
+-- 1.3 PRD §9.2 rule 1: Enforce at most one live published storefront per business
+-- Prevents double-counting and guarantees 1 website slot = 1 live business
+CREATE UNIQUE INDEX IF NOT EXISTS idx_sites_single_published_per_business 
+    ON public.sites (business_id) 
+    WHERE status = 'published';
+
 -- ------------------------------------------------------------------------------
 -- 2. Subscriptions Table (Workspace Commercial Plan Assignment)
 -- ------------------------------------------------------------------------------
@@ -158,3 +164,222 @@ CREATE POLICY "capacity_overrides_update_policy" ON public.capacity_overrides
 CREATE POLICY "capacity_overrides_delete_policy" ON public.capacity_overrides
     FOR DELETE
     USING (false);
+
+-- ------------------------------------------------------------------------------
+-- 6. Atomic Concurrency-Safe Capacity Reservation & Site Transition Functions
+-- ------------------------------------------------------------------------------
+-- Protects against time-of-check to time-of-use (TOCTOU) race conditions when
+-- multiple concurrent requests attempt to create/publish sites or add team seats.
+-- Uses transaction-scoped row locking (SELECT ... FOR UPDATE on public.workspaces).
+
+CREATE OR REPLACE FUNCTION public.assert_and_lock_workspace_capacity(
+    p_workspace_id UUID,
+    p_metric TEXT,
+    p_requested_quantity INT DEFAULT 1
+)
+RETURNS TABLE (
+    allowed BOOLEAN,
+    current_count INT,
+    effective_limit INT,
+    remaining INT,
+    reason TEXT
+)
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+    v_plan_id TEXT;
+    v_base_limit INT := 0;
+    v_override INT := 0;
+    v_effective_limit INT := 0;
+    v_current INT := 0;
+    v_now TIMESTAMPTZ := pg_catalog.now();
+BEGIN
+    -- 1. Transaction-scoped row lock on the workspace to serialize concurrent operations
+    PERFORM 1 FROM public.workspaces WHERE id = p_workspace_id FOR UPDATE;
+
+    -- 2. Resolve plan from active subscription or workspace plan attribute
+    SELECT coalesce(s.plan_id, w.plan) INTO v_plan_id
+    FROM public.workspaces w
+    LEFT JOIN public.subscriptions s ON s.workspace_id = w.id AND s.status IN ('active', 'trialing', 'past_due', 'grace_period')
+    WHERE w.id = p_workspace_id;
+
+    IF v_plan_id IS NULL THEN
+        RETURN QUERY SELECT false, 0, 0, 0, 'Workspace not found';
+        RETURN;
+    END IF;
+
+    -- Normalize plan to base limits (PRD §9.1)
+    IF v_plan_id = 'starter' THEN
+        IF p_metric = 'live_websites' THEN v_base_limit := 3;
+        ELSIF p_metric = 'draft_websites' THEN v_base_limit := 10;
+        ELSIF p_metric = 'team_seats' THEN v_base_limit := 2;
+        ELSIF p_metric = 'locations_per_business' THEN v_base_limit := 1;
+        ELSIF p_metric = 'catalogue_items_per_business' THEN v_base_limit := 50;
+        END IF;
+    ELSIF v_plan_id IN ('growth', 'pro') THEN
+        IF p_metric = 'live_websites' THEN v_base_limit := 8;
+        ELSIF p_metric = 'draft_websites' THEN v_base_limit := 25;
+        ELSIF p_metric = 'team_seats' THEN v_base_limit := 5;
+        ELSIF p_metric = 'locations_per_business' THEN v_base_limit := 3;
+        ELSIF p_metric = 'catalogue_items_per_business' THEN v_base_limit := 250;
+        END IF;
+    ELSIF v_plan_id = 'agency' THEN
+        IF p_metric = 'live_websites' THEN v_base_limit := 20;
+        ELSIF p_metric = 'draft_websites' THEN v_base_limit := 50;
+        ELSIF p_metric = 'team_seats' THEN v_base_limit := 15;
+        ELSIF p_metric = 'locations_per_business' THEN v_base_limit := 10;
+        ELSIF p_metric = 'catalogue_items_per_business' THEN v_base_limit := 1000;
+        END IF;
+    ELSIF v_plan_id = 'scale' THEN
+        IF p_metric = 'live_websites' THEN v_base_limit := 50;
+        ELSIF p_metric = 'draft_websites' THEN v_base_limit := 100;
+        ELSIF p_metric = 'team_seats' THEN v_base_limit := 50;
+        ELSIF p_metric = 'locations_per_business' THEN v_base_limit := 25;
+        ELSIF p_metric = 'catalogue_items_per_business' THEN v_base_limit := 5000;
+        END IF;
+    ELSE
+        -- Default starter
+        IF p_metric = 'live_websites' THEN v_base_limit := 3;
+        ELSIF p_metric = 'draft_websites' THEN v_base_limit := 10;
+        ELSIF p_metric = 'team_seats' THEN v_base_limit := 2;
+        ELSIF p_metric = 'locations_per_business' THEN v_base_limit := 1;
+        ELSIF p_metric = 'catalogue_items_per_business' THEN v_base_limit := 50;
+        END IF;
+    END IF;
+
+    -- 3. Check capacity overrides
+    SELECT coalesce(additional_capacity, 0) INTO v_override
+    FROM public.capacity_overrides
+    WHERE workspace_id = p_workspace_id
+      AND metric = p_metric
+      AND (expires_at IS NULL OR expires_at > v_now);
+
+    v_effective_limit := v_base_limit + v_override;
+
+    -- 4. Count current live/draft sites or team seats
+    IF p_metric = 'live_websites' THEN
+        SELECT count(DISTINCT s.business_id)::INT INTO v_current
+        FROM public.sites s
+        JOIN public.businesses b ON b.id = s.business_id
+        WHERE b.workspace_id = p_workspace_id
+          AND b.status <> 'archived'
+          AND s.status = 'published';
+    ELSIF p_metric = 'draft_websites' THEN
+        SELECT count(*)::INT INTO v_current
+        FROM public.sites s
+        JOIN public.businesses b ON b.id = s.business_id
+        WHERE b.workspace_id = p_workspace_id
+          AND b.status <> 'archived'
+          AND s.status = 'draft';
+    ELSIF p_metric = 'team_seats' THEN
+        SELECT count(*)::INT INTO v_current
+        FROM public.workspace_members
+        WHERE workspace_id = p_workspace_id
+          AND status = 'active';
+    END IF;
+
+    -- 5. Evaluate remaining capacity
+    IF v_current + p_requested_quantity > v_effective_limit THEN
+        RETURN QUERY SELECT
+            false,
+            v_current,
+            v_effective_limit,
+            pg_catalog.greatest(0, v_effective_limit - v_current),
+            'Capacity limit reached for ' || p_metric;
+    ELSE
+        RETURN QUERY SELECT
+            true,
+            v_current,
+            v_effective_limit,
+            v_effective_limit - (v_current + p_requested_quantity),
+            'Capacity available'::TEXT;
+    END IF;
+END;
+$$;
+
+CREATE OR REPLACE FUNCTION public.transition_site_status_atomic(
+    p_site_id UUID,
+    p_target_status TEXT
+)
+RETURNS TABLE (
+    success BOOLEAN,
+    status TEXT,
+    reason TEXT
+)
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+    v_workspace_id UUID;
+    v_current_status TEXT;
+    v_allowed BOOLEAN;
+    v_reason TEXT;
+BEGIN
+    -- 1. Fetch site and parent workspace
+    SELECT b.workspace_id, s.status INTO v_workspace_id, v_current_status
+    FROM public.sites s
+    JOIN public.businesses b ON b.id = s.business_id
+    WHERE s.id = p_site_id;
+
+    IF v_workspace_id IS NULL THEN
+        RETURN QUERY SELECT false, 'not_found'::TEXT, 'Site not found'::TEXT;
+        RETURN;
+    END IF;
+
+    -- If already in target status, idempotent success
+    IF v_current_status = p_target_status THEN
+        RETURN QUERY SELECT true, v_current_status, 'Already in target status'::TEXT;
+        RETURN;
+    END IF;
+
+    -- Archiving or suspending is always permitted and frees capacity (PRD §9.2)
+    IF p_target_status IN ('archived', 'suspended') THEN
+        UPDATE public.sites SET status = p_target_status, updated_at = pg_catalog.now() WHERE id = p_site_id;
+        RETURN QUERY SELECT true, p_target_status, 'Status updated'::TEXT;
+        RETURN;
+    END IF;
+
+    -- 2. If publishing, lock workspace and check capacity atomically
+    IF p_target_status = 'published' THEN
+        SELECT c.allowed, c.reason INTO v_allowed, v_reason
+        FROM public.assert_and_lock_workspace_capacity(v_workspace_id, 'live_websites', 1) c;
+
+        IF NOT v_allowed THEN
+            RETURN QUERY SELECT false, v_current_status, v_reason;
+            RETURN;
+        END IF;
+
+        UPDATE public.sites SET status = 'published', updated_at = pg_catalog.now() WHERE id = p_site_id;
+        RETURN QUERY SELECT true, 'published'::TEXT, 'Site published successfully'::TEXT;
+        RETURN;
+    END IF;
+
+    -- 3. If restoring archived to draft, check draft capacity atomically
+    IF p_target_status = 'draft' AND v_current_status = 'archived' THEN
+        SELECT c.allowed, c.reason INTO v_allowed, v_reason
+        FROM public.assert_and_lock_workspace_capacity(v_workspace_id, 'draft_websites', 1) c;
+
+        IF NOT v_allowed THEN
+            RETURN QUERY SELECT false, v_current_status, v_reason;
+            RETURN;
+        END IF;
+
+        UPDATE public.sites SET status = 'draft', updated_at = pg_catalog.now() WHERE id = p_site_id;
+        RETURN QUERY SELECT true, 'draft'::TEXT, 'Draft restored successfully'::TEXT;
+        RETURN;
+    END IF;
+
+    UPDATE public.sites SET status = p_target_status, updated_at = pg_catalog.now() WHERE id = p_site_id;
+    RETURN QUERY SELECT true, p_target_status, 'Status updated'::TEXT;
+END;
+$$;
+
+-- Function Execution Privileges
+REVOKE ALL ON FUNCTION public.assert_and_lock_workspace_capacity(UUID, TEXT, INT) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.assert_and_lock_workspace_capacity(UUID, TEXT, INT) TO authenticated, service_role;
+
+REVOKE ALL ON FUNCTION public.transition_site_status_atomic(UUID, TEXT) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.transition_site_status_atomic(UUID, TEXT) TO authenticated, service_role;

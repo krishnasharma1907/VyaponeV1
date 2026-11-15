@@ -103,7 +103,8 @@ CREATE POLICY "user_auth_identities_select_policy" ON public.user_auth_identitie
 -- 10. User Directory Projection View
 -- Exposes non-sensitive profile information for workspace and business team directories.
 -- Strictly omits private contact details (email, phone_number) from peer members.
-CREATE OR REPLACE VIEW public.user_directory AS
+CREATE OR REPLACE VIEW public.user_directory
+WITH (security_invoker = true) AS
 SELECT
     u.id,
     u.display_name,
