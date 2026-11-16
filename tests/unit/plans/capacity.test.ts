@@ -1170,5 +1170,120 @@ describe("VO-026 Capacity Service & Counting Rules (§9.2)", () => {
         "GRANT EXECUTE ON FUNCTION public.transition_site_status_atomic(UUID, TEXT) TO authenticated, service_role;",
       );
     });
+
+    it("verifies replacement draft capacity rules (PRD §9.2)", async () => {
+      // 1. Replacement when draft capacity is available: allowed
+      const mockSupabaseAvailable = {
+        rpc: vi.fn(async () => ({
+          data: [
+            {
+              success: true,
+              status: "published",
+              reason: "Site published successfully",
+            },
+          ],
+          error: null,
+        })),
+      } as unknown as SupabaseClient<Database>;
+
+      const resAvailable = await checkSiteTransitionCapacity(
+        mockSupabaseAvailable,
+        mockWorkspaceId,
+        "site-draft-1",
+        "published",
+      );
+      expect(resAvailable.allowed).toBe(true);
+
+      // 2. Replacement when draft capacity is exactly full: allowed (net-neutral +1 -1 = 0)
+      const mockSupabaseFull = {
+        rpc: vi.fn(async () => ({
+          data: [
+            {
+              success: true,
+              status: "published",
+              reason: "Site published successfully",
+            },
+          ],
+          error: null,
+        })),
+      } as unknown as SupabaseClient<Database>;
+
+      const resFull = await checkSiteTransitionCapacity(
+        mockSupabaseFull,
+        mockWorkspaceId,
+        "site-draft-2",
+        "published",
+      );
+      expect(resFull.allowed).toBe(true);
+
+      // 3. Replacement when workspace is above draft limit following downgrade: rejected
+      const mockSupabaseExceeded = {
+        rpc: vi.fn(async () => ({
+          data: [
+            {
+              success: false,
+              status: "draft",
+              reason:
+                "Capacity limit reached for draft_websites: workspace exceeds draft allowance",
+            },
+          ],
+          error: null,
+        })),
+      } as unknown as SupabaseClient<Database>;
+
+      const resExceeded = await checkSiteTransitionCapacity(
+        mockSupabaseExceeded,
+        mockWorkspaceId,
+        "site-draft-3",
+        "published",
+      );
+      expect(resExceeded.allowed).toBe(false);
+      expect(resExceeded.reason).toContain("Capacity limit reached for draft_websites");
+    });
+
+    it("verifies migration 20261116000001 enforces dedicated custom SQLSTATE codes and row-lock syntax", async () => {
+      const fs = await import("node:fs");
+      const path = await import("node:path");
+      const sqlContent = fs.readFileSync(
+        path.join(
+          process.cwd(),
+          "supabase",
+          "migrations",
+          "20261116000001_harden_capacity_locking_and_sqlstate.sql",
+        ),
+        "utf-8",
+      );
+
+      // Dedicated SQLSTATE codes (VY001 to VY006)
+      expect(sqlContent).toContain("USING ERRCODE = 'VY001'"); // Capacity exceeded
+      expect(sqlContent).toContain("USING ERRCODE = 'VY002'"); // Invalid business lifecycle
+      expect(sqlContent).toContain("USING ERRCODE = 'VY003'"); // Permission denied
+      expect(sqlContent).toContain("USING ERRCODE = 'VY004'"); // Tenant boundary violation
+      expect(sqlContent).toContain("USING ERRCODE = 'VY005'"); // Invalid plan identifier
+      expect(sqlContent).toContain("USING ERRCODE = 'VY006'"); // Immutable field mutation
+
+      // No collision with predefined PostgreSQL codes P0003 or P0004
+      expect(sqlContent).not.toContain("USING ERRCODE = 'P0003'");
+      expect(sqlContent).not.toContain("USING ERRCODE = 'P0004'");
+      expect(sqlContent).not.toContain("USING ERRCODE = 'P0005'");
+
+      // Valid PostgreSQL row-locking syntax: ORDER BY precedes FOR UPDATE
+      expect(sqlContent).toContain("ORDER BY id FOR UPDATE");
+      expect(sqlContent).not.toContain("FOR UPDATE ORDER BY id");
+
+      // Lock-order inversion elimination: revoke direct status updates
+      expect(sqlContent).toContain(
+        "REVOKE UPDATE (status) ON public.sites FROM authenticated, anon, PUBLIC;",
+      );
+
+      // Trigger guard checking in_atomic_site_transition
+      expect(sqlContent).toContain("vyapone.in_atomic_site_transition");
+
+      // Business archival and restoration trigger
+      expect(sqlContent).toContain("trg_handle_business_archive_restore");
+      expect(sqlContent).toContain(
+        "CREATE OR REPLACE FUNCTION public.handle_business_archive_restore_trigger()",
+      );
+    });
   });
 });

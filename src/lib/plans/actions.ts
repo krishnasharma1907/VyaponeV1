@@ -45,6 +45,73 @@ function sanitizeError(err: unknown): {
 
   const message = err instanceof Error ? err.message : String(err);
   const lower = message.toLowerCase();
+  const errCode = (err as { code?: string })?.code;
+
+  if (errCode === "VY001" || lower.includes("vy001") || lower.includes("capacity limit reached")) {
+    return {
+      error:
+        "Capacity limit reached for your workspace plan. Please upgrade your plan or archive unused resources.",
+      code: "CAPACITY_EXCEEDED",
+      statusCode: 403,
+    };
+  }
+
+  if (errCode === "VY002" || lower.includes("vy002") || lower.includes("archived business")) {
+    return {
+      error: "Cannot perform site operations for an archived business.",
+      code: "INVALID_BUSINESS_LIFECYCLE",
+      statusCode: 400,
+    };
+  }
+
+  if (
+    errCode === "VY003" ||
+    lower.includes("vy003") ||
+    lower.includes("publishing permissions") ||
+    lower.includes("direct site status transitions to published are prohibited")
+  ) {
+    return {
+      error: "You do not have permission to publish or transition this site status.",
+      code: "PERMISSION_DENIED",
+      statusCode: 403,
+    };
+  }
+
+  if (
+    errCode === "VY004" ||
+    lower.includes("vy004") ||
+    lower.includes("tenant boundary violation")
+  ) {
+    return {
+      error: "Tenant boundary violation: business does not belong to the specified workspace.",
+      code: "TENANT_VIOLATION",
+      statusCode: 403,
+    };
+  }
+
+  if (
+    errCode === "VY005" ||
+    lower.includes("vy005") ||
+    lower.includes("unsupported plan identifier")
+  ) {
+    return {
+      error: "Invalid or unsupported plan identifier.",
+      code: "INVALID_PLAN",
+      statusCode: 400,
+    };
+  }
+
+  if (
+    errCode === "VY006" ||
+    lower.includes("vy006") ||
+    lower.includes("business_id on public.sites is immutable")
+  ) {
+    return {
+      error: "business_id on sites is immutable and cannot be modified.",
+      code: "FIELD_IMMUTABLE",
+      statusCode: 400,
+    };
+  }
 
   if (
     lower.includes("postgres") ||

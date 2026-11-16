@@ -102,6 +102,32 @@ describe("VO-026 Plan & Capacity Server Actions", () => {
       }
     });
 
+    it("sanitizes custom SQLSTATE errors (VY001-VY003) into user-friendly messages without leaking internals", async () => {
+      mockAssertAuthenticatedUser.mockResolvedValueOnce({ id: mockUserId });
+      mockAssertWorkspaceAccess.mockResolvedValueOnce({
+        role: "workspace_admin",
+        isOwner: false,
+      });
+
+      mockFrom.mockImplementationOnce(() => {
+        const error = new Error(
+          "Database error occurred: Capacity limit reached for live_websites",
+        );
+        (error as unknown as { code: string }).code = "VY001";
+        throw error;
+      });
+
+      const result = await assertCapacityAvailableAction(mockWorkspaceId, "team_seats", 1);
+
+      expect(result.success).toBe(false);
+      if (!result.success) {
+        expect(result.code).toBe("CAPACITY_EXCEEDED");
+        expect(result.statusCode).toBe(403);
+        expect(result.error).not.toContain("VY001");
+        expect(result.error).not.toContain("public.sites");
+      }
+    });
+
     it("successfully checks site transition capacity via Server Action", async () => {
       mockAssertAuthenticatedUser.mockResolvedValueOnce({ id: mockUserId });
       mockAssertWorkspaceAccess.mockResolvedValueOnce({

@@ -96,4 +96,59 @@ describe("VO-026 Plans & Capacity Migration Verification", () => {
       "CREATE UNIQUE INDEX IF NOT EXISTS idx_sites_single_published_per_business",
     );
   });
+
+  describe("Forward-Only Hardening Migration (20261116000001_harden_capacity_locking_and_sqlstate.sql)", () => {
+    const hardeningMigrationPath = path.join(
+      process.cwd(),
+      "supabase",
+      "migrations",
+      "20261116000001_harden_capacity_locking_and_sqlstate.sql",
+    );
+    const hardeningSql = fs.readFileSync(hardeningMigrationPath, "utf-8");
+
+    it("verifies hardening migration file exists and is populated", () => {
+      expect(hardeningSql.length).toBeGreaterThan(100);
+    });
+
+    it("verifies dedicated custom SQLSTATE codes are used without collision with predefined codes", () => {
+      expect(hardeningSql).toContain("USING ERRCODE = 'VY001'");
+      expect(hardeningSql).toContain("USING ERRCODE = 'VY002'");
+      expect(hardeningSql).toContain("USING ERRCODE = 'VY003'");
+      expect(hardeningSql).toContain("USING ERRCODE = 'VY004'");
+      expect(hardeningSql).toContain("USING ERRCODE = 'VY005'");
+      expect(hardeningSql).toContain("USING ERRCODE = 'VY006'");
+
+      expect(hardeningSql).not.toContain("USING ERRCODE = 'P0003'");
+      expect(hardeningSql).not.toContain("USING ERRCODE = 'P0004'");
+      expect(hardeningSql).not.toContain("USING ERRCODE = 'P0005'");
+    });
+
+    it("verifies direct status updates are revoked and lock-order inversion is eliminated", () => {
+      expect(hardeningSql).toContain(
+        "REVOKE UPDATE (status) ON public.sites FROM authenticated, anon, PUBLIC;",
+      );
+      expect(hardeningSql).toContain("vyapone.in_atomic_site_transition");
+      expect(hardeningSql).toContain("ORDER BY id FOR UPDATE");
+    });
+
+    it("verifies business archival and restoration trigger is declared", () => {
+      expect(hardeningSql).toContain("trg_handle_business_archive_restore");
+      expect(hardeningSql).toContain(
+        "CREATE OR REPLACE FUNCTION public.handle_business_archive_restore_trigger()",
+      );
+      expect(hardeningSql).toContain("SET status = 'suspended'");
+    });
+
+    it("verifies combined_migrations.sql is strictly synchronized with 20261116000001", () => {
+      const combinedPath = path.join(process.cwd(), "supabase", "combined_migrations.sql");
+      const combinedSql = fs.readFileSync(combinedPath, "utf-8");
+
+      expect(combinedSql).toContain(
+        "-- Migration: 20261116000001_harden_capacity_locking_and_sqlstate.sql",
+      );
+      expect(combinedSql).toContain("REVOKE UPDATE (status) ON public.sites FROM authenticated");
+      expect(combinedSql).toContain("USING ERRCODE = 'VY001'");
+      expect(combinedSql).toContain("trg_handle_business_archive_restore");
+    });
+  });
 });

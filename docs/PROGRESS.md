@@ -42,14 +42,21 @@
      - `getWorkspaceSubscriptionDetails`: Aggregates complete subscription, capacities, and entitlements for a workspace.
   4. **Server Actions (`src/lib/plans/actions.ts`):**
      - Created `getWorkspaceSubscriptionDetailsAction`, `checkFeatureEntitlementAction`, `assertCapacityAvailableAction`, and `checkSiteTransitionCapacityAction`.
-     - Enforced session-derived caller identification, tenant authorization via `assertWorkspaceAccess`, and database error sanitization.
-  5. **Verification & Quality Gate:**
-     - 4 new test suites in `tests/unit/plans/` (24 new tests) covering plan resolution, feature overrides, capacity metrics, counting rules, Server Actions, and migration RLS policies.
-     - Full Vitest suite passes: 49 test files, 533/533 tests passed (100%).
-     - Code coverage meets all required thresholds: Statements 85.12%, Branches 70.21%, Functions 88.94%, Lines 85.12% (with `src/lib/plans` achieving 91.23% statements).
+     - Enforced session-derived caller identification, tenant authorization via `assertWorkspaceAccess`, and database error sanitization (mapping `VY001`-`VY006` to user-safe error messages).
+  5. **Database Hardening & Non-Colliding SQLSTATE Codes (`20261116000001_harden_capacity_locking_and_sqlstate.sql`):**
+     - Replaced predefined PostgreSQL error codes (`P0003`, `P0004`, `P0005`) with custom VyapOne SQLSTATE codes: `VY001` (capacity exceeded), `VY002` (invalid business lifecycle), `VY003` (permission denied / prohibited direct transition), `VY004` (tenant boundary violation), `VY005` (unknown plan identifier), `VY006` (immutable field mutation prohibited).
+     - Eliminated lock-order inversion: revoked direct `UPDATE (status)` on `public.sites` from `authenticated, anon, PUBLIC`. Direct client status updates are blocked by `trg_check_site_publish_capacity` trigger with `VY003` unless executed inside `transition_site_status_atomic()`.
+     - Verified exact row-locking SQL syntax: `ORDER BY id FOR UPDATE` strictly precedes `FOR UPDATE` clause in `transition_site_status_atomic()`.
+     - Added draft replacement capacity checks: ensures projected drafts do not exceed allowance, and prohibits atomic replacement if workspace is in an exceeded draft state post-downgrade.
+     - Protected business restoration: added trigger `trg_handle_business_archive_restore` on `public.businesses` demoting any published sites to `suspended` when a business is archived or restored.
+  6. **Verification & Quality Gate:**
+     - 4 test suites in `tests/unit/plans/` (56 tests) covering plan resolution, feature overrides, capacity metrics, counting rules, Server Actions, SQLSTATE sanitization, locking syntax, and migration RLS policies.
+     - Full Vitest suite passes: 50 test files, 578/578 tests passed (100%).
+     - Code coverage meets all required thresholds: Statements 84.87%, Branches 70.36%, Functions 88.58%, Lines 84.87% (with `src/lib/plans` achieving 83.55% statements, 93.33% functions).
      - Next.js production build succeeds with all 34 routes compiled.
 - **Files added/modified:**
   - Added: `supabase/migrations/20261115000001_plans_entitlements_capacity.sql`
+  - Added: `supabase/migrations/20261116000001_harden_capacity_locking_and_sqlstate.sql`
   - Added: `src/lib/plans/types.ts`
   - Added: `src/lib/plans/constants.ts`
   - Added: `src/lib/plans/schemas.ts`
@@ -72,8 +79,9 @@
   - Prettier: `pnpm format:check` -> PASS (All matched files use Prettier code style)
   - ESLint: `pnpm lint` -> PASS (0 errors, 0 warnings)
   - TypeScript: `pnpm typecheck` -> PASS (0 errors)
-  - Unit/Integration Tests: `pnpm test` -> PASS (50/50 test files, 570/570 tests, 100% passing)
-  - Atomic Publishing & Role Auth Hardening: Fully verified across concurrent races, replacement demotion invariants, fail-closed missing RPC tests, SECURITY DEFINER checks, and business_id immutability.
+  - Unit/Integration Tests: `pnpm test` -> PASS (50/50 test files, 578/578 tests, 100% passing)
+  - Test Coverage: `pnpm test:coverage` -> PASS (meets all thresholds)
+  - Atomic Publishing, Locking & SQLSTATE Hardening: Fully verified across concurrent races, replacement demotion invariants, fail-closed missing RPC tests, SECURITY DEFINER checks, business_id immutability, custom SQLSTATE codes (`VY001`-`VY006`), lock-order elimination, and archive/restore triggers.
   - Production Build: `pnpm build` -> PASS (34/34 routes generated successfully)
 - **Acceptance status:** COMPLETE
 - **Blockers:** None

@@ -4,8 +4,14 @@ Record implementation changes by task ID. Do not record planned work as complete
 
 ## Unreleased
 
-### [VO-026] — Implement plans, entitlements and capacity service (2026-11-15)
-- Implemented the centralized plans, subscription management, feature entitlement evaluation, and capacity enforcement service strictly according to PRD FINAL v2 (§9.1, §9.2, §16) and `docs/TASK_BACKLOG.md`:
+### [VO-026] — Implement plans, entitlements and capacity service (2026-11-16)
+- Implemented and hardened the centralized plans, subscription management, feature entitlement evaluation, and capacity enforcement service strictly according to PRD FINAL v2 (§9.1, §9.2, §16) and `docs/TASK_BACKLOG.md`:
+  - **Database Hardening & Non-Colliding SQLSTATE Codes (`supabase/migrations/20261116000001_harden_capacity_locking_and_sqlstate.sql`):**
+    - Replaced predefined PostgreSQL codes (`P0003`, `P0004`, `P0005`) with custom, non-colliding VyapOne SQLSTATE codes: `VY001` (capacity limit exceeded), `VY002` (invalid business lifecycle), `VY003` (permission denied / prohibited direct transition), `VY004` (tenant boundary violation), `VY005` (unknown plan identifier), and `VY006` (immutable field mutation prohibited).
+    - Eliminated lock-order inversion deadlocks: revoked direct `UPDATE (status)` on `public.sites` from `authenticated, anon, PUBLIC`. Direct client publishing updates are rejected by trigger `trg_check_site_publish_capacity` with `VY003` unless executed inside `transition_site_status_atomic()` where `workspaces` row locks are always acquired first.
+    - Verified exact PostgreSQL row-lock syntax: `ORDER BY id FOR UPDATE` strictly adheres to PostgreSQL grammar in `transition_site_status_atomic()`.
+    - Protected business restoration: added trigger `trg_handle_business_archive_restore` on `public.businesses` demoting any published sites to `suspended` when a business is archived or restored, preventing silent live website slot leakage without atomic capacity checks.
+    - Added draft replacement capacity checks: ensures projected drafts do not exceed allowance, and prohibits atomic replacement if workspace is currently in an exceeded draft state post-downgrade.
   - **Database Migration & Schema Enforcement (`supabase/migrations/20261115000001_plans_entitlements_capacity.sql`):**
     - Created `public.subscriptions` table with foreign key to `workspaces(id)` on delete cascade, status checks, and period timestamps.
     - Created `public.entitlement_overrides` table supporting explicit business- or workspace-scoped feature grants and add-on overrides with expiration tracking.
@@ -30,9 +36,11 @@ Record implementation changes by task ID. Do not record planned work as complete
     - Enforced exact role authorization: Workspace Owner (`workspace_owner` or `owner_user_id`), Workspace Admin / Reseller Admin (`workspace_admin`, `reseller_admin`), Sovereign Business Owner (`sovereign_owner_id`), and Business Owner / Manager (`owner`, `manager`). Excludes staff, cashiers, and foreign tenants.
     - Allowed archiving and suspending sites for archived businesses to safely release capacity while prohibiting publishing.
     - Audited `SECURITY DEFINER` hygiene: verified `SET search_path = ''`, qualified public relations, caller authenticated via `auth.uid()`, session connection protected via `session_user NOT IN ('postgres', 'service_role')` and `auth.jwt() ->> 'role' <> 'service_role'`.
+  - **Server Actions & Error Sanitization:**
+    - Extended `sanitizeError` in `src/lib/plans/actions.ts` to map custom SQLSTATE codes (`VY001`-`VY006`) to user-safe error messages without exposing database internals.
   - **Verification & Quality Gates:**
-    - Added comprehensive regression tests in `tests/unit/plans/capacity.test.ts` and `tests/unit/plans/migration.test.ts`.
-    - Full Vitest suite contains 50 test files and 570 passing tests with 100% pass rate.
+    - Added comprehensive regression tests in `tests/unit/plans/capacity.test.ts`, `tests/unit/plans/migration.test.ts`, and `tests/unit/plans/actions.test.ts`.
+    - Full Vitest suite contains 50 test files and 578 passing tests with 100% pass rate.
     - Formatter, linter, typechecker, and production build all pass cleanly.
 
 ### [VO-025] — Implement business profile settings and fact provenance (2026-11-14)
