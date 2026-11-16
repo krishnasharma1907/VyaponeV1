@@ -151,4 +151,72 @@ describe("VO-026 Plans & Capacity Migration Verification", () => {
       expect(combinedSql).toContain("trg_handle_business_archive_restore");
     });
   });
+
+  describe("Sites Table Privilege Hardening Migration (20261116000002_harden_sites_table_privileges_and_rpc.sql)", () => {
+    const privilegeMigrationPath = path.join(
+      process.cwd(),
+      "supabase",
+      "migrations",
+      "20261116000002_harden_sites_table_privileges_and_rpc.sql",
+    );
+    const privilegeSql = fs.readFileSync(privilegeMigrationPath, "utf-8");
+
+    it("verifies privilege migration file exists and is populated", () => {
+      expect(privilegeSql.length).toBeGreaterThan(100);
+    });
+
+    it("verifies all broad table-level privileges are revoked from untrusted roles", () => {
+      expect(privilegeSql).toContain(
+        "REVOKE ALL ON public.sites FROM anon, authenticated, PUBLIC;",
+      );
+    });
+
+    it("verifies SELECT is granted to anon and authenticated", () => {
+      expect(privilegeSql).toContain("GRANT SELECT ON public.sites TO anon, authenticated;");
+    });
+
+    it("verifies column-level INSERT strictly excludes status", () => {
+      expect(privilegeSql).toContain(
+        "GRANT INSERT (id, business_id, subdomain, primary_domain, published_version_id, created_at, updated_at)",
+      );
+      expect(privilegeSql).not.toContain("GRANT INSERT (status)");
+      expect(privilegeSql).not.toContain("GRANT INSERT ON public.sites TO authenticated");
+    });
+
+    it("verifies column-level UPDATE strictly excludes status and business_id", () => {
+      expect(privilegeSql).toContain(
+        "GRANT UPDATE (subdomain, primary_domain, published_version_id, updated_at)",
+      );
+      expect(privilegeSql).not.toContain("GRANT UPDATE (status)");
+      expect(privilegeSql).not.toContain("GRANT UPDATE (business_id)");
+      expect(privilegeSql).not.toContain("GRANT UPDATE ON public.sites TO authenticated");
+    });
+
+    it("verifies DELETE is granted to authenticated and guarded by RLS", () => {
+      expect(privilegeSql).toContain("GRANT DELETE ON public.sites TO authenticated;");
+    });
+
+    it("verifies service_role maintains administrative access", () => {
+      expect(privilegeSql).toContain("GRANT ALL ON public.sites TO service_role;");
+    });
+
+    it("verifies unconditional draft enforcement trigger on INSERT", () => {
+      expect(privilegeSql).toContain("check_site_insert_status_trigger");
+      expect(privilegeSql).toContain("trg_check_site_insert_status");
+      expect(privilegeSql).toContain("BEFORE INSERT ON public.sites");
+      expect(privilegeSql).toContain("NEW.status IS DISTINCT FROM 'draft'");
+      expect(privilegeSql).toContain("USING ERRCODE = 'VY003'");
+    });
+
+    it("verifies combined_migrations.sql is strictly synchronized with 20261116000002", () => {
+      const combinedPath = path.join(process.cwd(), "supabase", "combined_migrations.sql");
+      const combinedSql = fs.readFileSync(combinedPath, "utf-8");
+
+      expect(combinedSql).toContain(
+        "-- Migration: 20261116000002_harden_sites_table_privileges_and_rpc.sql",
+      );
+      expect(combinedSql).toContain("REVOKE ALL ON public.sites FROM anon, authenticated, PUBLIC;");
+      expect(combinedSql).toContain("check_site_insert_status_trigger");
+    });
+  });
 });

@@ -49,14 +49,21 @@
      - Verified exact row-locking SQL syntax: `ORDER BY id FOR UPDATE` strictly precedes `FOR UPDATE` clause in `transition_site_status_atomic()`.
      - Added draft replacement capacity checks: ensures projected drafts do not exceed allowance, and prohibits atomic replacement if workspace is in an exceeded draft state post-downgrade.
      - Protected business restoration: added trigger `trg_handle_business_archive_restore` on `public.businesses` demoting any published sites to `suspended` when a business is archived or restored.
-  6. **Verification & Quality Gate:**
-     - 4 test suites in `tests/unit/plans/` (56 tests) covering plan resolution, feature overrides, capacity metrics, counting rules, Server Actions, SQLSTATE sanitization, locking syntax, and migration RLS policies.
-     - Full Vitest suite passes: 50 test files, 578/578 tests passed (100%).
+  6. **Sites Table Privilege Hardening & Zero-Bypass RPC Gate (`20261116000002_harden_sites_table_privileges_and_rpc.sql`):**
+     - Revoked broad table-level `UPDATE` and `INSERT` from `authenticated, anon, PUBLIC` on `public.sites`. In PostgreSQL, table-level grants override column revocations; revoking table-level DML ensures column-level exclusions are strictly enforced.
+     - Granted column-level `INSERT` strictly excluding `status`; new sites default to `'draft'`, and explicit supply of `status` fails at the parser.
+     - Added unconditional trigger `trg_check_site_insert_status` enforcing `NEW.status = 'draft'` on all inserts (`VY003`).
+     - Granted column-level `UPDATE` strictly excluding `status` and `business_id`; direct status mutations fail at the parser (`42501`).
+     - Proved custom GUC manipulation (`vyapone.in_atomic_site_transition`) cannot bypass column privileges.
+  7. **Verification & Quality Gate:**
+     - 5 test suites in `tests/unit/plans/` (83 tests) covering plan resolution, feature overrides, capacity metrics, counting rules, Server Actions, SQLSTATE sanitization, locking syntax, migration RLS policies, effective privilege matrix, and direct mutation attack tests.
+     - Full Vitest suite passes: 51 test files, 605/605 tests passed (100%).
      - Code coverage meets all required thresholds: Statements 84.87%, Branches 70.36%, Functions 88.58%, Lines 84.87% (with `src/lib/plans` achieving 83.55% statements, 93.33% functions).
      - Next.js production build succeeds with all 34 routes compiled.
 - **Files added/modified:**
   - Added: `supabase/migrations/20261115000001_plans_entitlements_capacity.sql`
   - Added: `supabase/migrations/20261116000001_harden_capacity_locking_and_sqlstate.sql`
+  - Added: `supabase/migrations/20261116000002_harden_sites_table_privileges_and_rpc.sql`
   - Added: `src/lib/plans/types.ts`
   - Added: `src/lib/plans/constants.ts`
   - Added: `src/lib/plans/schemas.ts`
@@ -67,6 +74,7 @@
   - Added: `tests/unit/plans/capacity.test.ts`
   - Added: `tests/unit/plans/actions.test.ts`
   - Added: `tests/unit/plans/migration.test.ts`
+  - Added: `tests/unit/plans/site-privilege-audit.test.ts`
   - Modified: `supabase/combined_migrations.sql`
   - Modified: `src/lib/supabase/types.ts`
   - Modified: `src/lib/workspaces/schemas.ts`
@@ -79,9 +87,9 @@
   - Prettier: `pnpm format:check` -> PASS (All matched files use Prettier code style)
   - ESLint: `pnpm lint` -> PASS (0 errors, 0 warnings)
   - TypeScript: `pnpm typecheck` -> PASS (0 errors)
-  - Unit/Integration Tests: `pnpm test` -> PASS (50/50 test files, 578/578 tests, 100% passing)
+  - Unit/Integration Tests: `pnpm test` -> PASS (51/51 test files, 605/605 tests, 100% passing)
   - Test Coverage: `pnpm test:coverage` -> PASS (meets all thresholds)
-  - Atomic Publishing, Locking & SQLSTATE Hardening: Fully verified across concurrent races, replacement demotion invariants, fail-closed missing RPC tests, SECURITY DEFINER checks, business_id immutability, custom SQLSTATE codes (`VY001`-`VY006`), lock-order elimination, and archive/restore triggers.
+  - Sites Privilege Hardening & Zero-Bypass RPC: Fully verified against direct status UPDATE, direct published INSERT, immutable business_id mutation, custom GUC exploit attempts, and atomic transition RPC safety.
   - Production Build: `pnpm build` -> PASS (34/34 routes generated successfully)
 - **Acceptance status:** COMPLETE
 - **Blockers:** None

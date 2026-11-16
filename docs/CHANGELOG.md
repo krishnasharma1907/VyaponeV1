@@ -6,6 +6,13 @@ Record implementation changes by task ID. Do not record planned work as complete
 
 ### [VO-026] — Implement plans, entitlements and capacity service (2026-11-16)
 - Implemented and hardened the centralized plans, subscription management, feature entitlement evaluation, and capacity enforcement service strictly according to PRD FINAL v2 (§9.1, §9.2, §16) and `docs/TASK_BACKLOG.md`:
+  - **Sites Table Privilege Hardening & Zero-Bypass RPC Gate (`supabase/migrations/20261116000002_harden_sites_table_privileges_and_rpc.sql`):**
+    - Eliminated broad table-level `UPDATE` and `INSERT` grants on `public.sites` from `authenticated, anon, PUBLIC`. In PostgreSQL, table-level grants supersede column-level revocations; revoking table-level DML guarantees that direct status mutations cannot bypass column exclusions.
+    - Granted scoped column-level `INSERT` strictly excluding `status` (`id, business_id, subdomain, primary_domain, published_version_id, created_at, updated_at`). All directly inserted storefronts must rely on the column default `'draft'`.
+    - Added defense-in-depth trigger `trg_check_site_insert_status` enforcing `NEW.status = 'draft'` on all inserts unconditionally (`VY003`).
+    - Granted scoped column-level `UPDATE` strictly excluding `status` and `business_id` (`subdomain, primary_domain, published_version_id, updated_at`). Direct updates attempting to alter `status` or `business_id` fail immediately at the PostgreSQL parser/privilege check with SQLSTATE `42501`.
+    - Neutralized custom GUC manipulation: setting `vyapone.in_atomic_site_transition = true` confers zero privilege bypass because column permission checks strictly precede trigger execution.
+    - Verified `transition_site_status_atomic()` as the exclusive, authorized execution path for protected status transitions.
   - **Database Hardening & Non-Colliding SQLSTATE Codes (`supabase/migrations/20261116000001_harden_capacity_locking_and_sqlstate.sql`):**
     - Replaced predefined PostgreSQL codes (`P0003`, `P0004`, `P0005`) with custom, non-colliding VyapOne SQLSTATE codes: `VY001` (capacity limit exceeded), `VY002` (invalid business lifecycle), `VY003` (permission denied / prohibited direct transition), `VY004` (tenant boundary violation), `VY005` (unknown plan identifier), and `VY006` (immutable field mutation prohibited).
     - Eliminated lock-order inversion deadlocks: revoked direct `UPDATE (status)` on `public.sites` from `authenticated, anon, PUBLIC`. Direct client publishing updates are rejected by trigger `trg_check_site_publish_capacity` with `VY003` unless executed inside `transition_site_status_atomic()` where `workspaces` row locks are always acquired first.
@@ -39,8 +46,8 @@ Record implementation changes by task ID. Do not record planned work as complete
   - **Server Actions & Error Sanitization:**
     - Extended `sanitizeError` in `src/lib/plans/actions.ts` to map custom SQLSTATE codes (`VY001`-`VY006`) to user-safe error messages without exposing database internals.
   - **Verification & Quality Gates:**
-    - Added comprehensive regression tests in `tests/unit/plans/capacity.test.ts`, `tests/unit/plans/migration.test.ts`, and `tests/unit/plans/actions.test.ts`.
-    - Full Vitest suite contains 50 test files and 578 passing tests with 100% pass rate.
+    - Added comprehensive regression tests in `tests/unit/plans/capacity.test.ts`, `tests/unit/plans/migration.test.ts`, `tests/unit/plans/actions.test.ts`, and `tests/unit/plans/site-privilege-audit.test.ts`.
+    - Full Vitest suite contains 51 test files and 605 passing tests with 100% pass rate.
     - Formatter, linter, typechecker, and production build all pass cleanly.
 
 ### [VO-025] — Implement business profile settings and fact provenance (2026-11-14)
