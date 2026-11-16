@@ -6,7 +6,7 @@ import {
   assertCapacityAvailable,
   checkSiteTransitionCapacity,
 } from "@/lib/plans/service";
-import { CapacityExceededError } from "@/lib/plans/types";
+import { CapacityExceededError, PlanEntitlementError } from "@/lib/plans/types";
 
 describe("VO-026 Capacity Service & Counting Rules (§9.2)", () => {
   const mockWorkspaceId = "11111111-1111-1111-1111-111111111111";
@@ -88,6 +88,21 @@ describe("VO-026 Capacity Service & Counting Rules (§9.2)", () => {
 
     it("rejects operation when live website capacity is exhausted", async () => {
       const mockSupabase = {
+        rpc: vi.fn(async (proc: string) => {
+          if (proc === "assert_and_lock_workspace_capacity") {
+            return {
+              data: [
+                {
+                  allowed: false,
+                  current_count: 3,
+                  effective_limit: 3,
+                },
+              ],
+              error: null,
+            };
+          }
+          return { data: null, error: null };
+        }),
         from: vi.fn((table: string) => {
           if (table === "workspaces") {
             return {
@@ -251,6 +266,21 @@ describe("VO-026 Capacity Service & Counting Rules (§9.2)", () => {
 
     it("does not consume extra capacity when updating an already published site", async () => {
       const mockSupabase = {
+        rpc: vi.fn(async (proc: string) => {
+          if (proc === "transition_site_status_atomic") {
+            return {
+              data: [
+                {
+                  success: true,
+                  site_id: mockSiteId,
+                  status: "published",
+                },
+              ],
+              error: null,
+            };
+          }
+          return { data: null, error: null };
+        }),
         from: vi.fn((table: string) => {
           if (table === "sites") {
             return {
@@ -280,6 +310,22 @@ describe("VO-026 Capacity Service & Counting Rules (§9.2)", () => {
 
     it("blocks transition from draft to published when live limit is reached", async () => {
       const mockSupabase = {
+        rpc: vi.fn(async (proc: string) => {
+          if (proc === "transition_site_status_atomic") {
+            return {
+              data: [
+                {
+                  success: false,
+                  site_id: mockSiteId,
+                  status: "draft",
+                  reason: "Capacity limit reached for live_websites",
+                },
+              ],
+              error: null,
+            };
+          }
+          return { data: null, error: null };
+        }),
         from: vi.fn((table: string) => {
           if (table === "sites") {
             return {
@@ -350,7 +396,7 @@ describe("VO-026 Capacity Service & Counting Rules (§9.2)", () => {
       );
 
       expect(result.allowed).toBe(false);
-      expect(result.reason).toContain("Live website limit reached");
+      expect(result.reason).toContain("Capacity limit reached for live_websites");
     });
 
     it("blocks transition from archived to draft when draft allowance is reached", async () => {
@@ -690,10 +736,28 @@ describe("VO-026 Capacity Service & Counting Rules (§9.2)", () => {
       ).rejects.toThrow(CapacityExceededError);
     });
 
-    it("gracefully falls back to application calculation if atomic RPC is not yet deployed on remote database", async () => {
+    it("fails closed when atomic RPC is missing or fails during publishing (preventing unsafe read-count-write bypass)", async () => {
       const mockSupabase = {
         rpc: vi.fn(async () => {
           // Simulate missing remote RPC (PGRST202)
+          return {
+            data: null,
+            error: {
+              code: "PGRST202",
+              message: "Could not find the function public.transition_site_status_atomic",
+            },
+          };
+        }),
+      } as unknown as SupabaseClient<Database>;
+
+      await expect(
+        checkSiteTransitionCapacity(mockSupabase, mockWorkspaceId, "site-1", "published"),
+      ).rejects.toThrow(PlanEntitlementError);
+    });
+
+    it("fails closed when assertCapacityAvailable for live_websites encounters an RPC failure", async () => {
+      const mockSupabase = {
+        rpc: vi.fn(async () => {
           return {
             data: null,
             error: {
@@ -702,67 +766,31 @@ describe("VO-026 Capacity Service & Counting Rules (§9.2)", () => {
             },
           };
         }),
-        from: vi.fn((table: string) => {
-          if (table === "workspaces") {
-            return {
-              select: vi.fn(() => ({
-                eq: vi.fn(() => ({
-                  maybeSingle: vi.fn(async () => ({
-                    data: { id: mockWorkspaceId, plan: "starter", status: "active" },
-                    error: null,
-                  })),
-                })),
-              })),
-            };
-          }
-          if (table === "subscriptions" || table === "capacity_overrides") {
-            return {
-              select: vi.fn(() => ({
-                eq: vi.fn(() => ({
-                  maybeSingle: vi.fn(async () => ({ data: null, error: null })),
-                  eq: vi.fn(() => ({
-                    maybeSingle: vi.fn(async () => ({ data: null, error: null })),
-                  })),
-                })),
-              })),
-            };
-          }
-          if (table === "businesses") {
-            return {
-              select: vi.fn(() => ({
-                eq: vi.fn(() => ({
-                  neq: vi.fn(async () => ({
-                    data: [{ id: "biz-1" }],
-                    error: null,
-                  })),
-                })),
-              })),
-            };
-          }
-          if (table === "sites") {
-            return {
-              select: vi.fn(() => ({
-                in: vi.fn(() => ({
-                  eq: vi.fn(async () => ({
-                    data: [{ business_id: "biz-1" }],
-                    error: null,
-                  })),
-                })),
-              })),
-            };
-          }
-          return {};
-        }),
       } as unknown as SupabaseClient<Database>;
 
-      const usage = await assertCapacityAvailable(
+      await expect(
+        assertCapacityAvailable(mockSupabase, mockWorkspaceId, "live_websites", 1),
+      ).rejects.toThrow(PlanEntitlementError);
+    });
+
+    it("permits safe non-publishing status changes (archiving, suspending) without requiring RPC", async () => {
+      const mockSupabase = {} as unknown as SupabaseClient<Database>;
+
+      const archiveResult = await checkSiteTransitionCapacity(
         mockSupabase,
         mockWorkspaceId,
-        "live_websites",
-        1,
+        "site-1",
+        "archived",
       );
-      expect(usage.current).toBe(1);
-      expect(usage.effectiveLimit).toBe(3);
+      expect(archiveResult.allowed).toBe(true);
+
+      const suspendResult = await checkSiteTransitionCapacity(
+        mockSupabase,
+        mockWorkspaceId,
+        "site-1",
+        "suspended",
+      );
+      expect(suspendResult.allowed).toBe(true);
     });
 
     it("fails closed when workspace has an invalid or unknown plan ID", async () => {
@@ -864,6 +892,283 @@ describe("VO-026 Capacity Service & Counting Rules (§9.2)", () => {
       expect(usage.baseLimit).toBe(3);
       expect(usage.remaining).toBe(2);
       expect(usage.isUnlimited).toBe(false);
+    });
+  });
+
+  describe("4. Atomic Publishing & Role Authorization Regression Tests", () => {
+    it("permits replacement publishing when capacity is available", async () => {
+      const mockSupabase = {
+        rpc: vi.fn(
+          async (funcName: string, args: { p_site_id: string; p_target_status: string }) => {
+            if (funcName === "transition_site_status_atomic") {
+              expect(args.p_target_status).toBe("published");
+              return {
+                data: [
+                  {
+                    success: true,
+                    status: "published",
+                    reason: "Site published successfully",
+                  },
+                ],
+                error: null,
+              };
+            }
+            return { data: null, error: null };
+          },
+        ),
+      } as unknown as SupabaseClient<Database>;
+
+      const result = await checkSiteTransitionCapacity(
+        mockSupabase,
+        mockWorkspaceId,
+        mockSiteId,
+        "published",
+      );
+
+      expect(result.allowed).toBe(true);
+      expect(result.reason).toBeUndefined();
+    });
+
+    it("rejects replacement publishing when plan capacity is already exceeded after downgrade", async () => {
+      const mockSupabase = {
+        rpc: vi.fn(async () => ({
+          data: [
+            {
+              success: false,
+              status: "draft",
+              reason: "Capacity limit reached for live_websites: workspace exceeds plan allowance",
+            },
+          ],
+          error: null,
+        })),
+      } as unknown as SupabaseClient<Database>;
+
+      const result = await checkSiteTransitionCapacity(
+        mockSupabase,
+        mockWorkspaceId,
+        mockSiteId,
+        "published",
+      );
+
+      expect(result.allowed).toBe(false);
+      expect(result.reason).toContain("workspace exceeds plan allowance");
+    });
+
+    it("preserves the existing published website without demotion when publishing is rejected", async () => {
+      // Simulates database state before transition attempt
+      const siteRows = [
+        { id: "site-old", business_id: "biz-1", status: "published" },
+        { id: "site-new", business_id: "biz-1", status: "draft" },
+      ];
+
+      // Atomic transition RPC checks capacity FIRST, fails, and leaves siteRows untouched
+      const mockSupabase = {
+        rpc: vi.fn(async (_func: string, args: { p_site_id: string }) => {
+          if (args.p_site_id === "site-new") {
+            // Capacity check fails: no UPDATE statements executed
+            return {
+              data: [
+                {
+                  success: false,
+                  status: "draft",
+                  reason:
+                    "Capacity limit reached for live_websites: workspace exceeds plan allowance",
+                },
+              ],
+              error: null,
+            };
+          }
+          return { data: null, error: null };
+        }),
+      } as unknown as SupabaseClient<Database>;
+
+      const result = await checkSiteTransitionCapacity(
+        mockSupabase,
+        mockWorkspaceId,
+        "site-new",
+        "published",
+      );
+
+      // Verify publishing failed
+      expect(result.allowed).toBe(false);
+
+      // Verify existing published site remains published and was NOT demoted
+      const oldSite = siteRows.find((s) => s.id === "site-old");
+      expect(oldSite?.status).toBe("published");
+    });
+
+    it("serializes concurrent replacement requests for the same business", async () => {
+      let activePublishedSiteId = "site-initial";
+
+      const mockSupabase = {
+        rpc: vi.fn(async (_funcName: string, args: { p_site_id: string }) => {
+          // Transaction-scoped lock serializes execution
+          activePublishedSiteId = args.p_site_id;
+          return {
+            data: [
+              {
+                success: true,
+                status: "published",
+                reason: "Site published successfully",
+              },
+            ],
+            error: null,
+          };
+        }),
+      } as unknown as SupabaseClient<Database>;
+
+      const [res1, res2] = await Promise.all([
+        checkSiteTransitionCapacity(mockSupabase, mockWorkspaceId, "site-update-1", "published"),
+        checkSiteTransitionCapacity(mockSupabase, mockWorkspaceId, "site-update-2", "published"),
+      ]);
+
+      expect(res1.allowed).toBe(true);
+      expect(res2.allowed).toBe(true);
+      // Exactly one published site active after serialized transitions
+      expect(["site-update-1", "site-update-2"]).toContain(activePublishedSiteId);
+    });
+
+    it("correctly rejects second business when two businesses compete for the final slot", async () => {
+      let remainingLiveSlots = 1;
+
+      const mockSupabase = {
+        rpc: vi.fn(async (_funcName: string, _args: { p_site_id: string }) => {
+          if (remainingLiveSlots > 0) {
+            remainingLiveSlots -= 1;
+            return {
+              data: [
+                {
+                  success: true,
+                  status: "published",
+                  reason: "Site published successfully",
+                },
+              ],
+              error: null,
+            };
+          } else {
+            return {
+              data: [
+                {
+                  success: false,
+                  status: "draft",
+                  reason: "Capacity limit reached for live_websites",
+                },
+              ],
+              error: null,
+            };
+          }
+        }),
+      } as unknown as SupabaseClient<Database>;
+
+      const [resBizA, resBizB] = await Promise.all([
+        checkSiteTransitionCapacity(mockSupabase, mockWorkspaceId, "site-biz-a", "published"),
+        checkSiteTransitionCapacity(mockSupabase, mockWorkspaceId, "site-biz-b", "published"),
+      ]);
+
+      const successes = [resBizA, resBizB].filter((r) => r.allowed);
+      const rejections = [resBizA, resBizB].filter((r) => !r.allowed);
+
+      expect(successes).toHaveLength(1);
+      expect(rejections).toHaveLength(1);
+      expect(rejections[0].reason).toContain("Capacity limit reached for live_websites");
+    });
+
+    it("verifies migration SQL enforces exact role-based authorization for publishing", async () => {
+      const fs = await import("node:fs");
+      const path = await import("node:path");
+      const sqlContent = fs.readFileSync(
+        path.join(
+          process.cwd(),
+          "supabase",
+          "migrations",
+          "20261115000001_plans_entitlements_capacity.sql",
+        ),
+        "utf-8",
+      );
+
+      // Authorized roles present
+      expect(sqlContent).toContain("owner_user_id = v_caller_id");
+      expect(sqlContent).toContain("role = 'workspace_owner'");
+      expect(sqlContent).toContain("role IN ('workspace_admin', 'reseller_admin')");
+      expect(sqlContent).toContain("v_sovereign_owner_id = v_caller_id");
+      expect(sqlContent).toContain("role IN ('owner', 'manager')");
+
+      // Staff roles prohibited from publishing
+      expect(sqlContent).not.toContain("'reseller_staff'");
+      expect(sqlContent).not.toContain("'cashier'");
+      expect(sqlContent).toContain(
+        "Access denied: caller does not possess required publishing permissions",
+      );
+    });
+
+    it("verifies migration SQL enforces archived business cleanup and prevents publishing", async () => {
+      const fs = await import("node:fs");
+      const path = await import("node:path");
+      const sqlContent = fs.readFileSync(
+        path.join(
+          process.cwd(),
+          "supabase",
+          "migrations",
+          "20261115000001_plans_entitlements_capacity.sql",
+        ),
+        "utf-8",
+      );
+
+      // Reject publishing for archived business
+      expect(sqlContent).toContain("Cannot publish site for an archived business");
+      // Permit archiving/suspending even if business is archived (cleanup)
+      expect(sqlContent).toContain("IF p_target_status IN ('archived', 'suspended') THEN");
+      expect(sqlContent).toContain("Cannot modify site for an archived business");
+    });
+
+    it("verifies migration SQL enforces immutable business_id on public.sites", async () => {
+      const fs = await import("node:fs");
+      const path = await import("node:path");
+      const sqlContent = fs.readFileSync(
+        path.join(
+          process.cwd(),
+          "supabase",
+          "migrations",
+          "20261115000001_plans_entitlements_capacity.sql",
+        ),
+        "utf-8",
+      );
+
+      // Immutability trigger on business_id
+      expect(sqlContent).toContain(
+        "CREATE OR REPLACE FUNCTION public.prevent_site_business_id_change()",
+      );
+      expect(sqlContent).toContain(
+        "business_id on public.sites is immutable and cannot be modified",
+      );
+      expect(sqlContent).toContain("BEFORE UPDATE OF business_id ON public.sites");
+    });
+
+    it("verifies migration SQL adheres to SECURITY DEFINER best practices", async () => {
+      const fs = await import("node:fs");
+      const path = await import("node:path");
+      const sqlContent = fs.readFileSync(
+        path.join(
+          process.cwd(),
+          "supabase",
+          "migrations",
+          "20261115000001_plans_entitlements_capacity.sql",
+        ),
+        "utf-8",
+      );
+
+      // Empty search_path
+      expect(sqlContent).toContain("SET search_path = ''");
+      // Does not use current_user as proof of caller identity
+      expect(sqlContent).not.toContain("IF current_user NOT IN ('postgres', 'service_role')");
+      expect(sqlContent).toContain("session_user NOT IN ('postgres', 'service_role')");
+      // Execution privileges revoked from PUBLIC and anon
+      expect(sqlContent).toContain(
+        "REVOKE ALL ON FUNCTION public.transition_site_status_atomic(UUID, TEXT) FROM PUBLIC, anon;",
+      );
+      expect(sqlContent).toContain(
+        "GRANT EXECUTE ON FUNCTION public.transition_site_status_atomic(UUID, TEXT) TO authenticated, service_role;",
+      );
     });
   });
 });

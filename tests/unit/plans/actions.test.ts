@@ -13,12 +13,14 @@ import {
 // Mock Supabase server client
 const mockGetUser = vi.fn();
 const mockFrom = vi.fn();
+const mockRpc = vi.fn();
 vi.mock("@/lib/supabase/server", () => ({
   createServerSupabaseClient: vi.fn(async () => ({
     auth: {
       getUser: mockGetUser,
     },
     from: mockFrom,
+    rpc: mockRpc,
   })),
 }));
 
@@ -90,7 +92,7 @@ describe("VO-026 Plan & Capacity Server Actions", () => {
         throw new Error("FATAL: connection to server at postgres failed");
       });
 
-      const result = await assertCapacityAvailableAction(mockWorkspaceId, "live_websites", 1);
+      const result = await assertCapacityAvailableAction(mockWorkspaceId, "team_seats", 1);
 
       expect(result.success).toBe(false);
       if (!result.success) {

@@ -13,6 +13,9 @@ Record implementation changes by task ID. Do not record planned work as complete
     - Expanded `public.workspaces.plan` check constraint to support `('starter', 'growth', 'pro', 'agency', 'scale')`.
     - Expanded `public.sites.status` check constraint to support `'archived'` status per PRD §9.2 counting rules.
     - Enforced `FORCE ROW LEVEL SECURITY` across all 3 tables with fail-closed policies isolating reads to workspace members and denying unauthorized client writes.
+    - Added atomic capacity functions: `assert_and_lock_workspace_capacity`, `transition_site_status_atomic`, `check_site_publish_capacity_trigger`, and `prevent_site_business_id_change`.
+    - Dropped unconditional `sites_business_id_key` to allow multiple draft sites while strictly enforcing at most one published site per business via `idx_sites_single_published_per_business`.
+    - Enforced immutable `business_id` on `public.sites` via `trg_prevent_site_business_id_change` trigger.
   - **Plan Model & Entitlement Definitions:**
     - Configured master plan definitions adhering to PRD §9.1 (`starter`: ₹399/mo, 3 live websites, 10 drafts, 2 seats; `growth`/`pro`: ₹999/mo, 8 live websites, 25 drafts, 5 seats; `agency`: ₹1,999/mo, 20 live websites, 50 drafts, 15 seats; `scale`: quote, 50 live websites, 100 drafts, 50 seats).
     - Preserved hypothesis pricing status per ADR-011 and PRD §9.1.
@@ -20,15 +23,16 @@ Record implementation changes by task ID. Do not record planned work as complete
     - `resolveWorkspacePlan`: Resolves effective plan from subscriptions or workspace attributes, handles grace periods and downgrade fallbacks.
     - `checkFeatureEntitlement` & `assertFeatureEntitled`: Evaluates business overrides, workspace overrides, and plan defaults; fails closed when tenant context is missing.
     - `getCapacityUsage` & `assertCapacityAvailable`: Calculates real database consumption; enforces PRD §9.2 counting rules (archived sites/businesses do not consume live slots; custom domains do not consume extra slots; draft allowances separate from live slots).
-    - `checkSiteTransitionCapacity`: Validates site status changes (publishing checks live slot capacity; archiving always permitted).
+    - `checkSiteTransitionCapacity`: Validates site status changes via atomic database transition RPC; fails closed (`ATOMIC_RPC_UNAVAILABLE`) if RPC fails or is missing; allows archiving/suspending safely.
     - `getWorkspaceSubscriptionDetails`: Aggregates complete subscription, capacities, and entitlements for a workspace.
-  - **Server Actions Boundary:**
-    - Created `getWorkspaceSubscriptionDetailsAction`, `checkFeatureEntitlementAction`, `assertCapacityAvailableAction`, and `checkSiteTransitionCapacityAction`.
-    - Enforced session-derived caller identification, tenant authorization via `assertWorkspaceAccess`, and database error sanitization.
+  - **Atomic Publishing & Exact Role Authorization Hardening:**
+    - Replaced premature demotion with atomic 10-step invariant in `transition_site_status_atomic`: preserves existing live site on capacity rejection.
+    - Enforced exact role authorization: Workspace Owner (`workspace_owner` or `owner_user_id`), Workspace Admin / Reseller Admin (`workspace_admin`, `reseller_admin`), Sovereign Business Owner (`sovereign_owner_id`), and Business Owner / Manager (`owner`, `manager`). Excludes staff, cashiers, and foreign tenants.
+    - Allowed archiving and suspending sites for archived businesses to safely release capacity while prohibiting publishing.
+    - Audited `SECURITY DEFINER` hygiene: verified `SET search_path = ''`, qualified public relations, caller authenticated via `auth.uid()`, session connection protected via `session_user NOT IN ('postgres', 'service_role')` and `auth.jwt() ->> 'role' <> 'service_role'`.
   - **Verification & Quality Gates:**
-    - Added 24 new unit tests across 4 test files in `tests/unit/plans/`.
-    - Full Vitest suite contains 49 test files and 533 passing tests with 100% pass rate.
-    - Code coverage meets all required thresholds: Statements 85.12%, Branches 70.21%, Functions 88.94%, Lines 85.12%.
+    - Added comprehensive regression tests in `tests/unit/plans/capacity.test.ts` and `tests/unit/plans/migration.test.ts`.
+    - Full Vitest suite contains 50 test files and 570 passing tests with 100% pass rate.
     - Formatter, linter, typechecker, and production build all pass cleanly.
 
 ### [VO-025] — Implement business profile settings and fact provenance (2026-11-14)

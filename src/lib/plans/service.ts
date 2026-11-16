@@ -400,7 +400,16 @@ export async function assertCapacityAvailable(
         p_requested_quantity: requestedQuantity,
       });
 
-      if (!error && Array.isArray(data) && data.length > 0) {
+      if (error) {
+        // In production, when metric is live_websites, do NOT silently fall back to unsafe read-count-write path
+        if (metric === "live_websites") {
+          throw new PlanEntitlementError(
+            `Atomic capacity enforcement failed for ${metric}: ${error.message || "RPC execution failed"}`,
+            "ATOMIC_RPC_UNAVAILABLE",
+            500,
+          );
+        }
+      } else if (Array.isArray(data) && data.length > 0) {
         const result = data[0];
 
         if (!result.allowed) {
@@ -424,14 +433,27 @@ export async function assertCapacityAvailable(
         };
       }
     } catch (rpcErr) {
-      if (rpcErr instanceof CapacityExceededError) {
+      if (rpcErr instanceof CapacityExceededError || rpcErr instanceof PlanEntitlementError) {
         throw rpcErr;
       }
-      // Fall through to application-layer calculation for mock/offline clients
+      if (metric === "live_websites") {
+        throw new PlanEntitlementError(
+          `Atomic capacity enforcement failed for ${metric}: ${rpcErr instanceof Error ? rpcErr.message : String(rpcErr)}`,
+          "ATOMIC_RPC_UNAVAILABLE",
+          500,
+        );
+      }
+      // Fall through to application-layer calculation for read-only / offline metrics
     }
+  } else if (metric === "live_websites") {
+    throw new PlanEntitlementError(
+      "Atomic capacity RPC is unavailable. Publishing requires concurrency-safe database enforcement.",
+      "ATOMIC_RPC_UNAVAILABLE",
+      500,
+    );
   }
 
-  // 2. Application-layer capacity calculation fallback
+  // 2. Application-layer capacity calculation fallback (read-only / offline)
   const usage = await getCapacityUsage(supabase, workspaceId, metric);
 
   if (usage.current + requestedQuantity > usage.effectiveLimit) {
@@ -448,12 +470,17 @@ export async function assertCapacityAvailable(
 
 /**
  * Validates whether a site status transition conforms to capacity rules.
- * Concurrency-safe: attempts atomic database site transition RPC first, falling back to application calculation.
+ * Concurrency-safe: utilizes atomic database site transition RPC.
  * Documented rules (§9.2):
  * - Transition to 'archived' or 'suspended' is ALWAYS permitted (frees capacity).
- * - Transition from 'draft' to 'published' requires live_websites capacity.
+ * - Transition from 'draft' to 'published' requires live_websites capacity and enforces atomic database locks.
  * - If site is ALREADY 'published', re-publishing does not consume an extra slot.
  * - Restoring an archived site to 'draft' requires draft_websites capacity.
+ *
+ * Production Fail-Closed Behavior:
+ * - If atomic capacity RPC fails or is unavailable during a publishing attempt,
+ *   publishing MUST NOT silently fall back to an unsafe read-count-write path.
+ *   It fails closed with a typed PlanEntitlementError.
  */
 export async function checkSiteTransitionCapacity(
   supabase: SupabaseClient<Database>,
@@ -461,12 +488,50 @@ export async function checkSiteTransitionCapacity(
   siteId: string,
   targetStatus: "draft" | "published" | "suspended" | "archived",
 ): Promise<{ allowed: boolean; reason?: string }> {
-  // Archiving or suspending never requires capacity
+  // Archiving or suspending never requires capacity and is always permitted (PRD §9.2)
   if (targetStatus === "archived" || targetStatus === "suspended") {
     return { allowed: true };
   }
 
-  // 1. Concurrency-Safe: Attempt atomic database RPC if available
+  // 1. Publishing: Strictly enforce atomic database transition RPC (FAIL CLOSED)
+  if (targetStatus === "published") {
+    if (typeof supabase.rpc === "function") {
+      const { data, error } = await supabase.rpc("transition_site_status_atomic", {
+        p_site_id: siteId,
+        p_target_status: targetStatus,
+      });
+
+      if (error) {
+        throw new PlanEntitlementError(
+          `Atomic capacity enforcement failed: ${error.message || "RPC execution failed"}`,
+          "ATOMIC_RPC_UNAVAILABLE",
+          500,
+        );
+      }
+
+      if (Array.isArray(data) && data.length > 0) {
+        const result = data[0];
+        return {
+          allowed: result.success,
+          reason: result.success ? undefined : result.reason,
+        };
+      }
+
+      throw new PlanEntitlementError(
+        "Atomic capacity enforcement returned empty response",
+        "ATOMIC_RPC_EMPTY_RESPONSE",
+        500,
+      );
+    }
+
+    throw new PlanEntitlementError(
+      "Atomic capacity RPC is unavailable. Publishing requires concurrency-safe database enforcement.",
+      "ATOMIC_RPC_UNAVAILABLE",
+      500,
+    );
+  }
+
+  // 2. Restoring archived to draft: attempt atomic RPC first
   if (typeof supabase.rpc === "function") {
     try {
       const { data, error } = await supabase.rpc("transition_site_status_atomic", {
@@ -486,8 +551,7 @@ export async function checkSiteTransitionCapacity(
     }
   }
 
-  // 2. Application-layer site transition evaluation fallback
-  // Fetch current site status
+  // 3. Application-layer draft allowance evaluation fallback
   const { data: site } = await supabase
     .from("sites")
     .select("id, status")
@@ -496,24 +560,8 @@ export async function checkSiteTransitionCapacity(
 
   const currentStatus = site?.status ?? "draft";
 
-  // If already at target status, no additional slot is consumed
   if (currentStatus === targetStatus) {
     return { allowed: true };
-  }
-
-  if (targetStatus === "published") {
-    try {
-      await assertCapacityAvailable(supabase, workspaceId, "live_websites", 1);
-      return { allowed: true };
-    } catch (err) {
-      if (err instanceof CapacityExceededError) {
-        return {
-          allowed: false,
-          reason: `Live website limit reached (${err.limit} sites). Upgrade plan to publish more live sites.`,
-        };
-      }
-      throw err;
-    }
   }
 
   if (targetStatus === "draft" && currentStatus === "archived") {

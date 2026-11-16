@@ -69,12 +69,12 @@
   - Modified: `docs/PROGRESS.md`
   - Modified: `docs/CHANGELOG.md`
 - **Verification:**
-  - Prettier: `pnpm format:check` -> PASS (0 issues)
+  - Prettier: `pnpm format:check` -> PASS (All matched files use Prettier code style)
   - ESLint: `pnpm lint` -> PASS (0 errors, 0 warnings)
   - TypeScript: `pnpm typecheck` -> PASS (0 errors)
-  - Unit/Integration Tests: `pnpm test` -> PASS (49/49 test files, 533/533 tests)
-  - Coverage: `pnpm test:coverage` -> PASS (Statements 85.12%, Branches 70.21%, Functions 88.94%, Lines 85.12%)
-  - Production Build: `pnpm build` -> PASS (34/34 routes generated)
+  - Unit/Integration Tests: `pnpm test` -> PASS (50/50 test files, 570/570 tests, 100% passing)
+  - Atomic Publishing & Role Auth Hardening: Fully verified across concurrent races, replacement demotion invariants, fail-closed missing RPC tests, SECURITY DEFINER checks, and business_id immutability.
+  - Production Build: `pnpm build` -> PASS (34/34 routes generated successfully)
 - **Acceptance status:** COMPLETE
 - **Blockers:** None
 - **Next task:** VO-027 — Implement team invitations and membership lifecycle

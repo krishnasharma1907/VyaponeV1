@@ -68,4 +68,32 @@ describe("VO-026 Plans & Capacity Migration Verification", () => {
     // Deletes prohibited
     expect(sqlContent).toContain("USING (false)");
   });
+
+  it("verifies atomic publishing procedure and triggers are defined", () => {
+    expect(sqlContent).toContain(
+      "CREATE OR REPLACE FUNCTION public.assert_and_lock_workspace_capacity",
+    );
+    expect(sqlContent).toContain("CREATE OR REPLACE FUNCTION public.transition_site_status_atomic");
+    expect(sqlContent).toContain(
+      "CREATE OR REPLACE FUNCTION public.check_site_publish_capacity_trigger",
+    );
+    expect(sqlContent).toContain(
+      "CREATE OR REPLACE FUNCTION public.prevent_site_business_id_change",
+    );
+
+    expect(sqlContent).toContain(
+      "DROP TRIGGER IF EXISTS trg_check_site_publish_capacity ON public.sites;",
+    );
+    expect(sqlContent).toContain(
+      "DROP TRIGGER IF EXISTS trg_prevent_site_business_id_change ON public.sites;",
+    );
+
+    // Dropping unconditional uniqueness on business_id
+    expect(sqlContent).toContain(
+      "ALTER TABLE public.sites DROP CONSTRAINT IF EXISTS sites_business_id_key;",
+    );
+    expect(sqlContent).toContain(
+      "CREATE UNIQUE INDEX IF NOT EXISTS idx_sites_single_published_per_business",
+    );
+  });
 });
