@@ -2,6 +2,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/lib/supabase/types";
 import type {
   CreateInvitationResult,
+  WorkspaceInvitationWithInviter,
   WorkspaceMemberRow,
   WorkspaceMemberWithProfile,
   WorkspaceRole,
@@ -15,6 +16,7 @@ import {
   normalizeWorkspaceRole,
 } from "./permissions";
 import { generateInvitationToken, hashInvitationToken, isInvitationExpired } from "./tokens";
+import { assertCapacityAvailable } from "@/lib/plans/service";
 
 export class WorkspaceError extends Error {
   constructor(
@@ -322,6 +324,49 @@ export async function inviteWorkspaceMember(
     );
   }
 
+  // Team-Seat Capacity Integration:
+  // Assert workspace capacity is available for metric 'team_seats'
+  let capacityLimit = 2; // Default starter minimum fallback
+  try {
+    const capacity = await assertCapacityAvailable(supabase, input.workspaceId, "team_seats", 1);
+    capacityLimit = capacity.effectiveLimit;
+
+    // Check if active members + pending invitations exceed the seat limit
+    const { count: pendingCount } = await supabase
+      .from("workspace_invitations")
+      .select("*", { count: "exact", head: true })
+      .eq("workspace_id", input.workspaceId)
+      .eq("status", "pending")
+      .gt("expires_at", new Date().toISOString());
+
+    if (capacity.current + (pendingCount ?? 0) >= capacityLimit) {
+      throw new WorkspaceError(
+        `Team-seat capacity reached (${capacityLimit} seats across active members and pending invitations). Upgrade your plan to invite more teammates.`,
+        "CAPACITY_EXCEEDED",
+        403,
+      );
+    }
+  } catch (capErr) {
+    if (capErr instanceof WorkspaceError) {
+      throw capErr;
+    }
+    // If assertCapacityAvailable threw capacity exceeded error
+    const errMessage = capErr instanceof Error ? capErr.message : "Team-seat capacity exceeded";
+    if (
+      (capErr &&
+        typeof capErr === "object" &&
+        "code" in capErr &&
+        (capErr as { code?: unknown }).code === "CAPACITY_EXCEEDED") ||
+      errMessage.toLowerCase().includes("capacity")
+    ) {
+      throw new WorkspaceError(
+        `Team-seat capacity reached. Upgrade your plan to invite more teammates.`,
+        "CAPACITY_EXCEEDED",
+        403,
+      );
+    }
+  }
+
   const normalizedEmail = input.email.trim().toLowerCase();
 
   // Check if active member already exists
@@ -394,7 +439,123 @@ export async function inviteWorkspaceMember(
 }
 
 /**
+ * Lists workspace invitations with caller permission check.
+ */
+export async function listWorkspaceInvitations(
+  supabase: SupabaseClient<Database>,
+  workspaceId: string,
+  actorUserId: string,
+): Promise<WorkspaceInvitationWithInviter[]> {
+  const { userRole } = await getWorkspaceById(supabase, workspaceId, actorUserId);
+
+  if (!hasWorkspacePermission(userRole, "workspace:view")) {
+    throw new WorkspaceError("Insufficient permissions to view invitations", "FORBIDDEN", 403);
+  }
+
+  const { data, error } = await supabase
+    .from("workspace_invitations")
+    .select("*, users:invited_by (id, display_name, email)")
+    .eq("workspace_id", workspaceId)
+    .order("created_at", { ascending: false });
+
+  if (error || !data) {
+    throw new WorkspaceError(
+      error?.message ?? "Failed to list invitations",
+      "FETCH_INVITATIONS_FAILED",
+      500,
+    );
+  }
+
+  return data.map((inv) => ({
+    id: inv.id,
+    workspace_id: inv.workspace_id,
+    email: inv.email,
+    role: inv.role as WorkspaceRole,
+    token_hash: inv.token_hash,
+    invited_by: inv.invited_by,
+    status: inv.status as "pending" | "accepted" | "revoked" | "expired",
+    expires_at: inv.expires_at,
+    created_at: inv.created_at,
+    inviter:
+      (inv.users as unknown as { id: string; display_name: string; email: string | null }) ?? null,
+  }));
+}
+
+/**
+ * Revokes a pending workspace invitation.
+ */
+export async function revokeWorkspaceInvitation(
+  supabase: SupabaseClient<Database>,
+  input: {
+    workspaceId: string;
+    invitationId: string;
+    actorUserId: string;
+  },
+): Promise<{ success: boolean }> {
+  const { userRole } = await getWorkspaceById(supabase, input.workspaceId, input.actorUserId);
+
+  if (!hasWorkspacePermission(userRole, "workspace:invite_member")) {
+    throw new WorkspaceError("Insufficient permissions to revoke invitations", "FORBIDDEN", 403);
+  }
+
+  // Fetch invitation
+  const { data: invitation, error: fetchError } = await supabase
+    .from("workspace_invitations")
+    .select("*")
+    .eq("id", input.invitationId)
+    .eq("workspace_id", input.workspaceId)
+    .single();
+
+  if (fetchError || !invitation) {
+    throw new WorkspaceError("Invitation not found", "NOT_FOUND", 404);
+  }
+
+  if (invitation.status !== "pending") {
+    throw new WorkspaceError(
+      `Cannot revoke invitation with status '${invitation.status}'`,
+      "INVALID_STATUS",
+      400,
+    );
+  }
+
+  // Enforce hierarchy authority: cannot revoke invitation created for a role exceeding caller authority
+  if (!canAssignRole(userRole, invitation.role as WorkspaceRole)) {
+    throw new WorkspaceError(
+      "Cannot revoke an invitation for a role exceeding your authority",
+      "HIERARCHY_VIOLATION",
+      403,
+    );
+  }
+
+  const { error: updateError } = await supabase
+    .from("workspace_invitations")
+    .update({ status: "revoked" })
+    .eq("id", input.invitationId);
+
+  if (updateError) {
+    throw new WorkspaceError(updateError.message, "REVOKE_INVITATION_FAILED", 500);
+  }
+
+  // Audit log
+  await supabase.from("audit_logs").insert({
+    workspace_id: input.workspaceId,
+    user_id: input.actorUserId,
+    action: "workspace.invitation_revoked",
+    resource: "workspace_invitations",
+    metadata_json: {
+      invitation_id: input.invitationId,
+      recipient_email: invitation.email,
+      role: invitation.role,
+    },
+  });
+
+  return { success: true };
+}
+
+/**
  * Accepts a workspace invitation using the raw token.
+ * Leverages atomic stored procedure accept_workspace_invitation_atomic for concurrency safety
+ * with fallback to verified transactional logic for test/mock environments.
  */
 export async function acceptWorkspaceInvitation(
   supabase: SupabaseClient<Database>,
@@ -408,7 +569,53 @@ export async function acceptWorkspaceInvitation(
 ): Promise<{ workspaceId: string; role: WorkspaceRole }> {
   const tokenHash = hashInvitationToken(input.token.trim());
 
-  // Find invitation
+  // 1. Concurrency-Safe Atomic Database RPC Path
+  if (typeof supabase.rpc === "function") {
+    const { data: rpcResult, error: rpcError } = await supabase.rpc(
+      "accept_workspace_invitation_atomic",
+      {
+        p_token_hash: tokenHash,
+        p_accepting_user_id: input.acceptingUser.id,
+        p_accepting_user_email: input.acceptingUser.email,
+      },
+    );
+
+    if (!rpcError && rpcResult) {
+      const row = Array.isArray(rpcResult) ? rpcResult[0] : rpcResult;
+      const res = row as unknown as { workspace_id: string; role: WorkspaceRole };
+      return { workspaceId: res.workspace_id, role: res.role };
+    }
+
+    if (rpcError) {
+      if (rpcError.code === "VY001" || rpcError.message?.includes("Capacity exceeded")) {
+        throw new WorkspaceError(
+          "Team-seat capacity exceeded. Upgrade your plan to accept this invitation.",
+          "CAPACITY_EXCEEDED",
+          403,
+        );
+      }
+      if (rpcError.code === "VY010") {
+        throw new WorkspaceError("Invalid or nonexistent invitation token", "INVALID_TOKEN", 404);
+      }
+      if (rpcError.code === "VY011") {
+        throw new WorkspaceError("Invitation is no longer valid", "INVITATION_INACTIVE", 410);
+      }
+      if (rpcError.code === "VY012") {
+        throw new WorkspaceError("Invitation has expired", "INVITATION_EXPIRED", 410);
+      }
+      if (rpcError.code === "VY013") {
+        throw new WorkspaceError(
+          "Authenticated user email does not match invitation recipient",
+          "EMAIL_MISMATCH",
+          403,
+        );
+      }
+      // If RPC failed due to other database errors, throw cleanly
+      throw new WorkspaceError(rpcError.message, "JOIN_WORKSPACE_FAILED", 500);
+    }
+  }
+
+  // 2. Fallback Transactional Logic (for mock client / testing)
   const { data: invitation, error: fetchError } = await supabase
     .from("workspace_invitations")
     .select("*")
@@ -428,7 +635,6 @@ export async function acceptWorkspaceInvitation(
   }
 
   if (isInvitationExpired(invitation.expires_at)) {
-    // Mark as expired
     await supabase
       .from("workspace_invitations")
       .update({ status: "expired" })
@@ -445,6 +651,9 @@ export async function acceptWorkspaceInvitation(
       403,
     );
   }
+
+  // Team-Seat Capacity Integration: Assert capacity available
+  await assertCapacityAvailable(supabase, invitation.workspace_id, "team_seats", 1);
 
   // Insert or update member in workspace_members
   const { error: memberError } = await supabase.from("workspace_members").upsert(
@@ -678,3 +887,6 @@ export async function removeWorkspaceMember(
 
   return { success: true };
 }
+
+/** Alias for inviteWorkspaceMember */
+export const createWorkspaceInvitation = inviteWorkspaceMember;

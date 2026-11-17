@@ -448,6 +448,74 @@ export interface Database {
         ];
       };
 
+      business_invitations: {
+        Row: {
+          id: string;
+          business_id: string;
+          email: string;
+          role: "owner" | "manager" | "cashier" | "staff";
+          location_id: string | null;
+          permissions: Json;
+          token_hash: string;
+          invited_by: string;
+          status: "pending" | "accepted" | "revoked" | "expired";
+          expires_at: string;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          business_id: string;
+          email: string;
+          role: "owner" | "manager" | "cashier" | "staff";
+          location_id?: string | null;
+          permissions?: Json;
+          token_hash: string;
+          invited_by: string;
+          status?: "pending" | "accepted" | "revoked" | "expired";
+          expires_at: string;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          business_id?: string;
+          email?: string;
+          role?: "owner" | "manager" | "cashier" | "staff";
+          location_id?: string | null;
+          permissions?: Json;
+          token_hash?: string;
+          invited_by?: string;
+          status?: "pending" | "accepted" | "revoked" | "expired";
+          expires_at?: string;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "business_invitations_business_id_fkey";
+            columns: ["business_id"];
+            isOneToOne: false;
+            referencedRelation: "businesses";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "business_invitations_invited_by_fkey";
+            columns: ["invited_by"];
+            isOneToOne: false;
+            referencedRelation: "users";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "business_invitations_location_id_fkey";
+            columns: ["location_id"];
+            isOneToOne: false;
+            referencedRelation: "locations";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+
       sites: {
         Row: {
           id: string;
@@ -1044,6 +1112,29 @@ export interface Database {
           status: string;
           reason: string;
         }[];
+      };
+      accept_workspace_invitation_atomic: {
+        Args: {
+          p_token_hash: string;
+          p_accepting_user_id: string;
+          p_accepting_user_email: string;
+        };
+        Returns: Json;
+      };
+      accept_business_invitation_atomic: {
+        Args: {
+          p_token_hash: string;
+          p_accepting_user_id: string;
+          p_accepting_user_email: string;
+        };
+        Returns: Json;
+      };
+      is_business_manager_or_owner: {
+        Args: {
+          p_business_id: string;
+          p_user_id?: string;
+        };
+        Returns: boolean;
       };
     };
     Enums: {

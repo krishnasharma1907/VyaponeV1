@@ -12,6 +12,25 @@ export type BusinessMemberRow = Database["public"]["Tables"]["business_members"]
 export type BusinessMemberInsert = Database["public"]["Tables"]["business_members"]["Insert"];
 export type BusinessMemberUpdate = Database["public"]["Tables"]["business_members"]["Update"];
 
+export type BusinessInvitationRow = Database["public"]["Tables"]["business_invitations"]["Row"];
+export type BusinessInvitationInsert =
+  Database["public"]["Tables"]["business_invitations"]["Insert"];
+export type BusinessInvitationUpdate =
+  Database["public"]["Tables"]["business_invitations"]["Update"];
+
+export interface BusinessInvitationWithInviter extends BusinessInvitationRow {
+  inviter?: {
+    id: string;
+    display_name: string;
+    email: string | null;
+  } | null;
+}
+
+export interface CreateBusinessInvitationResult {
+  invitation: BusinessInvitationRow;
+  rawToken: string;
+}
+
 /**
  * Business operational roles in public.business_members.
  */

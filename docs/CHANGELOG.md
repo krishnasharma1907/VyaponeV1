@@ -4,6 +4,36 @@ Record implementation changes by task ID. Do not record planned work as complete
 
 ## Unreleased
 
+### [VO-027] — Implement team invitations and membership lifecycle (2026-11-17)
+- Implemented team invitations and membership lifecycle across Reseller Workspaces and Business Operational domains strictly according to PRD FINAL v2 (§4, §9.1, §9.2, §15, §19) and `docs/TASK_BACKLOG.md`:
+  - **Database Migration (`supabase/migrations/20261117000001_team_invitations_and_membership_lifecycle.sql`):**
+    - Created `public.business_invitations` table for merchant store operations with roles (`'owner'`, `'manager'`, `'cashier'`, `'staff'`), 7-day expiration, and SHA-256 token hashing.
+    - Defined partial unique index `idx_business_invitations_pending_unique` on `(business_id, lower(email)) WHERE status = 'pending'` preventing duplicate pending invitations.
+    - Implemented RLS helper `public.is_business_manager_or_owner(UUID, UUID)` with `SECURITY DEFINER` and empty `search_path = ''`.
+    - Enabled RLS on `public.business_invitations` with fail-closed SELECT, INSERT, UPDATE, DELETE policies.
+    - Implemented atomic stored procedures with row-level locks (`FOR UPDATE`):
+      - `accept_workspace_invitation_atomic`: Enforces `team_seats` capacity via `assert_and_lock_workspace_capacity`, checks expiration and case-insensitive email match, upserts active `workspace_members`, marks invitation accepted, and records immutable audit log.
+      - `accept_business_invitation_atomic`: Transfers sovereign ownership if invited role is `'owner'`, checks expiration and email match, upserts active `business_members`, marks accepted, and records immutable audit log.
+    - Established standardized, non-colliding VyapOne SQLSTATE codes: `VY010` (invalid or nonexistent token), `VY011` (inactive invitation), `VY012` (invitation expired), `VY013` (recipient email mismatch), `VY001` (capacity exceeded).
+    - Revoked all DML and function privileges from `PUBLIC` and `anon`; granted execution and controlled DML strictly to `authenticated` and `service_role`.
+    - Synchronized migration text into `supabase/combined_migrations.sql`.
+  - **Domain Separation & Security Invariants:**
+    - Maintained strict sovereign tenant boundary: Reseller workspace membership (`workspace_members`) never grants sovereign business ownership; business operational membership (`business_members`) never grants agency workspace administration.
+    - Implemented Last-Owner Protection across both domains: sole workspace owners, sole business owners, and sovereign owners cannot be removed or demoted.
+    - Enforced downward role authority: managers cannot invite or revoke an owner; cashiers and staff cannot invite members.
+  - **Capacity Integration:**
+    - Integrated `team_seats` metric enforcement in workspace invitations: creation pre-checks active members + non-expired pending invitations against plan limits, and acceptance atomically locks and enforces capacity at the database layer.
+  - **Application Service Layer & Server Actions:**
+    - Workspaces: `createWorkspaceInvitation`, `listWorkspaceInvitations`, `revokeWorkspaceInvitation`, `acceptWorkspaceInvitation`, `listWorkspaceInvitationsAction`, `revokeWorkspaceInvitationAction`.
+    - Businesses: `createBusinessInvitation`, `listBusinessInvitations`, `revokeBusinessInvitation`, `acceptBusinessInvitation`, `inviteBusinessMemberAction`, `listBusinessInvitationsAction`, `revokeBusinessInvitationAction`, `acceptBusinessInvitationAction`.
+  - **UI Components & Pages:**
+    - `WorkspaceTeamView` and `/workspace/team`: Client view and page for managing agency teammates, displaying pending invitations, and viewing seat usage.
+    - `BusinessTeamTable` and `BusinessInviteModal`: Store staff management components for store managers and owners.
+    - `AcceptInvitationCard` and `/accept-invitation`: Unified, accessible page for single-use invitation token acceptance.
+  - **Automated Verification:**
+    - 54 test files, 641 unit/integration tests passed with 0 failures.
+    - `pnpm format:check`, `pnpm lint`, `pnpm typecheck`, `pnpm test`, and `pnpm build` all passed.
+
 ### [VO-026] — Implement plans, entitlements and capacity service (2026-11-16)
 - Implemented and hardened the centralized plans, subscription management, feature entitlement evaluation, and capacity enforcement service strictly according to PRD FINAL v2 (§9.1, §9.2, §16) and `docs/TASK_BACKLOG.md`:
   - **Sites Table Privilege Hardening & Zero-Bypass RPC Gate (`supabase/migrations/20261116000002_harden_sites_table_privileges_and_rpc.sql`):**

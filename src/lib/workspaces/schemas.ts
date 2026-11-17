@@ -75,10 +75,16 @@ export const switchWorkspaceSchema = z.object({
   workspaceId: z.string().uuid("Invalid workspace ID"),
 });
 
+export const revokeWorkspaceInvitationSchema = z.object({
+  workspaceId: z.string().uuid("Invalid workspace ID"),
+  invitationId: z.string().uuid("Invalid invitation ID"),
+});
+
 export type CreateWorkspaceInput = z.input<typeof createWorkspaceSchema>;
 export type UpdateWorkspaceProfileInput = z.input<typeof updateWorkspaceProfileSchema>;
 export type InviteWorkspaceMemberInput = z.input<typeof inviteWorkspaceMemberSchema>;
 export type AcceptInvitationInput = z.input<typeof acceptInvitationSchema>;
+export type RevokeWorkspaceInvitationInput = z.input<typeof revokeWorkspaceInvitationSchema>;
 export type UpdateMemberRoleInput = z.input<typeof updateMemberRoleSchema>;
 export type RemoveMemberInput = z.input<typeof removeMemberSchema>;
 export type SwitchWorkspaceInput = z.input<typeof switchWorkspaceSchema>;

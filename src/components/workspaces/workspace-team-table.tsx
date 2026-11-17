@@ -1,7 +1,11 @@
 "use client";
 
 import React, { useState, useTransition } from "react";
-import type { WorkspaceMemberWithProfile, WorkspaceRole } from "@/lib/workspaces/types";
+import type {
+  WorkspaceInvitationWithInviter,
+  WorkspaceMemberWithProfile,
+  WorkspaceRole,
+} from "@/lib/workspaces/types";
 import {
   Badge,
   Button,
@@ -20,11 +24,13 @@ import {
 import {
   updateWorkspaceMemberRoleAction,
   removeWorkspaceMemberAction,
+  revokeWorkspaceInvitationAction,
 } from "@/lib/workspaces/actions";
 
 interface WorkspaceTeamTableProps {
   workspaceId: string;
   members: WorkspaceMemberWithProfile[];
+  invitations?: WorkspaceInvitationWithInviter[];
   currentUserRole: WorkspaceRole;
   currentUserId: string;
   onRefresh?: () => void;
@@ -33,6 +39,7 @@ interface WorkspaceTeamTableProps {
 export function WorkspaceTeamTable({
   workspaceId,
   members,
+  invitations = [],
   currentUserRole,
   currentUserId,
   onRefresh,
@@ -43,6 +50,9 @@ export function WorkspaceTeamTable({
 
   const canChangeRoles = hasWorkspacePermission(currentUserRole, "workspace:change_role");
   const canRemove = hasWorkspacePermission(currentUserRole, "workspace:remove_member");
+  const canInvite = hasWorkspacePermission(currentUserRole, "workspace:invite_member");
+
+  const pendingInvitations = invitations.filter((inv) => inv.status === "pending");
 
   const getRoleBadgeVariant = (role: WorkspaceRole) => {
     const normalized = normalizeWorkspaceRole(role);
@@ -90,6 +100,29 @@ export function WorkspaceTeamTable({
         setError(result.error ?? "Failed to remove member");
       } else {
         setSuccessMessage("Member removed successfully");
+        onRefresh?.();
+      }
+    });
+  };
+
+  const handleRevokeInvitation = (invitationId: string) => {
+    if (!window.confirm("Are you sure you want to revoke this invitation?")) {
+      return;
+    }
+
+    setError(null);
+    setSuccessMessage(null);
+
+    startTransition(async () => {
+      const result = await revokeWorkspaceInvitationAction(null, {
+        workspaceId,
+        invitationId,
+      });
+
+      if (!result.success) {
+        setError(result.error ?? "Failed to revoke invitation");
+      } else {
+        setSuccessMessage("Invitation revoked successfully");
         onRefresh?.();
       }
     });
@@ -218,6 +251,65 @@ export function WorkspaceTeamTable({
           })}
         </TableBody>
       </Table>
+
+      {canInvite && pendingInvitations.length > 0 && (
+        <div
+          style={{
+            marginTop: "var(--space-6)",
+            display: "flex",
+            flexDirection: "column",
+            gap: "var(--space-3)",
+          }}
+        >
+          <h3
+            style={{
+              fontSize: "var(--font-size-h3)",
+              color: "var(--color-text-primary)",
+              margin: 0,
+            }}
+          >
+            Pending Invitations ({pendingInvitations.length})
+          </h3>
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Recipient Email</TableHead>
+                <TableHead>Role</TableHead>
+                <TableHead>Expires</TableHead>
+                <TableHead style={{ textAlign: "right" }}>Actions</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {pendingInvitations.map((inv) => (
+                <TableRow key={inv.id}>
+                  <TableCell style={{ fontWeight: 500 }}>{inv.email}</TableCell>
+                  <TableCell>
+                    <Badge variant="info">{inv.role}</Badge>
+                  </TableCell>
+                  <TableCell
+                    style={{
+                      fontSize: "var(--font-size-caption)",
+                      color: "var(--color-text-secondary)",
+                    }}
+                  >
+                    {new Date(inv.expires_at).toLocaleDateString()}
+                  </TableCell>
+                  <TableCell style={{ textAlign: "right" }}>
+                    <Button
+                      size="sm"
+                      variant="destructive"
+                      disabled={isPending}
+                      onClick={() => handleRevokeInvitation(inv.id)}
+                    >
+                      Revoke
+                    </Button>
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </div>
+      )}
     </div>
   );
 }

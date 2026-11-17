@@ -4,11 +4,14 @@ import { revalidatePath } from "next/cache";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 import type {
   BusinessActionResult,
+  BusinessInvitationWithInviter,
   BusinessMemberRow,
   BusinessMemberWithProfile,
+  BusinessRole,
   BusinessRow,
   BusinessSummary,
   BusinessWithLocations,
+  CreateBusinessInvitationResult,
   LocationRow,
 } from "./types";
 import {
@@ -24,6 +27,10 @@ import {
   addBusinessMember,
   updateBusinessMemberRole,
   removeBusinessMember,
+  createBusinessInvitation,
+  listBusinessInvitations,
+  revokeBusinessInvitation,
+  acceptBusinessInvitation,
   BusinessError,
 } from "./service";
 import { TenantAccessError } from "@/lib/auth/tenant-access";
@@ -35,6 +42,9 @@ import {
   updateLocationSchema,
   addBusinessMemberSchema,
   updateBusinessMemberRoleSchema,
+  inviteBusinessMemberSchema,
+  acceptBusinessInvitationSchema,
+  revokeBusinessInvitationSchema,
   type CreateBusinessInput,
   type UpdateBusinessProfileInput,
   type ConfirmBusinessFactInput,
@@ -42,6 +52,9 @@ import {
   type UpdateLocationInput,
   type AddBusinessMemberInput,
   type UpdateBusinessMemberRoleInput,
+  type InviteBusinessMemberInput,
+  type AcceptBusinessInvitationInput,
+  type RevokeBusinessInvitationInput,
 } from "./schemas";
 
 function sanitizeError(error: unknown): { error: string; code: string } {
@@ -515,6 +528,175 @@ export async function removeBusinessMemberAction(
     const result = await removeBusinessMember(supabase, businessId, targetUserId, user.id);
     revalidatePath("/dashboard");
     revalidatePath("/dashboard/settings");
+    return { success: true, data: result };
+  } catch (error) {
+    const sanitized = sanitizeError(error);
+    return { success: false, ...sanitized };
+  }
+}
+
+/**
+ * Invites a business owner, manager, cashier, or staff to a business.
+ */
+export async function inviteBusinessMemberAction(
+  rawInput: InviteBusinessMemberInput,
+): Promise<BusinessActionResult<CreateBusinessInvitationResult>> {
+  try {
+    const supabase = await createServerSupabaseClient();
+    const {
+      data: { user },
+      error: authError,
+    } = await supabase.auth.getUser();
+
+    if (authError || !user) {
+      return { success: false, error: "Authentication required", code: "UNAUTHENTICATED" };
+    }
+
+    const parseResult = inviteBusinessMemberSchema.safeParse(rawInput);
+    if (!parseResult.success) {
+      const fieldErrors: Record<string, string[]> = {};
+      for (const issue of parseResult.error.issues) {
+        const path = issue.path.join(".");
+        if (!fieldErrors[path]) fieldErrors[path] = [];
+        fieldErrors[path].push(issue.message);
+      }
+      return {
+        success: false,
+        error: "Validation failed",
+        code: "VALIDATION_FAILED",
+        validationErrors: fieldErrors,
+      };
+    }
+
+    const result = await createBusinessInvitation(supabase, user.id, parseResult.data);
+    revalidatePath("/dashboard");
+    revalidatePath("/dashboard/settings");
+    return { success: true, data: result };
+  } catch (error) {
+    const sanitized = sanitizeError(error);
+    return { success: false, ...sanitized };
+  }
+}
+
+/**
+ * Lists all invitations for a business.
+ */
+export async function listBusinessInvitationsAction(
+  businessId: string,
+): Promise<BusinessActionResult<BusinessInvitationWithInviter[]>> {
+  try {
+    const supabase = await createServerSupabaseClient();
+    const {
+      data: { user },
+      error: authError,
+    } = await supabase.auth.getUser();
+
+    if (authError || !user) {
+      return { success: false, error: "Authentication required", code: "UNAUTHENTICATED" };
+    }
+
+    const invitations = await listBusinessInvitations(supabase, businessId, user.id);
+    return { success: true, data: invitations };
+  } catch (error) {
+    const sanitized = sanitizeError(error);
+    return { success: false, ...sanitized };
+  }
+}
+
+/**
+ * Revokes a pending business invitation.
+ */
+export async function revokeBusinessInvitationAction(
+  rawInput: RevokeBusinessInvitationInput,
+): Promise<BusinessActionResult<{ success: boolean }>> {
+  try {
+    const supabase = await createServerSupabaseClient();
+    const {
+      data: { user },
+      error: authError,
+    } = await supabase.auth.getUser();
+
+    if (authError || !user) {
+      return { success: false, error: "Authentication required", code: "UNAUTHENTICATED" };
+    }
+
+    const parseResult = revokeBusinessInvitationSchema.safeParse(rawInput);
+    if (!parseResult.success) {
+      const fieldErrors: Record<string, string[]> = {};
+      for (const issue of parseResult.error.issues) {
+        const path = issue.path.join(".");
+        if (!fieldErrors[path]) fieldErrors[path] = [];
+        fieldErrors[path].push(issue.message);
+      }
+      return {
+        success: false,
+        error: "Validation failed",
+        code: "VALIDATION_FAILED",
+        validationErrors: fieldErrors,
+      };
+    }
+
+    const result = await revokeBusinessInvitation(
+      supabase,
+      parseResult.data.business_id,
+      parseResult.data.invitationId,
+      user.id,
+    );
+    revalidatePath("/dashboard");
+    revalidatePath("/dashboard/settings");
+    return { success: true, data: result };
+  } catch (error) {
+    const sanitized = sanitizeError(error);
+    return { success: false, ...sanitized };
+  }
+}
+
+/**
+ * Accepts a business invitation.
+ */
+export async function acceptBusinessInvitationAction(
+  rawInput: AcceptBusinessInvitationInput,
+): Promise<BusinessActionResult<{ businessId: string; role: BusinessRole }>> {
+  try {
+    const supabase = await createServerSupabaseClient();
+    const {
+      data: { user },
+      error: authError,
+    } = await supabase.auth.getUser();
+
+    if (authError || !user || !user.email) {
+      return {
+        success: false,
+        error: "Authentication required to accept an invitation",
+        code: "UNAUTHENTICATED",
+      };
+    }
+
+    const parseResult = acceptBusinessInvitationSchema.safeParse(rawInput);
+    if (!parseResult.success) {
+      const fieldErrors: Record<string, string[]> = {};
+      for (const issue of parseResult.error.issues) {
+        const path = issue.path.join(".");
+        if (!fieldErrors[path]) fieldErrors[path] = [];
+        fieldErrors[path].push(issue.message);
+      }
+      return {
+        success: false,
+        error: "Validation failed",
+        code: "VALIDATION_FAILED",
+        validationErrors: fieldErrors,
+      };
+    }
+
+    const result = await acceptBusinessInvitation(supabase, {
+      token: parseResult.data.token,
+      acceptingUser: {
+        id: user.id,
+        email: user.email,
+      },
+    });
+
+    revalidatePath("/dashboard");
     return { success: true, data: result };
   } catch (error) {
     const sanitized = sanitizeError(error);

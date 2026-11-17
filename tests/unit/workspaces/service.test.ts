@@ -546,11 +546,57 @@ describe("Workspace Service Layer [VO-022]", () => {
                 upsertedMembers.push(record);
                 return { error: null };
               }),
+              select: vi.fn(() => ({
+                eq: vi.fn(() => ({
+                  eq: vi.fn(async () => ({ count: 1, error: null })),
+                })),
+              })),
             };
           }
           if (table === "audit_logs") {
             return {
               insert: vi.fn(async () => ({ error: null })),
+            };
+          }
+          if (table === "workspaces") {
+            return {
+              select: vi.fn(() => ({
+                eq: vi.fn(() => ({
+                  single: vi.fn(async () => ({
+                    data: { id: mockWorkspaceId, plan: "growth" },
+                    error: null,
+                  })),
+                  maybeSingle: vi.fn(async () => ({
+                    data: { id: mockWorkspaceId, plan: "growth" },
+                    error: null,
+                  })),
+                })),
+              })),
+            };
+          }
+          if (table === "subscriptions") {
+            return {
+              select: vi.fn(() => ({
+                eq: vi.fn(() => ({
+                  maybeSingle: vi.fn(async () => ({ data: null, error: null })),
+                  in: vi.fn(() => ({
+                    order: vi.fn(() => ({
+                      limit: vi.fn(async () => ({ data: [], error: null })),
+                    })),
+                  })),
+                })),
+              })),
+            };
+          }
+          if (table === "capacity_overrides") {
+            return {
+              select: vi.fn(() => ({
+                eq: vi.fn(() => ({
+                  eq: vi.fn(() => ({
+                    maybeSingle: vi.fn(async () => ({ data: null, error: null })),
+                  })),
+                })),
+              })),
             };
           }
           throw new Error(`Unexpected table ${table}`);

@@ -416,3 +416,35 @@ export const updateBusinessMemberRoleSchema = z.object({
 });
 
 export type UpdateBusinessMemberRoleInput = z.input<typeof updateBusinessMemberRoleSchema>;
+
+/**
+ * Schema for inviting a business owner, manager, cashier, or staff.
+ */
+export const inviteBusinessMemberSchema = z.object({
+  business_id: z.string().uuid("Invalid business ID"),
+  email: z.string().trim().toLowerCase().email("Invalid recipient email address"),
+  role: businessRoleSchema,
+  location_id: z.string().uuid("Invalid location ID").nullable().optional(),
+  permissions: z.record(z.string(), z.boolean()).default({}),
+});
+
+export type InviteBusinessMemberInput = z.input<typeof inviteBusinessMemberSchema>;
+
+/**
+ * Schema for accepting a business invitation.
+ */
+export const acceptBusinessInvitationSchema = z.object({
+  token: z.string().trim().min(16, "Invalid invitation token").max(128, "Invalid invitation token"),
+});
+
+export type AcceptBusinessInvitationInput = z.input<typeof acceptBusinessInvitationSchema>;
+
+/**
+ * Schema for revoking a business invitation.
+ */
+export const revokeBusinessInvitationSchema = z.object({
+  business_id: z.string().uuid("Invalid business ID"),
+  invitationId: z.string().uuid("Invalid invitation ID"),
+});
+
+export type RevokeBusinessInvitationInput = z.input<typeof revokeBusinessInvitationSchema>;

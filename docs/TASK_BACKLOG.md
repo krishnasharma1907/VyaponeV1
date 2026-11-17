@@ -208,13 +208,13 @@
 
 **Status:** `DONE`
 
-### [ ] VO-027 — Implement team invitations and membership lifecycle
+### [x] VO-027 — Implement team invitations and membership lifecycle
 
 **Scope:** Invite reseller teammates, business owners and staff with expiry, revoke, accept and role assignment.
 
 **Acceptance:** Invitation tokens are secure and single-use; access is limited to assigned tenants.
 
-**Status:** `NOT_STARTED`
+**Status:** `DONE`
 
 ### [ ] VO-028 — Implement audit/activity and notification foundation
 

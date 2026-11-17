@@ -1,56 +1,56 @@
-import React from "react";
-import type { Metadata } from "next";
-import { Card, CardContent, Button, EmptyState } from "@/components/ui";
+"use client";
 
-export const metadata: Metadata = {
-  title: "Agency Team — Reseller Workspace | VyapOne",
-  description: "Manage agency staff members and their delegated client permissions.",
-};
+import React, { useEffect, useState } from "react";
+import { WorkspaceTeamView } from "@/components/workspaces";
+import {
+  getUserWorkspacesAction,
+  getWorkspaceMembersAction,
+  listWorkspaceInvitationsAction,
+} from "@/lib/workspaces/actions";
+import type {
+  WorkspaceMemberWithProfile,
+  WorkspaceInvitationWithInviter,
+  WorkspaceRole,
+} from "@/lib/workspaces/types";
 
 export default function ResellerTeamPage() {
-  return (
-    <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-6)" }}>
-      <header
-        style={{
-          display: "flex",
-          justifyContent: "space-between",
-          alignItems: "flex-start",
-          flexWrap: "wrap",
-          gap: "var(--space-4)",
-        }}
-      >
-        <div>
-          <h1
-            style={{
-              fontSize: "var(--font-size-h1)",
-              color: "var(--color-text-primary)",
-              marginBottom: "var(--space-1)",
-            }}
-          >
-            Agency Team Members
-          </h1>
-          <p style={{ color: "var(--color-text-secondary)", fontSize: "var(--font-size-body)" }}>
-            Invite designers, sales reps, and account managers with role-based access.
-          </p>
-        </div>
-        <Button variant="primary" disabled>
-          Invite Team Member (VO-110)
-        </Button>
-      </header>
+  const [workspaceId, setWorkspaceId] = useState<string>("");
+  const [currentUserRole, setCurrentUserRole] = useState<WorkspaceRole>("workspace_owner");
+  const [members, setMembers] = useState<WorkspaceMemberWithProfile[]>([]);
+  const [invitations, setInvitations] = useState<WorkspaceInvitationWithInviter[]>([]);
 
-      <Card variant="default">
-        <CardContent style={{ padding: "var(--space-6)" }}>
-          <EmptyState
-            title="Agency Team Directory"
-            description="Team members with their assigned client scopes and permissions will appear here."
-            action={
-              <Button size="sm" disabled>
-                Invitations Offline (VO-110)
-              </Button>
-            }
-          />
-        </CardContent>
-      </Card>
-    </div>
+  useEffect(() => {
+    async function loadWorkspaceData() {
+      const wsRes = await getUserWorkspacesAction();
+      if (wsRes.success && wsRes.data && wsRes.data.length > 0) {
+        const primary = wsRes.data[0];
+        const wsId = primary.workspace.id;
+        setWorkspaceId(wsId);
+        setCurrentUserRole(primary.currentUserRole);
+
+        const [membersRes, invRes] = await Promise.all([
+          getWorkspaceMembersAction(wsId),
+          listWorkspaceInvitationsAction(wsId),
+        ]);
+
+        if (membersRes.success && membersRes.data) {
+          setMembers(membersRes.data);
+        }
+        if (invRes.success && invRes.data) {
+          setInvitations(invRes.data);
+        }
+      }
+    }
+
+    loadWorkspaceData();
+  }, []);
+
+  return (
+    <WorkspaceTeamView
+      workspaceId={workspaceId}
+      members={members}
+      invitations={invitations}
+      currentUserRole={currentUserRole}
+    />
   );
 }

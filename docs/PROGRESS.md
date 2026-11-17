@@ -1,10 +1,10 @@
 # VyapOne Build Progress
 
 **Current phase:** P2 — Platform identity, authentication and multi-tenancy (`IN_PROGRESS`)  
-**Completed tasks:** VO-000, VO-001, VO-002, VO-003, VO-004, VO-005, VO-006, VO-010, VO-011, VO-012, VO-013, VO-014, VO-015, VO-016, VO-017, VO-018, VO-019, VO-020, VO-021, VO-022, VO-023, VO-024, VO-025, VO-026  
+**Completed tasks:** VO-000, VO-001, VO-002, VO-003, VO-004, VO-005, VO-006, VO-010, VO-011, VO-012, VO-013, VO-014, VO-015, VO-016, VO-017, VO-018, VO-019, VO-020, VO-021, VO-022, VO-023, VO-024, VO-025, VO-026, VO-027  
 **Latest fix:** Registration authentication error fix & dynamic Cloudflare environment variable resolution  
-**Next task:** VO-027 — Implement team invitations and membership lifecycle  
-**Project status:** PLANS, ENTITLEMENTS AND CAPACITY SERVICE IMPLEMENTED / IN PHASE P2  
+**Next task:** VO-028 — Implement audit/activity and notification foundation  
+**Project status:** TEAM INVITATIONS AND MEMBERSHIP LIFECYCLE IMPLEMENTED / IN PHASE P2  
 
 ## Phase status
 
@@ -12,7 +12,81 @@
 |---|---|---|
 | P0 — Project audit, decisions and architecture | COMPLETE | All tasks VO-000 to VO-006 verified and done; Phase P0 gate passed |
 | P1 — Repository, design system and application shell | COMPLETE | All tasks VO-010 to VO-019 verified and done; Phase P1 gate passed |
-| P2 — Platform identity, authentication and multi-tenancy | IN_PROGRESS | VO-020, VO-021, VO-022, VO-023, VO-024, VO-025, and VO-026 done; VO-027 is next |
+| P2 — Platform identity, authentication and multi-tenancy | IN_PROGRESS | VO-020, VO-021, VO-022, VO-023, VO-024, VO-025, VO-026, and VO-027 done; VO-028 is next |
+
+## Task report: VO-027
+
+- **Task ID:** VO-027
+- **Title:** Implement team invitations and membership lifecycle
+- **Status:** DONE
+- **Summary:** Implemented the complete team invitations and membership lifecycle across both Reseller Workspaces and Business Operational domains strictly according to PRD FINAL v2 (§4, §9.1, §9.2, §15, §19) and `docs/TASK_BACKLOG.md`:
+  1. **Database Schema & Forward-Only Migration (`20261117000001_team_invitations_and_membership_lifecycle.sql`):**
+     - Created `public.business_invitations` table with cryptographically secure single-use SHA-256 tokens, 7-day expiry, and role constraints (`'owner'`, `'manager'`, `'cashier'`, `'staff'`).
+     - Defined partial unique index `idx_business_invitations_pending_unique` on `(business_id, lower(email)) WHERE status = 'pending'` ensuring zero duplicate pending invitations.
+     - Implemented `public.is_business_manager_or_owner(p_business_id UUID, p_user_id UUID)` RLS helper (`SECURITY DEFINER SET search_path = ''`).
+     - Enabled RLS on `public.business_invitations` with fail-closed SELECT, INSERT, UPDATE, DELETE policies.
+     - Implemented concurrency-safe atomic acceptance stored procedures:
+       - `accept_workspace_invitation_atomic`: Locks invitation `FOR UPDATE`, enforces `team_seats` plan capacity via `assert_and_lock_workspace_capacity(v_invitation.workspace_id, 'team_seats', 1)`, upserts `workspace_members`, marks invitation accepted, and records immutable audit log.
+       - `accept_business_invitation_atomic`: Locks invitation `FOR UPDATE`, transfers sovereign ownership if invited role is `'owner'`, upserts `business_members`, marks invitation accepted, and records immutable audit log.
+     - Configured custom non-colliding SQLSTATE error codes: `VY010` (token not found), `VY011` (inactive invitation), `VY012` (invitation expired), `VY013` (email mismatch), `VY001` (capacity exceeded).
+     - Revoked table DML and function execution from `PUBLIC` and `anon`; granted strictly to `authenticated` and `service_role`.
+  2. **Domain Boundary Separation & Role Hierarchy:**
+     - Reseller Workspace Members (`workspace_members`) manage the agency and client businesses. Workspace membership does NOT grant sovereign business ownership.
+     - Business Operational Members (`business_members`) operate individual store locations (`owner`, `manager`, `cashier`, `staff`). Business operational membership does NOT grant agency admin.
+     - Enforced strict Last-Owner Protection: sovereign owners and sole business/workspace owners cannot be removed or demoted.
+     - Downward authority enforcement: managers cannot invite or revoke an owner. Staff/cashiers cannot invite members.
+  3. **Capacity Service Integration (`team_seats`):**
+     - Integrated with VO-026 plan capacity service: active members + pending invitations are checked against `team_seats` limit upon creation (`createWorkspaceInvitation`), and atomic concurrency locking is enforced upon acceptance (`accept_workspace_invitation_atomic`).
+  4. **Application Logic & Server Actions:**
+     - Workspaces: `createWorkspaceInvitation`, `listWorkspaceInvitations`, `revokeWorkspaceInvitation`, `acceptWorkspaceInvitation`, `listWorkspaceInvitationsAction`, `revokeWorkspaceInvitationAction`.
+     - Businesses: `createBusinessInvitation`, `listBusinessInvitations`, `revokeBusinessInvitation`, `acceptBusinessInvitation`, `inviteBusinessMemberAction`, `listBusinessInvitationsAction`, `revokeBusinessInvitationAction`, `acceptBusinessInvitationAction`.
+  5. **UI Components & Pages:**
+     - Created `WorkspaceTeamView` and updated `src/app/(reseller)/workspace/team/page.tsx` with member directory, pending invitations list, seat capacity badge, and invite modal.
+     - Created `BusinessTeamTable` and `BusinessInviteModal` for store operational staff management.
+     - Created `AcceptInvitationCard` and `/accept-invitation` page for secure single-use invitation token redemption.
+  6. **Automated Test Coverage:**
+     - `tests/unit/workspaces/invitations.test.ts`: 10/10 tests passed (capacity limit, token entropy, listing, revocation, RPC & fallback acceptance, error codes).
+     - `tests/unit/businesses/invitations.test.ts`: 16/16 tests passed (role hierarchy, duplicate protection, token hashing, listing, revocation, RPC & fallback acceptance, last-owner protection).
+     - `tests/unit/database/team-invitations-migration.test.ts`: 10/10 tests passed (table schema, constraints, indexes, RLS, SECURITY DEFINER, search_path, custom SQLSTATE codes, privilege revocation).
+     - Full test suite: 54 test files, 641 tests passed (0 failures).
+- **Files Changed:**
+  - `supabase/migrations/20261117000001_team_invitations_and_membership_lifecycle.sql`
+  - `supabase/combined_migrations.sql`
+  - `src/lib/supabase/types.ts`
+  - `src/lib/workspaces/types.ts`
+  - `src/lib/workspaces/schemas.ts`
+  - `src/lib/workspaces/service.ts`
+  - `src/lib/workspaces/actions.ts`
+  - `src/lib/businesses/types.ts`
+  - `src/lib/businesses/schemas.ts`
+  - `src/lib/businesses/service.ts`
+  - `src/lib/businesses/actions.ts`
+  - `src/components/workspaces/workspace-team-table.tsx`
+  - `src/components/workspaces/workspace-team-view.tsx`
+  - `src/components/workspaces/index.ts`
+  - `src/app/(reseller)/workspace/team/page.tsx`
+  - `src/components/businesses/business-team-table.tsx`
+  - `src/components/businesses/business-invite-modal.tsx`
+  - `src/components/businesses/index.ts`
+  - `src/components/auth/accept-invitation-card.tsx`
+  - `src/components/auth/index.ts`
+  - `src/app/(auth)/accept-invitation/page.tsx`
+  - `tests/unit/workspaces/invitations.test.ts`
+  - `tests/unit/workspaces/service.test.ts`
+  - `tests/unit/businesses/invitations.test.ts`
+  - `tests/unit/database/team-invitations-migration.test.ts`
+  - `docs/TASK_BACKLOG.md`
+  - `docs/PROGRESS.md`
+  - `docs/CHANGELOG.md`
+- **Commands & Tests Run:**
+  - `pnpm format:check` — PASSED (100% matched Prettier style)
+  - `pnpm lint` — PASSED (0 errors, 0 warnings)
+  - `pnpm typecheck` — PASSED (`tsc --noEmit` exited 0)
+  - `pnpm test` — PASSED (54 test files, 641 tests passed)
+  - `pnpm build` — PASSED (Production build generated 35 static routes & middleware)
+- **Acceptance Status:** ACCEPTED
+- **Blockers:** None
+- **Next Task:** VO-028 — Implement audit/activity and notification foundation
 
 ## Task report: VO-026
 

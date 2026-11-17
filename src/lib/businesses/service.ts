@@ -1,19 +1,28 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database, Json } from "@/lib/supabase/types";
 import type {
+  BusinessInvitationRow,
+  BusinessInvitationWithInviter,
   BusinessMemberRow,
   BusinessMemberWithProfile,
   BusinessRole,
   BusinessRow,
   BusinessSummary,
   BusinessWithLocations,
+  CreateBusinessInvitationResult,
   LocationRow,
 } from "./types";
 import { canAssignBusinessRole, canManageBusinessRole, hasBusinessPermission } from "./permissions";
+import {
+  generateInvitationToken,
+  hashInvitationToken,
+  isInvitationExpired,
+} from "@/lib/workspaces/tokens";
 import type {
   AddBusinessMemberInput,
   CreateBusinessOutput,
   CreateLocationInput,
+  InviteBusinessMemberInput,
   UpdateBusinessMemberRoleInput,
   UpdateBusinessProfileInput,
   UpdateLocationInput,
@@ -1048,4 +1057,403 @@ export async function removeBusinessMember(
   });
 
   return { success: true };
+}
+
+/**
+ * Invites an operational team member or business owner to a business.
+ */
+export async function createBusinessInvitation(
+  supabase: SupabaseClient<Database>,
+  callerUserId: string,
+  input: InviteBusinessMemberInput,
+): Promise<CreateBusinessInvitationResult> {
+  const access = await getCallerBusinessAccess(supabase, input.business_id, callerUserId);
+
+  const callerRole = access.isSovereignOwner ? "owner" : access.role;
+  if (!callerRole || !hasBusinessPermission(callerRole, "business:manage_members")) {
+    throw new BusinessError(
+      "You do not have permission to invite members to this business",
+      "FORBIDDEN",
+      403,
+    );
+  }
+
+  if (!canAssignBusinessRole(callerRole, input.role)) {
+    throw new BusinessError(
+      `Your role (${callerRole}) cannot assign the role ${input.role}`,
+      "INSUFFICIENT_ROLE_AUTHORITY",
+      403,
+    );
+  }
+
+  // Cross-tenant boundary check: verify location belongs to this business
+  if (input.location_id) {
+    const { data: loc } = await supabase
+      .from("locations")
+      .select("business_id")
+      .eq("id", input.location_id)
+      .maybeSingle();
+
+    if (!loc || loc.business_id !== input.business_id) {
+      throw new BusinessError(
+        "Location does not belong to this business",
+        "LOCATION_NOT_FOUND",
+        404,
+      );
+    }
+  }
+
+  const normalizedEmail = input.email.trim().toLowerCase();
+
+  // Check if active member already exists
+  const { data: existingUser } = await supabase
+    .from("users")
+    .select("id")
+    .eq("email", normalizedEmail)
+    .maybeSingle();
+
+  if (existingUser) {
+    const { data: existingMember } = await supabase
+      .from("business_members")
+      .select("id, status")
+      .eq("business_id", input.business_id)
+      .eq("user_id", existingUser.id)
+      .eq("status", "active")
+      .maybeSingle();
+
+    if (existingMember) {
+      throw new BusinessError(
+        "User is already an active member of this business",
+        "ALREADY_MEMBER",
+        409,
+      );
+    }
+  }
+
+  // Check if pending invitation already exists for this email
+  const { data: existingInvitation } = await supabase
+    .from("business_invitations")
+    .select("id, status")
+    .eq("business_id", input.business_id)
+    .eq("email", normalizedEmail)
+    .eq("status", "pending")
+    .gt("expires_at", new Date().toISOString())
+    .maybeSingle();
+
+  if (existingInvitation) {
+    throw new BusinessError(
+      "A pending invitation already exists for this email address",
+      "DUPLICATE_INVITATION",
+      409,
+    );
+  }
+
+  // Generate secure token and SHA-256 hash
+  const rawToken = generateInvitationToken();
+  const tokenHash = hashInvitationToken(rawToken);
+  const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(); // 7 days
+
+  const { data: invitation, error } = await supabase
+    .from("business_invitations")
+    .insert({
+      business_id: input.business_id,
+      email: normalizedEmail,
+      role: input.role,
+      location_id: input.location_id ?? null,
+      permissions: (input.permissions as Json) ?? {},
+      token_hash: tokenHash,
+      invited_by: callerUserId,
+      status: "pending",
+      expires_at: expiresAt,
+    })
+    .select("*")
+    .single();
+
+  if (error || !invitation) {
+    if (error?.code === "23505") {
+      throw new BusinessError(
+        "A pending invitation already exists for this email in this business",
+        "INVITATION_EXISTS",
+        409,
+      );
+    }
+    throw new BusinessError(
+      error?.message ?? "Failed to create business invitation",
+      "INVITATION_CREATE_FAILED",
+      500,
+    );
+  }
+
+  // Audit log strictly redacts raw token
+  await supabase.from("audit_logs").insert({
+    business_id: input.business_id,
+    user_id: callerUserId,
+    action: "business.member_invited",
+    resource: "business_invitations",
+    metadata_json: {
+      recipient_email: normalizedEmail,
+      role: input.role,
+      expires_at: expiresAt,
+    },
+  });
+
+  return { invitation: invitation as BusinessInvitationRow, rawToken };
+}
+
+/**
+ * Lists business invitations with caller permission check.
+ */
+export async function listBusinessInvitations(
+  supabase: SupabaseClient<Database>,
+  businessId: string,
+  callerUserId: string,
+): Promise<BusinessInvitationWithInviter[]> {
+  const access = await getCallerBusinessAccess(supabase, businessId, callerUserId);
+
+  if (!access.isSovereignOwner && !access.role && !access.isWorkspaceManager) {
+    throw new BusinessError("You do not have access to this business", "FORBIDDEN", 403);
+  }
+
+  const { data, error } = await supabase
+    .from("business_invitations")
+    .select("*, users:invited_by (id, display_name, email)")
+    .eq("business_id", businessId)
+    .order("created_at", { ascending: false });
+
+  if (error || !data) {
+    throw new BusinessError(
+      error?.message ?? "Failed to list business invitations",
+      "FETCH_INVITATIONS_FAILED",
+      500,
+    );
+  }
+
+  return data.map((inv) => ({
+    id: inv.id,
+    business_id: inv.business_id,
+    email: inv.email,
+    role: inv.role as BusinessRole,
+    location_id: inv.location_id,
+    permissions: inv.permissions as Json,
+    token_hash: inv.token_hash,
+    invited_by: inv.invited_by,
+    status: inv.status as "pending" | "accepted" | "revoked" | "expired",
+    expires_at: inv.expires_at,
+    created_at: inv.created_at,
+    updated_at: inv.updated_at,
+    inviter:
+      (inv.users as unknown as { id: string; display_name: string; email: string | null }) ?? null,
+  }));
+}
+
+/**
+ * Revokes a pending business invitation.
+ */
+export async function revokeBusinessInvitation(
+  supabase: SupabaseClient<Database>,
+  businessId: string,
+  invitationId: string,
+  callerUserId: string,
+): Promise<{ success: boolean }> {
+  const access = await getCallerBusinessAccess(supabase, businessId, callerUserId);
+
+  const callerRole = access.isSovereignOwner ? "owner" : access.role;
+  if (!callerRole || !hasBusinessPermission(callerRole, "business:manage_members")) {
+    throw new BusinessError(
+      "You do not have permission to manage members in this business",
+      "FORBIDDEN",
+      403,
+    );
+  }
+
+  // Fetch invitation
+  const { data: invitation, error: fetchError } = await supabase
+    .from("business_invitations")
+    .select("*")
+    .eq("id", invitationId)
+    .eq("business_id", businessId)
+    .single();
+
+  if (fetchError || !invitation) {
+    throw new BusinessError("Invitation not found", "NOT_FOUND", 404);
+  }
+
+  if (invitation.status !== "pending") {
+    throw new BusinessError(
+      `Cannot revoke invitation with status '${invitation.status}'`,
+      "INVALID_STATUS",
+      400,
+    );
+  }
+
+  // Enforce hierarchy authority: cannot revoke invitation created for a role exceeding caller authority
+  if (!canAssignBusinessRole(callerRole, invitation.role as BusinessRole)) {
+    throw new BusinessError(
+      "Cannot revoke an invitation for a role exceeding your authority",
+      "HIERARCHY_VIOLATION",
+      403,
+    );
+  }
+
+  const { error: updateError } = await supabase
+    .from("business_invitations")
+    .update({ status: "revoked", updated_at: new Date().toISOString() })
+    .eq("id", invitationId);
+
+  if (updateError) {
+    throw new BusinessError(updateError.message, "REVOKE_INVITATION_FAILED", 500);
+  }
+
+  // Audit log
+  await supabase.from("audit_logs").insert({
+    business_id: businessId,
+    user_id: callerUserId,
+    action: "business.invitation_revoked",
+    resource: "business_invitations",
+    metadata_json: {
+      invitation_id: invitationId,
+      recipient_email: invitation.email,
+      role: invitation.role,
+    },
+  });
+
+  return { success: true };
+}
+
+/**
+ * Accepts a business invitation using the raw token.
+ * Calls atomic stored procedure accept_business_invitation_atomic for concurrency safety
+ * with fallback to verified transactional logic for test/mock environments.
+ */
+export async function acceptBusinessInvitation(
+  supabase: SupabaseClient<Database>,
+  input: {
+    token: string;
+    acceptingUser: {
+      id: string;
+      email: string;
+    };
+  },
+): Promise<{ businessId: string; role: BusinessRole }> {
+  const tokenHash = hashInvitationToken(input.token.trim());
+
+  // 1. Concurrency-Safe Atomic Database RPC Path
+  if (typeof supabase.rpc === "function") {
+    const { data: rpcResult, error: rpcError } = await supabase.rpc(
+      "accept_business_invitation_atomic",
+      {
+        p_token_hash: tokenHash,
+        p_accepting_user_id: input.acceptingUser.id,
+        p_accepting_user_email: input.acceptingUser.email,
+      },
+    );
+
+    if (!rpcError && rpcResult) {
+      const row = Array.isArray(rpcResult) ? rpcResult[0] : rpcResult;
+      const res = row as unknown as { business_id: string; role: BusinessRole };
+      return { businessId: res.business_id, role: res.role };
+    }
+
+    if (rpcError) {
+      if (rpcError.code === "VY010") {
+        throw new BusinessError("Invalid or nonexistent invitation token", "INVALID_TOKEN", 404);
+      }
+      if (rpcError.code === "VY011") {
+        throw new BusinessError("Invitation is no longer valid", "INVITATION_INACTIVE", 410);
+      }
+      if (rpcError.code === "VY012") {
+        throw new BusinessError("Invitation has expired", "INVITATION_EXPIRED", 410);
+      }
+      if (rpcError.code === "VY013") {
+        throw new BusinessError(
+          "Authenticated user email does not match invitation recipient",
+          "EMAIL_MISMATCH",
+          403,
+        );
+      }
+      throw new BusinessError(rpcError.message, "JOIN_BUSINESS_FAILED", 500);
+    }
+  }
+
+  // 2. Fallback Transactional Logic (for mock client / testing)
+  const { data: invitation, error: fetchError } = await supabase
+    .from("business_invitations")
+    .select("*")
+    .eq("token_hash", tokenHash)
+    .single();
+
+  if (fetchError || !invitation) {
+    throw new BusinessError("Invalid or nonexistent invitation token", "INVALID_TOKEN", 404);
+  }
+
+  if (invitation.status !== "pending") {
+    throw new BusinessError(
+      `Invitation is no longer valid (status: ${invitation.status})`,
+      "INVITATION_INACTIVE",
+      410,
+    );
+  }
+
+  if (isInvitationExpired(invitation.expires_at)) {
+    await supabase
+      .from("business_invitations")
+      .update({ status: "expired" })
+      .eq("id", invitation.id);
+
+    throw new BusinessError("Invitation has expired", "INVITATION_EXPIRED", 410);
+  }
+
+  // Verify accepting user email matches invitation email
+  if (invitation.email.toLowerCase() !== input.acceptingUser.email.trim().toLowerCase()) {
+    throw new BusinessError(
+      "Authenticated user email does not match invitation recipient",
+      "EMAIL_MISMATCH",
+      403,
+    );
+  }
+
+  // If invited as owner, update sovereign_owner_id
+  if (invitation.role === "owner") {
+    await supabase
+      .from("businesses")
+      .update({ sovereign_owner_id: input.acceptingUser.id })
+      .eq("id", invitation.business_id);
+  }
+
+  // Upsert member into business_members
+  const { error: memberError } = await supabase.from("business_members").upsert(
+    {
+      business_id: invitation.business_id,
+      user_id: input.acceptingUser.id,
+      role: invitation.role,
+      location_id: invitation.location_id,
+      permissions: invitation.permissions,
+      status: "active",
+    },
+    { onConflict: "business_id,user_id" },
+  );
+
+  if (memberError) {
+    throw new BusinessError(memberError.message, "JOIN_BUSINESS_FAILED", 500);
+  }
+
+  // Mark invitation as accepted
+  await supabase
+    .from("business_invitations")
+    .update({ status: "accepted" })
+    .eq("id", invitation.id);
+
+  // Audit log
+  await supabase.from("audit_logs").insert({
+    business_id: invitation.business_id,
+    user_id: input.acceptingUser.id,
+    action: "business.invitation_accepted",
+    resource: "business_members",
+    metadata_json: {
+      invitation_id: invitation.id,
+      assigned_role: invitation.role,
+    },
+  });
+
+  return { businessId: invitation.business_id, role: invitation.role as BusinessRole };
 }

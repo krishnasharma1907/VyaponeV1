@@ -6,12 +6,14 @@ import {
   updateWorkspaceProfileSchema,
   inviteWorkspaceMemberSchema,
   acceptInvitationSchema,
+  revokeWorkspaceInvitationSchema,
   updateMemberRoleSchema,
   removeMemberSchema,
   type CreateWorkspaceInput,
   type UpdateWorkspaceProfileInput,
   type InviteWorkspaceMemberInput,
   type AcceptInvitationInput,
+  type RevokeWorkspaceInvitationInput,
   type UpdateMemberRoleInput,
   type RemoveMemberInput,
 } from "./schemas";
@@ -22,6 +24,8 @@ import {
   getWorkspaceMembers,
   updateWorkspaceProfile,
   inviteWorkspaceMember,
+  listWorkspaceInvitations,
+  revokeWorkspaceInvitation,
   acceptWorkspaceInvitation,
   updateWorkspaceMemberRole,
   removeWorkspaceMember,
@@ -33,6 +37,7 @@ import type {
   WorkspaceMemberWithProfile,
   WorkspaceMemberRow,
   WorkspaceRole,
+  WorkspaceInvitationWithInviter,
 } from "./types";
 
 export interface WorkspaceActionResult<T = void> {
@@ -281,6 +286,82 @@ export async function inviteWorkspaceMemberAction(
       return { success: false, error: err.message };
     }
     const message = err instanceof Error ? err.message : "Failed to invite member";
+    return { success: false, error: message };
+  }
+}
+
+/**
+ * Lists all invitations for a workspace.
+ */
+export async function listWorkspaceInvitationsAction(
+  workspaceId: string,
+): Promise<WorkspaceActionResult<WorkspaceInvitationWithInviter[]>> {
+  try {
+    const supabase = await createServerSupabaseClient();
+    const {
+      data: { user },
+      error: authError,
+    } = await supabase.auth.getUser();
+
+    if (authError || !user) {
+      return { success: false, error: "Authentication required" };
+    }
+
+    const invitations = await listWorkspaceInvitations(supabase, workspaceId, user.id);
+    return { success: true, data: invitations };
+  } catch (err) {
+    if (err instanceof WorkspaceError) {
+      return { success: false, error: err.message };
+    }
+    const message = err instanceof Error ? err.message : "Failed to list invitations";
+    return { success: false, error: message };
+  }
+}
+
+/**
+ * Revokes a pending workspace invitation.
+ */
+export async function revokeWorkspaceInvitationAction(
+  _prevState: unknown,
+  input: FormData | RevokeWorkspaceInvitationInput,
+): Promise<WorkspaceActionResult<{ success: boolean }>> {
+  try {
+    const rawData = input instanceof FormData ? extractFormData(input) : input;
+    const parsed = revokeWorkspaceInvitationSchema.safeParse(rawData);
+
+    if (!parsed.success) {
+      const fieldErrors = parsed.error.flatten().fieldErrors;
+      const firstErrorMessage =
+        Object.values(fieldErrors)[0]?.[0] || "Invalid invitation revocation parameters";
+      return { success: false, error: firstErrorMessage, fieldErrors };
+    }
+
+    const supabase = await createServerSupabaseClient();
+    const {
+      data: { user },
+      error: authError,
+    } = await supabase.auth.getUser();
+
+    if (authError || !user) {
+      return { success: false, error: "Authentication required" };
+    }
+
+    const result = await revokeWorkspaceInvitation(supabase, {
+      workspaceId: parsed.data.workspaceId,
+      invitationId: parsed.data.invitationId,
+      actorUserId: user.id,
+    });
+
+    return {
+      success: true,
+      message: "Invitation revoked successfully",
+      data: result,
+    };
+  } catch (err) {
+    if (err instanceof WorkspaceError) {
+      return { success: false, error: err.message };
+    }
+    const message = err instanceof Error ? err.message : "Failed to revoke invitation";
     return { success: false, error: message };
   }
 }

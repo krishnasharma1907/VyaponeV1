@@ -72,3 +72,14 @@ export interface CreateInvitationResult {
   invitation: WorkspaceInvitationRow;
   rawToken: string;
 }
+
+/**
+ * Workspace invitation with optional inviter profile information.
+ */
+export interface WorkspaceInvitationWithInviter extends WorkspaceInvitationRow {
+  inviter?: {
+    id: string;
+    display_name: string;
+    email: string | null;
+  } | null;
+}
