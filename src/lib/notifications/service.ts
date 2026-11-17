@@ -58,7 +58,16 @@ export async function createNotification(
   supabase: SupabaseClient<Database>,
   input: CreateNotificationInput,
 ): Promise<NotificationItem> {
-  const { data: notificationId, error } = await supabase.rpc("create_in_app_notification", {
+  // Use privileged service_role client to execute create_in_app_notification RPC
+  let executionClient = supabase;
+  try {
+    const { createAdminSupabaseClient } = await import("@/lib/supabase/admin");
+    executionClient = createAdminSupabaseClient();
+  } catch {
+    executionClient = supabase;
+  }
+
+  const { data: notificationId, error } = await executionClient.rpc("create_in_app_notification", {
     p_recipient_user_id: input.recipientUserId,
     p_type: input.type,
     p_title: input.title,
@@ -73,7 +82,7 @@ export async function createNotification(
     throw new Error(`Failed to create notification: ${error?.message ?? "unknown error"}`);
   }
 
-  const { data: record, error: fetchError } = await supabase
+  const { data: record, error: fetchError } = await executionClient
     .from("notifications")
     .select("*")
     .eq("id", notificationId as string)

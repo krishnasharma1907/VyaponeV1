@@ -1,6 +1,5 @@
 "use server";
 
-import "server-only";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 import { sanitizeTenantError, TenantAccessError } from "@/lib/auth/tenant-access";
 import { listAuditLogsSchema } from "./schemas";

@@ -261,9 +261,28 @@ describe("Integration: Business & Location Lifecycle [VO-023]", () => {
 
         if (table === "audit_logs") {
           return {
-            insert: vi.fn(async (data: unknown) => {
+            insert: vi.fn((data: unknown) => {
               db.auditLogs.push(data);
-              return { error: null };
+              const payload = (data ?? {}) as Record<string, unknown>;
+              return {
+                select: vi.fn(() => ({
+                  single: vi.fn(async () => ({
+                    data: {
+                      id: "audit-1",
+                      business_id: payload.business_id,
+                      workspace_id: payload.workspace_id,
+                      user_id: payload.user_id,
+                      action: payload.action,
+                      resource: payload.resource,
+                      metadata_json: payload.metadata_json,
+                      ip_address: null,
+                      created_at: new Date().toISOString(),
+                    },
+                    error: null,
+                  })),
+                })),
+                error: null,
+              };
             }),
           };
         }

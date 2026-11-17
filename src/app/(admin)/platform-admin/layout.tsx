@@ -2,6 +2,7 @@ import React from "react";
 import Link from "next/link";
 import type { Metadata } from "next";
 import { Badge, Nav, NavList, NavItem, NavLink } from "@/components/ui";
+import { NotificationCenter } from "@/components/notifications";
 
 export const metadata: Metadata = {
   title: "Platform Administration — VyapOne",
@@ -62,20 +63,24 @@ export default function PlatformAdminLayout({ children }: { children: React.Reac
             <Badge variant="danger">Platform Super-Admin</Badge>
           </div>
 
-          {/* Role-Aware Governance Navigation */}
-          <Nav
-            aria-label="Platform Administration Navigation"
-            variant="horizontal"
-            className="ui-nav-scrollable"
-          >
-            <NavList>
-              {adminNavItems.map((item) => (
-                <NavItem key={item.href}>
-                  <NavLink href={item.href}>{item.label}</NavLink>
-                </NavItem>
-              ))}
-            </NavList>
-          </Nav>
+          <div style={{ display: "flex", alignItems: "center", gap: "var(--space-3)" }}>
+            {/* Role-Aware Governance Navigation */}
+            <Nav
+              aria-label="Platform Administration Navigation"
+              variant="horizontal"
+              className="ui-nav-scrollable"
+            >
+              <NavList>
+                {adminNavItems.map((item) => (
+                  <NavItem key={item.href}>
+                    <NavLink href={item.href}>{item.label}</NavLink>
+                  </NavItem>
+                ))}
+              </NavList>
+            </Nav>
+
+            <NotificationCenter />
+          </div>
         </div>
       </header>
 

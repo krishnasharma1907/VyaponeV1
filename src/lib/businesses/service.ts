@@ -18,6 +18,8 @@ import {
   hashInvitationToken,
   isInvitationExpired,
 } from "@/lib/workspaces/tokens";
+import { recordAuditEvent } from "@/lib/audit/service";
+import { createNotification } from "@/lib/notifications/service";
 import type {
   AddBusinessMemberInput,
   CreateBusinessOutput,
@@ -239,13 +241,13 @@ export async function createBusiness(
   }
 
   // 6. Record append-only audit log
-  await supabase.from("audit_logs").insert({
-    business_id: business.id,
-    workspace_id: business.workspace_id,
-    user_id: callerUserId,
+  await recordAuditEvent(supabase, {
+    businessId: business.id,
+    workspaceId: business.workspace_id,
+    actorUserId: callerUserId,
     action: "business.created",
     resource: "businesses",
-    metadata_json: {
+    metadata: {
       trade_name: business.trade_name,
       slug: business.slug,
       primary_location_id: primaryLocation.id,
@@ -430,13 +432,13 @@ export async function updateBusinessProfile(
   }
 
   // Audit log
-  await supabase.from("audit_logs").insert({
-    business_id: businessId,
-    workspace_id: updated.workspace_id,
-    user_id: callerUserId,
+  await recordAuditEvent(supabase, {
+    businessId: businessId,
+    workspaceId: updated.workspace_id,
+    actorUserId: callerUserId,
     action: "business.profile_updated",
     resource: "businesses",
-    metadata_json: {
+    metadata: {
       updated_fields: Object.keys(updates),
     },
   });
@@ -511,13 +513,13 @@ export async function confirmBusinessFact(
   }
 
   // Record audit log for sensitive fact confirmation
-  await supabase.from("audit_logs").insert({
-    business_id: businessId,
-    workspace_id: updated.workspace_id,
-    user_id: callerUserId,
+  await recordAuditEvent(supabase, {
+    businessId: businessId,
+    workspaceId: updated.workspace_id,
+    actorUserId: callerUserId,
     action: confirmed ? "business.fact_confirmed" : "business.fact_unconfirmed",
     resource: "businesses",
-    metadata_json: {
+    metadata: {
       field,
       confirmed,
       confirmed_at: new Date().toISOString(),
@@ -597,12 +599,12 @@ export async function createLocation(
   }
 
   // Audit log
-  await supabase.from("audit_logs").insert({
-    business_id: businessId,
-    user_id: callerUserId,
+  await recordAuditEvent(supabase, {
+    businessId: businessId,
+    actorUserId: callerUserId,
     action: "location.created",
     resource: "locations",
-    metadata_json: {
+    metadata: {
       location_id: location.id,
       name: location.name,
       is_primary: location.is_primary,
@@ -681,12 +683,12 @@ export async function updateLocation(
   }
 
   // Audit log
-  await supabase.from("audit_logs").insert({
-    business_id: location.business_id,
-    user_id: callerUserId,
+  await recordAuditEvent(supabase, {
+    businessId: location.business_id,
+    actorUserId: callerUserId,
     action: "location.updated",
     resource: "locations",
-    metadata_json: {
+    metadata: {
       location_id: locationId,
       updated_fields: Object.keys(updates),
     },
@@ -851,12 +853,12 @@ export async function addBusinessMember(
   }
 
   // Audit log
-  await supabase.from("audit_logs").insert({
-    business_id: input.business_id,
-    user_id: callerUserId,
+  await recordAuditEvent(supabase, {
+    businessId: input.business_id,
+    actorUserId: callerUserId,
     action: "business_member.added",
     resource: "business_members",
-    metadata_json: {
+    metadata: {
       added_user_id: input.user_id,
       role: input.role,
     },
@@ -959,18 +961,37 @@ export async function updateBusinessMemberRole(
   }
 
   // Audit log
-  await supabase.from("audit_logs").insert({
-    business_id: businessId,
-    user_id: callerUserId,
+  await recordAuditEvent(supabase, {
+    businessId: businessId,
+    actorUserId: callerUserId,
     action: "business_member.role_changed",
     resource: "business_members",
-    metadata_json: {
+    metadata: {
       target_user_id: targetUserId,
       previous_role: targetMember.role,
       new_role: updated.role,
       status: updated.status,
     },
   });
+
+  // Producer: In-app notification for updated business member
+  try {
+    await createNotification(supabase, {
+      recipientUserId: targetUserId,
+      businessId,
+      type: "role_updated",
+      title: "Business Role Updated",
+      message: `Your role in the business has been updated to ${updated.role}.`,
+      data: {
+        businessId,
+        previousRole: targetMember.role,
+        newRole: updated.role,
+      },
+      idempotencyKey: `biz_role_${businessId}_${targetUserId}_${Date.now()}`,
+    });
+  } catch {
+    // Non-blocking notification delivery
+  }
 
   return updated;
 }
@@ -1045,16 +1066,33 @@ export async function removeBusinessMember(
   }
 
   // Audit log
-  await supabase.from("audit_logs").insert({
-    business_id: businessId,
-    user_id: callerUserId,
+  await recordAuditEvent(supabase, {
+    businessId: businessId,
+    actorUserId: callerUserId,
     action: "business_member.removed",
     resource: "business_members",
-    metadata_json: {
+    metadata: {
       removed_user_id: targetUserId,
       role: targetMember.role,
     },
   });
+
+  // Producer: In-app notification for removed business member
+  try {
+    await createNotification(supabase, {
+      recipientUserId: targetUserId,
+      businessId,
+      type: "member_removed",
+      title: "Business Membership Ended",
+      message: "You have been removed from this business.",
+      data: {
+        businessId,
+      },
+      idempotencyKey: `biz_rem_${businessId}_${targetUserId}_${Date.now()}`,
+    });
+  } catch {
+    // Non-blocking notification delivery
+  }
 
   return { success: true };
 }
@@ -1185,17 +1223,38 @@ export async function createBusinessInvitation(
   }
 
   // Audit log strictly redacts raw token
-  await supabase.from("audit_logs").insert({
-    business_id: input.business_id,
-    user_id: callerUserId,
+  await recordAuditEvent(supabase, {
+    businessId: input.business_id,
+    actorUserId: callerUserId,
     action: "business.member_invited",
     resource: "business_invitations",
-    metadata_json: {
+    metadata: {
       recipient_email: normalizedEmail,
       role: input.role,
       expires_at: expiresAt,
     },
   });
+
+  // Producer: In-app notification for existing registered user
+  if (existingUser?.id) {
+    try {
+      await createNotification(supabase, {
+        recipientUserId: existingUser.id,
+        businessId: input.business_id,
+        type: "business_invitation",
+        title: "Business Invitation",
+        message: `You have been invited to join the business team as ${input.role}.`,
+        data: {
+          invitationId: invitation.id,
+          role: input.role,
+          businessId: input.business_id,
+        },
+        idempotencyKey: `biz_inv_${invitation.id}`,
+      });
+    } catch {
+      // Non-blocking notification delivery
+    }
+  }
 
   return { invitation: invitation as BusinessInvitationRow, rawToken };
 }
@@ -1305,12 +1364,12 @@ export async function revokeBusinessInvitation(
   }
 
   // Audit log
-  await supabase.from("audit_logs").insert({
-    business_id: businessId,
-    user_id: callerUserId,
+  await recordAuditEvent(supabase, {
+    businessId: businessId,
+    actorUserId: callerUserId,
     action: "business.invitation_revoked",
     resource: "business_invitations",
-    metadata_json: {
+    metadata: {
       invitation_id: invitationId,
       recipient_email: invitation.email,
       role: invitation.role,
@@ -1444,12 +1503,12 @@ export async function acceptBusinessInvitation(
     .eq("id", invitation.id);
 
   // Audit log
-  await supabase.from("audit_logs").insert({
-    business_id: invitation.business_id,
-    user_id: input.acceptingUser.id,
+  await recordAuditEvent(supabase, {
+    businessId: invitation.business_id,
+    actorUserId: input.acceptingUser.id,
     action: "business.invitation_accepted",
     resource: "business_members",
-    metadata_json: {
+    metadata: {
       invitation_id: invitation.id,
       assigned_role: invitation.role,
     },

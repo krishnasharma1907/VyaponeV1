@@ -6,7 +6,7 @@ Record implementation changes by task ID. Do not record planned work as complete
 
 ### [VO-028] — Implement audit/activity and notification foundation (2026-11-17)
 - Implemented centralized audit logging and in-app notifications foundation strictly according to PRD FINAL v2 (§14, §16, §18.5, FR-13, SEC-06) and `docs/TASK_BACKLOG.md`:
-  - **Database Migration (`supabase/migrations/20261117000002_audit_and_notification_foundation.sql`):**
+  - **Database Migration & RPC Security (`supabase/migrations/20261117000002_audit_and_notification_foundation.sql`):**
     - Created `public.notifications` table for tamper-evident, typed in-app notifications with recipient-scoped access, read/unread tracking, and idempotency protection.
     - Defined canonical notification types: `'workspace_invitation'`, `'business_invitation'`, `'membership_change'`, `'role_updated'`, `'member_removed'`, `'capacity_warning'`, `'site_status_changed'`, `'security_alert'`, `'system_announcement'`.
     - Added query performance indexes on `(recipient_user_id, created_at DESC)`, `(recipient_user_id) WHERE read = FALSE`, `workspace_id`, and `business_id`.
@@ -15,24 +15,36 @@ Record implementation changes by task ID. Do not record planned work as complete
       - UPDATE: `recipient_user_id = auth.uid()` WITH CHECK `recipient_user_id = auth.uid()` (scoped to marking read).
       - INSERT: `WITH CHECK (false)` (direct client writes denied; creation occurs exclusively through trusted server operations).
       - DELETE: `USING (false)` (tamper-evident, immutable notifications).
-    - Implemented trusted server procedure `public.create_in_app_notification(...)` with `SECURITY DEFINER` and empty `search_path = ''`.
-    - Revoked all privileges from `PUBLIC` and `anon`; granted SELECT, UPDATE (read, read_at) to `authenticated`; granted full access to `service_role`.
-    - Synchronized migration text into `supabase/combined_migrations.sql`.
+    - Hardened `public.create_in_app_notification(...)` stored procedure:
+      - Strict caller identity execution guard: rejects non-`service_role`/`postgres` callers with custom SQLSTATE `VY003` to prevent notification spoofing.
+      - Recipient and tenant existence validation against `public.users`, `public.workspaces`, and `public.businesses`.
+      - Revoked EXECUTE from `PUBLIC`, `anon`, and `authenticated`; granted EXECUTE strictly to `service_role`.
+    - Synchronized all migration text into `supabase/combined_migrations.sql`.
   - **Centralized Audit Service (`src/lib/audit/`):**
-     - Strongly typed actions (`WorkspaceAuditAction`, `BusinessAuditAction`, `SiteAuditAction`, `SecurityAuditAction`) and resources.
-     - Automated sensitive credential redaction (`redactSensitiveData`): recursively sanitizes passwords, tokens, API keys, client secrets, OTPs, private keys, credit cards, CVVs, and Bearer authorization strings across nested objects and arrays with circular-reference protection.
-     - Server-derived identity and tenant boundary enforcement (`recordAuditEvent`, `listWorkspaceAuditLogs`, `listBusinessAuditLogs`).
-     - Tenant-scoped query operations with filtering (action, resource, userId, date ranges) and pagination.
-     - Server Actions (`listWorkspaceAuditLogsAction`, `listBusinessAuditLogsAction`) with fail-closed tenant validation and anti-enumeration error sanitization.
-  - **In-App Notifications Service (`src/lib/notifications/`):**
-    - Transactional, recipient-isolated notification operations: `createNotification` (via trusted RPC with idempotency), `listUserNotifications` (recipient-scoped with unread filtering), `getUnreadNotificationCount`, `markNotificationAsRead`, `markAllNotificationsAsRead`.
+    - Strongly typed actions (`WorkspaceAuditAction`, `BusinessAuditAction`, `SiteAuditAction`, `SecurityAuditAction`) and resources.
+    - Automated sensitive credential redaction (`redactSensitiveData`): recursively sanitizes mixed-case passwords, tokens, API keys, client secrets, OTPs, private keys, credit/debit cards, CVVs, and Bearer authorization strings across nested structures with circular-reference protection.
+    - Preserves statutory Indian business identifiers (`pincode`, `postal_pin`, `pan_number`, `tax_pan`, `gstin`, `gst_number`).
+    - Unified all mutation audit writes in `workspaces/service.ts`, `businesses/service.ts`, and `plans/service.ts` to call centralized `recordAuditEvent` instead of raw direct table inserts.
+    - Server-derived identity and tenant boundary enforcement (`recordAuditEvent`, `listWorkspaceAuditLogs`, `listBusinessAuditLogs`).
+    - Server Actions (`listWorkspaceAuditLogsAction`, `listBusinessAuditLogsAction`) with fail-closed tenant validation and anti-enumeration error sanitization.
+  - **In-App Notifications Service & Event Producers (`src/lib/notifications/`):**
+    - Transactional, recipient-isolated notification operations: `createNotification` (executes trusted RPC with idempotency via admin client), `listUserNotifications` (recipient-scoped with unread filtering), `getUnreadNotificationCount`, `markNotificationAsRead`, `markAllNotificationsAsRead`.
+    - Wired notification lifecycle triggers into core domain services:
+      - Workspace invitations (`workspace_invitation`) when an existing user is invited.
+      - Workspace member role updates (`role_updated`) and member removal (`member_removed`).
+      - Business invitations (`business_invitation`) when an existing user is invited.
+      - Business member role updates (`role_updated`) and member removal (`member_removed`).
+      - Website publishing audit recording (`site.published`).
     - Server Actions (`listNotificationsAction`, `getUnreadNotificationCountAction`, `markNotificationAsReadAction`, `markAllNotificationsAsReadAction`) verifying caller identity strictly from server Supabase session.
   - **Accessible Notification Center UI (`src/components/notifications/`):**
     - Created `NotificationCenter` component adhering to WCAG 2.2 AA (visible focus, $\ge 4.5:1$ contrast, keyboard escape/outside click close, ARIA attributes `aria-expanded`, `aria-label`, `aria-haspopup="dialog"`).
+    - Mounted `NotificationCenter` into all 4 authenticated application shells: Reseller Workspace, Business Owner Dashboard, Staff Counter POS, and Platform Admin.
     - Responsive mobile-first design down to 320/390px with Emerald + Marigold status indicators.
     - Includes unread count badge, filter tabs (All / Unread), category badges, relative time formatting, empty state ("All caught up!"), and instant optimistic read updates.
+  - **Backlog & Architecture Reconciliation:**
+    - Confirmed decade numbering convention across all project phases (P0: VO-000..VO-006, P1: VO-010..VO-019, P2: VO-020..VO-028, P3: VO-030..VO-034). There is no task `VO-029`; the next task in the approved backlog is `VO-030`.
   - **Automated Verification:**
-    - 58 test files, 682 unit/integration tests passed with 0 failures.
+    - 58 test files, 685 unit/integration tests passed with 0 failures.
     - `pnpm format:check`, `pnpm lint`, `pnpm typecheck`, `pnpm test`, and `pnpm build` all passed.
 
 ### [VO-027] — Implement team invitations and membership lifecycle (2026-11-17)

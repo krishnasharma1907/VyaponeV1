@@ -2,6 +2,7 @@ import React from "react";
 import Link from "next/link";
 import type { Metadata } from "next";
 import { Badge, Nav, NavList, NavItem, NavLink } from "@/components/ui";
+import { NotificationCenter } from "@/components/notifications";
 
 export const metadata: Metadata = {
   title: "Staff Counter Terminal — VyapOne",
@@ -52,24 +53,28 @@ export default function StaffCounterLayout({ children }: { children: React.React
             <Badge variant="warning">Staff Counter POS</Badge>
           </div>
 
-          {/* Role-Aware Navigation: Zero Settings/Bank VPAs/Analytics */}
-          <Nav
-            aria-label="Staff Counter Navigation"
-            variant="horizontal"
-            className="ui-nav-scrollable"
-          >
-            <NavList>
-              <NavItem>
-                <NavLink href="/counter">Station Home</NavLink>
-              </NavItem>
-              <NavItem>
-                <NavLink href="/counter/pos">Fast POS Punch</NavLink>
-              </NavItem>
-              <NavItem>
-                <NavLink href="/counter/unlock">Lock / Switch PIN</NavLink>
-              </NavItem>
-            </NavList>
-          </Nav>
+          <div style={{ display: "flex", alignItems: "center", gap: "var(--space-3)" }}>
+            {/* Role-Aware Navigation: Zero Settings/Bank VPAs/Analytics */}
+            <Nav
+              aria-label="Staff Counter Navigation"
+              variant="horizontal"
+              className="ui-nav-scrollable"
+            >
+              <NavList>
+                <NavItem>
+                  <NavLink href="/counter">Station Home</NavLink>
+                </NavItem>
+                <NavItem>
+                  <NavLink href="/counter/pos">Fast POS Punch</NavLink>
+                </NavItem>
+                <NavItem>
+                  <NavLink href="/counter/unlock">Lock / Switch PIN</NavLink>
+                </NavItem>
+              </NavList>
+            </Nav>
+
+            <NotificationCenter />
+          </div>
         </div>
       </header>
 

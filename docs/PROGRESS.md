@@ -47,16 +47,25 @@
      - Responsive mobile-first design down to 320/390px with Emerald + Marigold status indicators.
      - Includes unread count badge, filter tabs (All / Unread), category badges, relative time formatting, empty state ("All caught up!"), and instant optimistic read updates.
   5. **Automated Test Coverage:**
-     - `tests/unit/audit/service.test.ts`: 12/12 tests passed (credential redaction, Bearer header masking, circular reference handling, audit event insertion, tenant boundary checks, Server Actions).
-     - `tests/unit/notifications/service.test.ts`: 11/11 tests passed (trusted RPC creation, recipient isolation, unread count queries, ownership verification on mark as read, batch mark read, Server Actions).
+     - `tests/unit/audit/service.test.ts`: 13/13 tests passed (credential redaction, mixed-case secret keys, statutory Indian tax PAN & address pincode preservation, Bearer header masking, circular reference handling, audit event insertion, tenant boundary checks, Server Actions).
+     - `tests/unit/notifications/service.test.ts`: 12/12 tests passed (trusted RPC creation, recipient isolation, unread count queries, privilege denial for unprivileged callers, ownership verification on mark as read, batch mark read, Server Actions).
      - `tests/unit/notifications/components.test.tsx`: 9/9 tests passed (bell trigger rendering, badge display, popover open/close, escape key navigation, category badges, unread filtering, empty state, mark read / mark all read).
-     - `tests/unit/database/audit-notification-migration.test.ts`: 9/9 tests passed (table schema, constraints, indexes, RLS policies, SECURITY DEFINER procedure, search_path, permissions, combined migrations sync).
+     - `tests/unit/database/audit-notification-migration.test.ts`: 10/10 tests passed (table schema, constraints, indexes, RLS policies, SECURITY DEFINER procedure, search_path, service_role-only execute privilege, combined migrations sync).
   6. **Quality Gate Verification:**
      - Prettier: 100% compliant (`pnpm format:check` passed).
      - ESLint: 0 errors, 0 warnings (`pnpm lint` passed).
      - TypeScript: Strict mode, 0 errors, 0 `any` types (`tsc --noEmit` passed).
-     - Vitest: 58 test files, 682 tests passed (`pnpm test` passed).
+     - Vitest: 58 test files, 685 tests passed (`pnpm test` passed).
      - Next.js Build: 35 routes compiled successfully (`pnpm build` passed).
+  7. **Corrective Pass Summary (Final Audit & Integration Gate):**
+     - Hardened `public.create_in_app_notification(...)` stored procedure against notification spoofing: restricted execution strictly to `service_role` and added in-procedure caller identity check rejecting non-service callers with custom SQLSTATE `VY003`.
+     - Validated recipient user and workspace/business tenant existence inside stored procedure.
+     - Enhanced `isSensitiveKey` in `src/lib/audit/redaction.ts` to cover mixed-case credentials, cards, CVVs, pins, private keys, while explicitly preserving statutory Indian postal codes (`pincode`, `postal_pin`) and tax PAN identifiers (`pan_number`, `tax_pan`, `gstin`, `gst_number`).
+     - Unified all mutation audit writes in `workspaces/service.ts`, `businesses/service.ts`, and `plans/service.ts` to call centralized `recordAuditEvent` with automated redaction.
+     - Wired notification triggers on workspace/business invitations, role updates, and member removal.
+     - Mounted `NotificationCenter` into all 4 authenticated application shells: Reseller Workspace, Business Owner Dashboard, Staff Counter POS, and Platform Admin.
+     - Decoupled server actions from core library services to maintain clean server-only boundary isolation across client and unit test environments.
+     - Reconciled backlog sequence: confirmed decade numbering convention (P0: VO-000..VO-006, P1: VO-010..VO-019, P2: VO-020..VO-028, P3: VO-030..VO-034). There is no task `VO-029`. Phase P2 is fully complete and the next task is `VO-030`.
 
 ## Task report: VO-027
 

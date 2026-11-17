@@ -13,13 +13,28 @@ const SENSITIVE_SUBSTRING_PATTERN =
 
 /**
  * Checks whether a property key matches sensitive credential naming conventions.
+ * Preserves statutory tax and address metadata (pincode, pan_number) while strictly
+ * redacting authentication secrets, payment card details, and private keys.
  */
 export function isSensitiveKey(key: string): boolean {
+  const normalized = key.toLowerCase().replace(/[-_]/g, "");
+
+  // Preserved public/statutory business metadata
+  if (
+    normalized === "pincode" ||
+    normalized === "postalpin" ||
+    normalized === "pannumber" ||
+    normalized === "taxpan" ||
+    normalized === "gstnumber" ||
+    normalized === "gstin"
+  ) {
+    return false;
+  }
+
   if (SENSITIVE_KEY_PATTERN.test(key)) {
     return true;
   }
-  // Check for common suffixes or substrings like client_secret, auth_token, user_password
-  const normalized = key.toLowerCase().replace(/[-_]/g, "");
+
   return (
     normalized.includes("password") ||
     normalized.includes("secret") ||
@@ -27,7 +42,13 @@ export function isSensitiveKey(key: string): boolean {
     normalized.includes("apikey") ||
     normalized.includes("privatekey") ||
     normalized.includes("otp") ||
-    normalized.includes("authcode")
+    normalized.includes("authcode") ||
+    normalized.includes("cvv") ||
+    normalized.includes("creditcard") ||
+    normalized.includes("debitcard") ||
+    normalized.includes("cardnumber") ||
+    normalized.includes("credential") ||
+    (normalized.includes("pin") && !normalized.includes("pincode"))
   );
 }
 

@@ -297,9 +297,27 @@ describe("Business Operational Invitations & Membership Lifecycle [VO-027]", () 
           }
           if (table === "audit_logs") {
             return {
-              insert: vi.fn(async (payload: Record<string, unknown>) => {
+              insert: vi.fn((payload: Record<string, unknown>) => {
                 insertedAudit = payload;
-                return { error: null };
+                return {
+                  select: vi.fn(() => ({
+                    single: vi.fn(async () => ({
+                      data: {
+                        id: "audit-1",
+                        business_id: payload.business_id,
+                        workspace_id: payload.workspace_id,
+                        user_id: payload.user_id,
+                        action: payload.action,
+                        resource: payload.resource,
+                        metadata_json: payload.metadata_json,
+                        ip_address: null,
+                        created_at: new Date().toISOString(),
+                      },
+                      error: null,
+                    })),
+                  })),
+                  error: null,
+                };
               }),
             };
           }
@@ -561,9 +579,27 @@ describe("Business Operational Invitations & Membership Lifecycle [VO-027]", () 
           }
           if (table === "audit_logs") {
             return {
-              insert: vi.fn(async (payload: Record<string, unknown>) => {
+              insert: vi.fn((payload: Record<string, unknown>) => {
                 auditLogged = payload;
-                return { error: null };
+                return {
+                  select: vi.fn(() => ({
+                    single: vi.fn(async () => ({
+                      data: {
+                        id: "audit-2",
+                        business_id: payload.business_id,
+                        workspace_id: payload.workspace_id,
+                        user_id: payload.user_id,
+                        action: payload.action,
+                        resource: payload.resource,
+                        metadata_json: payload.metadata_json,
+                        ip_address: null,
+                        created_at: new Date().toISOString(),
+                      },
+                      error: null,
+                    })),
+                  })),
+                  error: null,
+                };
               }),
             };
           }

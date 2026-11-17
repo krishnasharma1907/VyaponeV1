@@ -2,6 +2,7 @@ import React from "react";
 import Link from "next/link";
 import type { Metadata } from "next";
 import { Badge, Nav, NavList, NavItem, NavLink } from "@/components/ui";
+import { NotificationCenter } from "@/components/notifications";
 
 export const metadata: Metadata = {
   title: "Reseller Agency Workspace — VyapOne",
@@ -54,30 +55,34 @@ export default function ResellerWorkspaceLayout({ children }: { children: React.
             <Badge variant="primary">Reseller Portal</Badge>
           </div>
 
-          {/* Role-Aware Navigation: Strictly Agency Scoped */}
-          <Nav
-            aria-label="Reseller Workspace Navigation"
-            variant="horizontal"
-            className="ui-nav-scrollable"
-          >
-            <NavList>
-              <NavItem>
-                <NavLink href="/workspace">Overview</NavLink>
-              </NavItem>
-              <NavItem>
-                <NavLink href="/workspace/clients">Client Businesses</NavLink>
-              </NavItem>
-              <NavItem>
-                <NavLink href="/workspace/billing">Wholesale Billing</NavLink>
-              </NavItem>
-              <NavItem>
-                <NavLink href="/workspace/team">Agency Team</NavLink>
-              </NavItem>
-              <NavItem>
-                <NavLink href="/workspace/settings">Branding Settings</NavLink>
-              </NavItem>
-            </NavList>
-          </Nav>
+          <div style={{ display: "flex", alignItems: "center", gap: "var(--space-3)" }}>
+            {/* Role-Aware Navigation: Strictly Agency Scoped */}
+            <Nav
+              aria-label="Reseller Workspace Navigation"
+              variant="horizontal"
+              className="ui-nav-scrollable"
+            >
+              <NavList>
+                <NavItem>
+                  <NavLink href="/workspace">Overview</NavLink>
+                </NavItem>
+                <NavItem>
+                  <NavLink href="/workspace/clients">Client Businesses</NavLink>
+                </NavItem>
+                <NavItem>
+                  <NavLink href="/workspace/billing">Wholesale Billing</NavLink>
+                </NavItem>
+                <NavItem>
+                  <NavLink href="/workspace/team">Agency Team</NavLink>
+                </NavItem>
+                <NavItem>
+                  <NavLink href="/workspace/settings">Branding Settings</NavLink>
+                </NavItem>
+              </NavList>
+            </Nav>
+
+            <NotificationCenter />
+          </div>
         </div>
       </header>
 

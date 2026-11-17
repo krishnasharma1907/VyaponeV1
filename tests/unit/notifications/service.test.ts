@@ -136,6 +136,29 @@ describe("VO-028 Notifications Service Unit Tests", () => {
         }),
       ).rejects.toThrow("Failed to create notification: Recipient user not found");
     });
+
+    it("rejects when unprivileged caller attempts to invoke create_in_app_notification (SQLSTATE VY003)", async () => {
+      const mockRpc = vi.fn().mockResolvedValue({
+        data: null,
+        error: {
+          code: "VY003",
+          message: "create_in_app_notification can only be executed by service_role",
+        },
+      });
+
+      const mockSupabase = {
+        rpc: mockRpc,
+      } as unknown as SupabaseClient<Database>;
+
+      await expect(
+        createNotification(mockSupabase, {
+          recipientUserId: mockUserId,
+          type: "security_alert",
+          title: "Security Alert",
+          message: "Unauthorized attempt",
+        }),
+      ).rejects.toThrow(/create_in_app_notification can only be executed by service_role/);
+    });
   });
 
   describe("listUserNotifications", () => {

@@ -1,6 +1,19 @@
 import { render, screen } from "@testing-library/react";
 import React from "react";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
+
+// Mock server-only module for Client Component tests in Vitest jsdom
+vi.mock("server-only", () => ({}));
+
+// Mock notification server actions to isolate UI tests from server-only backend code
+vi.mock("@/lib/notifications/actions", () => ({
+  listNotificationsAction: vi.fn().mockResolvedValue({
+    success: true,
+    data: { notifications: [], unreadCount: 0, totalCount: 0 },
+  }),
+  markNotificationAsReadAction: vi.fn().mockResolvedValue({ success: true }),
+  markAllNotificationsAsReadAction: vi.fn().mockResolvedValue({ success: true }),
+}));
 import CounterPosPage from "@/app/(staff)/counter/pos/page";
 import DashboardLayout from "@/app/(owner)/dashboard/layout";
 import DashboardPage from "@/app/(owner)/dashboard/page";

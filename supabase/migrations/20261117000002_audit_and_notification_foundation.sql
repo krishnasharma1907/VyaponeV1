@@ -106,8 +106,27 @@ RETURNS UUID AS $$
 DECLARE
     v_notification_id UUID;
 BEGIN
+    -- Guard: Only service_role or database superuser can execute this function
+    IF current_user NOT IN ('service_role', 'postgres', 'supabase_admin') AND session_user NOT IN ('service_role', 'postgres', 'supabase_admin') THEN
+        RAISE EXCEPTION 'Access denied: create_in_app_notification requires privileged service execution' USING ERRCODE = 'VY003';
+    END IF;
+
     IF p_recipient_user_id IS NULL THEN
         RAISE EXCEPTION 'Recipient user ID cannot be null' USING ERRCODE = 'VY020';
+    END IF;
+
+    -- Recipient user existence validation
+    IF NOT EXISTS (SELECT 1 FROM public.users WHERE id = p_recipient_user_id) THEN
+        RAISE EXCEPTION 'Recipient user does not exist' USING ERRCODE = 'VY021';
+    END IF;
+
+    -- Tenant existence validation if tenant scope supplied
+    IF p_workspace_id IS NOT NULL AND NOT EXISTS (SELECT 1 FROM public.workspaces WHERE id = p_workspace_id) THEN
+        RAISE EXCEPTION 'Referenced workspace does not exist' USING ERRCODE = 'VY022';
+    END IF;
+
+    IF p_business_id IS NOT NULL AND NOT EXISTS (SELECT 1 FROM public.businesses WHERE id = p_business_id) THEN
+        RAISE EXCEPTION 'Referenced business does not exist' USING ERRCODE = 'VY023';
     END IF;
 
     -- Idempotency check: if key already exists, return existing notification id
@@ -148,8 +167,8 @@ $$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = '';
 
 -- 7. Privileges Configuration
 REVOKE ALL ON TABLE public.notifications FROM PUBLIC, anon;
-REVOKE ALL ON FUNCTION public.create_in_app_notification(UUID, TEXT, TEXT, TEXT, JSONB, UUID, UUID, TEXT) FROM PUBLIC, anon;
+REVOKE ALL ON FUNCTION public.create_in_app_notification(UUID, TEXT, TEXT, TEXT, JSONB, UUID, UUID, TEXT) FROM PUBLIC, anon, authenticated;
 
 GRANT SELECT, UPDATE (read, read_at) ON TABLE public.notifications TO authenticated;
 GRANT ALL ON TABLE public.notifications TO service_role;
-GRANT EXECUTE ON FUNCTION public.create_in_app_notification(UUID, TEXT, TEXT, TEXT, JSONB, UUID, UUID, TEXT) TO authenticated, service_role;
+GRANT EXECUTE ON FUNCTION public.create_in_app_notification(UUID, TEXT, TEXT, TEXT, JSONB, UUID, UUID, TEXT) TO service_role;

@@ -98,8 +98,22 @@ describe("VO-028 Audit & Notification Foundation Database Migration", () => {
       "GRANT SELECT, UPDATE (read, read_at) ON TABLE public.notifications TO authenticated;",
     );
     expect(migrationSql).toContain("GRANT ALL ON TABLE public.notifications TO service_role;");
-    expect(migrationSql).toContain("REVOKE ALL ON FUNCTION public.create_in_app_notification");
-    expect(migrationSql).toContain("GRANT EXECUTE ON FUNCTION public.create_in_app_notification");
+    expect(migrationSql).toContain(
+      "REVOKE ALL ON FUNCTION public.create_in_app_notification(UUID, TEXT, TEXT, TEXT, JSONB, UUID, UUID, TEXT) FROM PUBLIC, anon, authenticated;",
+    );
+    expect(migrationSql).toContain(
+      "GRANT EXECUTE ON FUNCTION public.create_in_app_notification(UUID, TEXT, TEXT, TEXT, JSONB, UUID, UUID, TEXT) TO service_role;",
+    );
+    expect(migrationSql).not.toContain("TO authenticated, service_role;");
+  });
+
+  it("verifies create_in_app_notification contains privileged caller guard and entity existence checks", () => {
+    expect(migrationSql).toContain(
+      "current_user NOT IN ('service_role', 'postgres', 'supabase_admin')",
+    );
+    expect(migrationSql).toContain("Recipient user does not exist");
+    expect(migrationSql).toContain("Referenced workspace does not exist");
+    expect(migrationSql).toContain("Referenced business does not exist");
   });
 
   it("verifies migration is appended to combined_migrations.sql", () => {

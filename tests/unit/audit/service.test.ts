@@ -63,12 +63,30 @@ describe("VO-028 Audit Service & Redaction Unit Tests", () => {
       expect(isSensitiveKey("auth_code")).toBe(true);
       expect(isSensitiveKey("private_key")).toBe(true);
       expect(isSensitiveKey("cvv")).toBe(true);
+      expect(isSensitiveKey("CVV")).toBe(true);
+      expect(isSensitiveKey("credit_card")).toBe(true);
+      expect(isSensitiveKey("cardNumber")).toBe(true);
+      expect(isSensitiveKey("debitCard")).toBe(true);
+      expect(isSensitiveKey("pAsSwOrD")).toBe(true);
+      expect(isSensitiveKey("CLIENT_SECRET")).toBe(true);
+      expect(isSensitiveKey("cUrReNt_PaSsWoRd")).toBe(true);
+      expect(isSensitiveKey("pin")).toBe(true);
+      expect(isSensitiveKey("ATM_PIN")).toBe(true);
 
-      // Non-sensitive keys
+      // Non-sensitive keys and statutory Indian fields
       expect(isSensitiveKey("display_name")).toBe(false);
       expect(isSensitiveKey("workspace_id")).toBe(false);
       expect(isSensitiveKey("action")).toBe(false);
       expect(isSensitiveKey("slug")).toBe(false);
+      expect(isSensitiveKey("pincode")).toBe(false);
+      expect(isSensitiveKey("pin_code")).toBe(false);
+      expect(isSensitiveKey("postal_pin")).toBe(false);
+      expect(isSensitiveKey("postalpin")).toBe(false);
+      expect(isSensitiveKey("pan_number")).toBe(false);
+      expect(isSensitiveKey("pannumber")).toBe(false);
+      expect(isSensitiveKey("tax_pan")).toBe(false);
+      expect(isSensitiveKey("gstin")).toBe(false);
+      expect(isSensitiveKey("gst_number")).toBe(false);
     });
 
     it("redacts sensitive fields in nested objects and arrays", () => {
@@ -99,6 +117,47 @@ describe("VO-028 Audit Service & Redaction Unit Tests", () => {
         auth_token: "[REDACTED]",
         public_name: "VyapOne Store",
       });
+    });
+
+    it("preserves statutory Indian address and tax identifiers while redacting payment credentials", () => {
+      const input = {
+        businessId: "biz-456",
+        statutoryDetails: {
+          gstin: "27AAAAA0000A1Z5",
+          pan_number: "AAAAA0000A",
+          tax_pan: "AAAAA0000A",
+          gst_number: "27AAAAA0000A1Z5",
+          address: {
+            city: "Mumbai",
+            pincode: "400001",
+            postal_pin: "400001",
+          },
+        },
+        paymentDetails: {
+          cardNumber: "4111111111111111",
+          cvv: "123",
+          atm_pin: "9999",
+          client_secret: "sk_live_secret",
+        },
+      };
+
+      const redacted = redactSensitiveData(input) as typeof input;
+
+      // Preserved statutory details
+      expect(redacted.businessId).toBe("biz-456");
+      expect(redacted.statutoryDetails.gstin).toBe("27AAAAA0000A1Z5");
+      expect(redacted.statutoryDetails.pan_number).toBe("AAAAA0000A");
+      expect(redacted.statutoryDetails.tax_pan).toBe("AAAAA0000A");
+      expect(redacted.statutoryDetails.gst_number).toBe("27AAAAA0000A1Z5");
+      expect(redacted.statutoryDetails.address.city).toBe("Mumbai");
+      expect(redacted.statutoryDetails.address.pincode).toBe("400001");
+      expect(redacted.statutoryDetails.address.postal_pin).toBe("400001");
+
+      // Redacted sensitive payment credentials
+      expect((redacted.paymentDetails as Record<string, unknown>).cardNumber).toBe("[REDACTED]");
+      expect((redacted.paymentDetails as Record<string, unknown>).cvv).toBe("[REDACTED]");
+      expect((redacted.paymentDetails as Record<string, unknown>).atm_pin).toBe("[REDACTED]");
+      expect((redacted.paymentDetails as Record<string, unknown>).client_secret).toBe("[REDACTED]");
     });
 
     it("redacts raw Bearer token headers in strings", () => {

@@ -2,6 +2,7 @@ import React from "react";
 import Link from "next/link";
 import type { Metadata } from "next";
 import { Badge, Nav, NavList, NavItem, NavLink } from "@/components/ui";
+import { NotificationCenter } from "@/components/notifications";
 
 export const metadata: Metadata = {
   title: "Business Owner Dashboard — VyapOne",
@@ -66,20 +67,24 @@ export default function BusinessOwnerLayout({ children }: { children: React.Reac
             <Badge variant="accent">Owner Portal</Badge>
           </div>
 
-          {/* Desktop Navigation */}
-          <Nav
-            aria-label="Business Owner Navigation"
-            variant="horizontal"
-            className="owner-desktop-nav"
-          >
-            <NavList style={{ flexWrap: "wrap" }}>
-              {ownerNavItems.map((item) => (
-                <NavItem key={item.href}>
-                  <NavLink href={item.href}>{item.label}</NavLink>
-                </NavItem>
-              ))}
-            </NavList>
-          </Nav>
+          <div style={{ display: "flex", alignItems: "center", gap: "var(--space-3)" }}>
+            {/* Desktop Navigation */}
+            <Nav
+              aria-label="Business Owner Navigation"
+              variant="horizontal"
+              className="owner-desktop-nav"
+            >
+              <NavList style={{ flexWrap: "wrap" }}>
+                {ownerNavItems.map((item) => (
+                  <NavItem key={item.href}>
+                    <NavLink href={item.href}>{item.label}</NavLink>
+                  </NavItem>
+                ))}
+              </NavList>
+            </Nav>
+
+            <NotificationCenter />
+          </div>
         </div>
       </header>
 

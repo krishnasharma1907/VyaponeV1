@@ -1,5 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/lib/supabase/types";
+import { recordAuditEvent } from "@/lib/audit/service";
 import { DEFAULT_PLAN_ID, parsePlanId, PLANS } from "./constants";
 import {
   CapacityExceededError,
@@ -511,6 +512,21 @@ export async function checkSiteTransitionCapacity(
 
       if (Array.isArray(data) && data.length > 0) {
         const result = data[0];
+        if (result.success) {
+          try {
+            await recordAuditEvent(supabase, {
+              workspaceId,
+              action: "site.published",
+              resource: "sites",
+              metadata: {
+                site_id: siteId,
+                target_status: targetStatus,
+              },
+            });
+          } catch {
+            // Non-blocking audit recording
+          }
+        }
         return {
           allowed: result.success,
           reason: result.success ? undefined : result.reason,

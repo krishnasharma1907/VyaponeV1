@@ -39,6 +39,16 @@ vi.mock("@/lib/businesses/actions", () => ({
   updateLocationAction: vi.fn(),
 }));
 
+// Mock notification server actions to isolate UI tests from server-only backend code
+vi.mock("@/lib/notifications/actions", () => ({
+  listNotificationsAction: vi.fn().mockResolvedValue({
+    success: true,
+    data: { notifications: [], unreadCount: 0, totalCount: 0 },
+  }),
+  markNotificationAsReadAction: vi.fn().mockResolvedValue({ success: true }),
+  markAllNotificationsAsReadAction: vi.fn().mockResolvedValue({ success: true }),
+}));
+
 import { render, screen, within } from "@testing-library/react";
 import HomePage from "@/app/page";
 import AuthLayout from "@/app/(auth)/layout";

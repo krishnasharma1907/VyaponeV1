@@ -17,6 +17,8 @@ import {
 } from "./permissions";
 import { generateInvitationToken, hashInvitationToken, isInvitationExpired } from "./tokens";
 import { assertCapacityAvailable } from "@/lib/plans/service";
+import { recordAuditEvent } from "@/lib/audit/service";
+import { createNotification } from "@/lib/notifications/service";
 
 export class WorkspaceError extends Error {
   constructor(
@@ -95,12 +97,12 @@ export async function createWorkspace(
   }
 
   // 3. Immutable audit log record
-  await supabase.from("audit_logs").insert({
-    workspace_id: workspace.id,
-    user_id: input.ownerUserId,
+  await recordAuditEvent(supabase, {
+    workspaceId: workspace.id,
+    actorUserId: input.ownerUserId,
     action: "workspace.created",
     resource: "workspaces",
-    metadata_json: {
+    metadata: {
       name: workspace.name,
       slug: workspace.slug,
       plan: workspace.plan,
@@ -250,7 +252,11 @@ export async function updateWorkspaceProfile(
     slug?: string;
   },
 ): Promise<WorkspaceRow> {
-  const { userRole } = await getWorkspaceById(supabase, input.workspaceId, input.actorUserId);
+  const { userRole } = await getWorkspaceById(
+    supabase,
+    input.workspaceId,
+    input.actorUserId,
+  );
 
   if (!hasWorkspacePermission(userRole, "workspace:update_profile")) {
     throw new WorkspaceError(
@@ -279,12 +285,12 @@ export async function updateWorkspaceProfile(
   }
 
   // Audit log with safe redacted metadata (no credentials)
-  await supabase.from("audit_logs").insert({
-    workspace_id: input.workspaceId,
-    user_id: input.actorUserId,
+  await recordAuditEvent(supabase, {
+    workspaceId: input.workspaceId,
+    actorUserId: input.actorUserId,
     action: "workspace.profile_updated",
     resource: "workspaces",
-    metadata_json: {
+    metadata: {
       updated_fields: Object.keys(updates),
       name: updated.name,
       slug: updated.slug,
@@ -306,7 +312,11 @@ export async function inviteWorkspaceMember(
     role: WorkspaceRole;
   },
 ): Promise<CreateInvitationResult> {
-  const { userRole } = await getWorkspaceById(supabase, input.workspaceId, input.actorUserId);
+  const { workspace, userRole } = await getWorkspaceById(
+    supabase,
+    input.workspaceId,
+    input.actorUserId,
+  );
 
   if (!hasWorkspacePermission(userRole, "workspace:invite_member")) {
     throw new WorkspaceError(
@@ -422,18 +432,38 @@ export async function inviteWorkspaceMember(
   }
 
   // Audit log strictly redacts raw token
-  await supabase.from("audit_logs").insert({
-    workspace_id: input.workspaceId,
-    user_id: input.actorUserId,
+  await recordAuditEvent(supabase, {
+    workspaceId: input.workspaceId,
+    actorUserId: input.actorUserId,
     action: "workspace.member_invited",
     resource: "workspace_invitations",
-    metadata_json: {
+    metadata: {
       recipient_email: normalizedEmail,
       role: input.role,
       expires_at: expiresAt,
-      // RAW TOKEN IS NEVER STORED OR LOGGED
     },
   });
+
+  // Producer: In-app notification for existing registered user
+  if (existingUser?.id) {
+    try {
+      await createNotification(supabase, {
+        recipientUserId: existingUser.id,
+        workspaceId: input.workspaceId,
+        type: "workspace_invitation",
+        title: "Workspace Invitation",
+        message: `You have been invited to join ${workspace.name} as ${input.role}.`,
+        data: {
+          invitationId: invitation.id,
+          role: input.role,
+          workspaceName: workspace.name,
+        },
+        idempotencyKey: `ws_inv_${invitation.id}`,
+      });
+    } catch {
+      // Non-blocking notification delivery
+    }
+  }
 
   return { invitation, rawToken };
 }
@@ -492,7 +522,11 @@ export async function revokeWorkspaceInvitation(
     actorUserId: string;
   },
 ): Promise<{ success: boolean }> {
-  const { userRole } = await getWorkspaceById(supabase, input.workspaceId, input.actorUserId);
+  const { userRole } = await getWorkspaceById(
+    supabase,
+    input.workspaceId,
+    input.actorUserId,
+  );
 
   if (!hasWorkspacePermission(userRole, "workspace:invite_member")) {
     throw new WorkspaceError("Insufficient permissions to revoke invitations", "FORBIDDEN", 403);
@@ -537,12 +571,12 @@ export async function revokeWorkspaceInvitation(
   }
 
   // Audit log
-  await supabase.from("audit_logs").insert({
-    workspace_id: input.workspaceId,
-    user_id: input.actorUserId,
+  await recordAuditEvent(supabase, {
+    workspaceId: input.workspaceId,
+    actorUserId: input.actorUserId,
     action: "workspace.invitation_revoked",
     resource: "workspace_invitations",
-    metadata_json: {
+    metadata: {
       invitation_id: input.invitationId,
       recipient_email: invitation.email,
       role: invitation.role,
@@ -677,12 +711,12 @@ export async function acceptWorkspaceInvitation(
     .eq("id", invitation.id);
 
   // Audit log
-  await supabase.from("audit_logs").insert({
-    workspace_id: invitation.workspace_id,
-    user_id: input.acceptingUser.id,
+  await recordAuditEvent(supabase, {
+    workspaceId: invitation.workspace_id,
+    actorUserId: input.acceptingUser.id,
     action: "workspace.invitation_accepted",
     resource: "workspace_members",
-    metadata_json: {
+    metadata: {
       invitation_id: invitation.id,
       assigned_role: invitation.role,
     },
@@ -703,7 +737,7 @@ export async function updateWorkspaceMemberRole(
     newRole: WorkspaceRole;
   },
 ): Promise<WorkspaceMemberRow> {
-  const { userRole: actorRole } = await getWorkspaceById(
+  const { workspace, userRole: actorRole } = await getWorkspaceById(
     supabase,
     input.workspaceId,
     input.actorUserId,
@@ -781,17 +815,36 @@ export async function updateWorkspaceMemberRole(
   }
 
   // Audit log
-  await supabase.from("audit_logs").insert({
-    workspace_id: input.workspaceId,
-    user_id: input.actorUserId,
+  await recordAuditEvent(supabase, {
+    workspaceId: input.workspaceId,
+    actorUserId: input.actorUserId,
     action: "workspace.member_role_changed",
     resource: "workspace_members",
-    metadata_json: {
+    metadata: {
       target_user_id: input.targetUserId,
       old_role: targetMember.role,
       new_role: input.newRole,
     },
   });
+
+  // Producer: In-app notification for updated member
+  try {
+    await createNotification(supabase, {
+      recipientUserId: input.targetUserId,
+      workspaceId: input.workspaceId,
+      type: "role_updated",
+      title: "Workspace Role Updated",
+      message: `Your role in workspace ${workspace.name} has been updated to ${input.newRole}.`,
+      data: {
+        workspaceId: input.workspaceId,
+        oldRole: targetMember.role,
+        newRole: input.newRole,
+      },
+      idempotencyKey: `ws_role_${input.workspaceId}_${input.targetUserId}_${Date.now()}`,
+    });
+  } catch {
+    // Non-blocking notification delivery
+  }
 
   return updated;
 }
@@ -807,7 +860,7 @@ export async function removeWorkspaceMember(
     targetUserId: string;
   },
 ): Promise<{ success: boolean }> {
-  const { userRole: actorRole } = await getWorkspaceById(
+  const { workspace, userRole: actorRole } = await getWorkspaceById(
     supabase,
     input.workspaceId,
     input.actorUserId,
@@ -874,16 +927,35 @@ export async function removeWorkspaceMember(
   }
 
   // Audit log
-  await supabase.from("audit_logs").insert({
-    workspace_id: input.workspaceId,
-    user_id: input.actorUserId,
+  await recordAuditEvent(supabase, {
+    workspaceId: input.workspaceId,
+    actorUserId: input.actorUserId,
     action: isSelfLeaving ? "workspace.member_left" : "workspace.member_removed",
     resource: "workspace_members",
-    metadata_json: {
+    metadata: {
       target_user_id: input.targetUserId,
       target_role: targetMember.role,
     },
   });
+
+  // Producer: In-app notification for removed member
+  if (!isSelfLeaving) {
+    try {
+      await createNotification(supabase, {
+        recipientUserId: input.targetUserId,
+        workspaceId: input.workspaceId,
+        type: "member_removed",
+        title: "Workspace Membership Ended",
+        message: `You have been removed from workspace ${workspace.name}.`,
+        data: {
+          workspaceId: input.workspaceId,
+        },
+        idempotencyKey: `ws_rem_${input.workspaceId}_${input.targetUserId}_${Date.now()}`,
+      });
+    } catch {
+      // Non-blocking notification delivery
+    }
+  }
 
   return { success: true };
 }
