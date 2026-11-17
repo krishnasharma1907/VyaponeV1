@@ -5157,3 +5157,110 @@ WHERE n.slug IN ('home_cleaning', 'vehicle_garage', 'coaching_centre', 'laundry_
 ON CONFLICT (niche_id, module_id) DO UPDATE SET
     is_default = EXCLUDED.is_default,
     is_recommended = EXCLUDED.is_recommended;
+
+
+-- ==============================================================================
+-- VyapOne — Business Onboarding Answers Schema [VO-031]
+-- Migration: 20261118000002_business_onboarding_answers.sql
+-- ==============================================================================
+
+CREATE TABLE IF NOT EXISTS public.business_onboarding_answers (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    business_id UUID NOT NULL REFERENCES public.businesses(id) ON DELETE CASCADE,
+    niche_slug VARCHAR(64) NOT NULL,
+    manifest_version VARCHAR(16) NOT NULL DEFAULT 'v1',
+    answers JSONB NOT NULL DEFAULT '{}'::jsonb,
+    is_complete BOOLEAN NOT NULL DEFAULT false,
+    missing_fields JSONB NOT NULL DEFAULT '[]'::jsonb,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT timezone('utc', now()),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT timezone('utc', now()),
+    CONSTRAINT uq_business_onboarding_answers_business UNIQUE (business_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_business_onboarding_answers_lookup
+    ON public.business_onboarding_answers (business_id, is_complete);
+
+CREATE INDEX IF NOT EXISTS idx_business_onboarding_answers_niche
+    ON public.business_onboarding_answers (niche_slug);
+
+ALTER TABLE public.business_onboarding_answers ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.business_onboarding_answers FORCE ROW LEVEL SECURITY;
+
+CREATE POLICY "business_onboarding_answers_select_policy"
+    ON public.business_onboarding_answers
+    FOR SELECT
+    USING (
+        auth.role() = 'service_role' OR
+        EXISTS (
+            SELECT 1 FROM public.businesses b
+            WHERE b.id = business_onboarding_answers.business_id
+              AND (
+                  b.sovereign_owner_id = auth.uid() OR
+                  public.is_business_owner_or_manager(b.id, auth.uid()) OR
+                  (b.workspace_id IS NOT NULL AND public.is_workspace_admin_or_owner(b.workspace_id, auth.uid()))
+              )
+        )
+    );
+
+CREATE POLICY "business_onboarding_answers_insert_policy"
+    ON public.business_onboarding_answers
+    FOR INSERT
+    WITH CHECK (
+        auth.role() = 'service_role' OR
+        EXISTS (
+            SELECT 1 FROM public.businesses b
+            WHERE b.id = business_onboarding_answers.business_id
+              AND (
+                  b.sovereign_owner_id = auth.uid() OR
+                  public.is_business_owner_or_manager(b.id, auth.uid()) OR
+                  (b.workspace_id IS NOT NULL AND public.is_workspace_admin_or_owner(b.workspace_id, auth.uid()))
+              )
+        )
+    );
+
+CREATE POLICY "business_onboarding_answers_update_policy"
+    ON public.business_onboarding_answers
+    FOR UPDATE
+    USING (
+        auth.role() = 'service_role' OR
+        EXISTS (
+            SELECT 1 FROM public.businesses b
+            WHERE b.id = business_onboarding_answers.business_id
+              AND (
+                  b.sovereign_owner_id = auth.uid() OR
+                  public.is_business_owner_or_manager(b.id, auth.uid()) OR
+                  (b.workspace_id IS NOT NULL AND public.is_workspace_admin_or_owner(b.workspace_id, auth.uid()))
+              )
+        )
+    )
+    WITH CHECK (
+        auth.role() = 'service_role' OR
+        EXISTS (
+            SELECT 1 FROM public.businesses b
+            WHERE b.id = business_onboarding_answers.business_id
+              AND (
+                  b.sovereign_owner_id = auth.uid() OR
+                  public.is_business_owner_or_manager(b.id, auth.uid()) OR
+                  (b.workspace_id IS NOT NULL AND public.is_workspace_admin_or_owner(b.workspace_id, auth.uid()))
+              )
+        )
+    );
+
+CREATE POLICY "business_onboarding_answers_delete_policy"
+    ON public.business_onboarding_answers
+    FOR DELETE
+    USING (
+        auth.role() = 'service_role' OR
+        EXISTS (
+            SELECT 1 FROM public.businesses b
+            WHERE b.id = business_onboarding_answers.business_id
+              AND (
+                  b.sovereign_owner_id = auth.uid() OR
+                  (b.workspace_id IS NOT NULL AND public.is_workspace_admin_or_owner(b.workspace_id, auth.uid()))
+              )
+        )
+    );
+
+REVOKE ALL ON public.business_onboarding_answers FROM PUBLIC, anon;
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.business_onboarding_answers TO authenticated;
+GRANT ALL ON public.business_onboarding_answers TO service_role;

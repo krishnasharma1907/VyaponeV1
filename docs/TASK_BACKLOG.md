@@ -236,13 +236,13 @@
 
 **Status:** `DONE`
 
-### [ ] VO-031 — Create category-specific onboarding schemas
+### [x] VO-031 — Create category-specific onboarding schemas
 
 **Scope:** Build question schemas and conditional steps for each niche group, with validation and missing-field detection.
 
 **Acceptance:** Onboarding questions are driven by manifests; irrelevant questions are not shown.
 
-**Status:** `NOT_STARTED`
+**Status:** `DONE`
 
 ### [ ] VO-032 — Implement secure media upload pipeline
 

@@ -4,6 +4,43 @@ Record implementation changes by task ID. Do not record planned work as complete
 
 ## Unreleased
 
+### [VO-031] — Create category-specific onboarding schemas (2026-11-18)
+- Implemented reusable, strongly typed, and validated category-specific onboarding schemas for all 9 supported business niche groups, with client/server validation, declarative conditional questions, cycle detection, missing-field detection, tenant data isolation, and accessible form rendering strictly adhering to PRD FINAL v2 (§7, §14.2 / FR-02 & FR-03, §16, §17) and `docs/TASK_BACKLOG.md`:
+  - **Database Migration (`supabase/migrations/20261118000002_business_onboarding_answers.sql`):**
+    - Created `public.business_onboarding_answers` table (`id`, `business_id`, `niche_slug`, `manifest_version`, `answers`, `is_complete`, `missing_fields`, `created_at`, `updated_at`).
+    - Added unique constraint `CONSTRAINT uq_business_onboarding_answers_business UNIQUE (business_id)`.
+    - Added performance indexes for fast business lookup and niche reporting.
+    - Configured fail-closed Row-Level Security (`ENABLE ROW LEVEL SECURITY` and `FORCE ROW LEVEL SECURITY`).
+    - Created SELECT, INSERT, UPDATE, DELETE policies isolating access strictly to sovereign owners, business managers, or parent workspace admins.
+    - Granted least privileges to `authenticated` and `service_role`; revoked from `PUBLIC` and `anon`.
+    - Synchronized into `supabase/combined_migrations.sql` and updated TypeScript Database types.
+  - **Schema & Domain Engine (`src/lib/niches/`):**
+    - Extended `src/lib/niches/types.ts` with 9 question types (`text`, `number`, `boolean`, `select`, `multiselect`, `date`, `time`, `structured_address`, `file`), options, 9 condition operators (`equals`, `not_equals`, `in`, `not_in`, `contains`, `greater_than`, `less_than`, `truthy`, `falsy`), validation rules, structured Indian addresses, evaluation results, and persistent records.
+    - Enhanced `src/lib/niches/schemas.ts` with Zod schemas for question definitions, validation constraints, Indian pincode format (`/^[1-9][0-9]{5}$/`), and action payloads.
+    - Enriched `src/lib/niches/constants.ts` with manifests covering all 9 PRD §7 groups with conditional questions (e.g., takeaway delivery radius, dine-in tables, home salon radius, RERA numbers, emergency surcharges).
+    - Implemented onboarding validation and evaluation engine in `src/lib/niches/service.ts`:
+      - `detectCircularConditions`: DFS-based cycle detector.
+      - `validateConditionDependencies`: Validates dependencies and rejects self-references or circular conditions.
+      - `isQuestionVisible`: Evaluates condition operators and cascading parent-child visibility.
+      - `validateQuestionAnswer`: Validates format constraints across text, numbers, dates, times, select, multiselect, structured addresses, and files.
+      - `evaluateOnboardingAnswers`: Evaluates visible questions, detects missing required fields, and strips hidden answers to ensure clean state.
+      - `saveBusinessOnboardingAnswers`: Validates caller permissions, validates against authoritative server manifest, upserts answers, and records audit logs (`business.onboarding_answers_saved`) without mutating module entitlements or plan states.
+      - `getBusinessOnboardingAnswers`: Retrieves saved onboarding answers.
+    - Implemented Server Actions in `src/lib/niches/actions.ts`:
+      - `evaluateOnboardingAnswersAction`
+      - `saveBusinessOnboardingAnswersAction`
+      - `getBusinessOnboardingAnswersAction`
+  - **Accessible Form Component (`src/components/niches/schema-driven-form.tsx`):**
+    - Built `SchemaDrivenForm` component dynamically rendering manifest-driven questions grouped by section.
+    - Evaluates conditional logic live on client, hiding irrelevant questions dynamically.
+    - Meets WCAG 2.2 AA standards with full keyboard access, explicit labels, error alerts, and field-level announcements.
+  - **Automated Verification:**
+    - 69 test files, 783 unit and integration tests passing (`pnpm test`).
+    - TypeScript strict typecheck passed with zero errors (`pnpm typecheck`).
+    - ESLint passed with zero warnings/errors (`pnpm lint`).
+    - Prettier format check passed (`pnpm format:check`).
+    - Next.js production build succeeded with all 36 routes compiled (`pnpm build`).
+
 ### [VO-030] — Create niche and module registry (2026-11-18)
 - Implemented the reusable platform foundation defining supported business niches, product modules, versioned manifests, availability labels, and tenant module selections with strict plan entitlement separation, strictly adhering to PRD FINAL v2 (§7, §8, §9.1/§9.2, §21.2) and `docs/TASK_BACKLOG.md`:
   - **Database Migration (`supabase/migrations/20261118000001_niche_and_module_registry.sql`):**

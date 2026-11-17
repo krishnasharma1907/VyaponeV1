@@ -1322,6 +1322,51 @@ export interface Database {
           },
         ];
       };
+
+      business_onboarding_answers: {
+        Row: {
+          id: string;
+          business_id: string;
+          niche_slug: string;
+          manifest_version: string;
+          answers: Json;
+          is_complete: boolean;
+          missing_fields: Json;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          business_id: string;
+          niche_slug: string;
+          manifest_version?: string;
+          answers?: Json;
+          is_complete?: boolean;
+          missing_fields?: Json;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          business_id?: string;
+          niche_slug?: string;
+          manifest_version?: string;
+          answers?: Json;
+          is_complete?: boolean;
+          missing_fields?: Json;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "business_onboarding_answers_business_id_fkey";
+            columns: ["business_id"];
+            isOneToOne: true;
+            referencedRelation: "businesses";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
     };
     Views: {
       user_directory: {

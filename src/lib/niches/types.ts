@@ -16,14 +16,112 @@ export type ModuleCategory = "core" | "operations" | "growth" | "compliance" | "
 
 export type ModuleStatus = "active" | "beta" | "coming_soon" | "deprecated";
 
+export type QuestionType =
+  | "text"
+  | "number"
+  | "boolean"
+  | "select"
+  | "multiselect"
+  | "date"
+  | "time"
+  | "structured_address"
+  | "file";
+
+export interface QuestionOption {
+  value: string;
+  label: string;
+  description?: string;
+}
+
+export type ConditionOperator =
+  | "equals"
+  | "not_equals"
+  | "in"
+  | "not_in"
+  | "contains"
+  | "greater_than"
+  | "less_than"
+  | "truthy"
+  | "falsy";
+
+export interface QuestionCondition {
+  dependsOn: string;
+  operator: ConditionOperator;
+  value?: unknown;
+}
+
+export interface QuestionValidationRules {
+  min?: number;
+  max?: number;
+  minLength?: number;
+  maxLength?: number;
+  pattern?: string;
+  patternError?: string;
+  customError?: string;
+}
+
+export interface StructuredAddressValue {
+  addressLine1: string;
+  addressLine2?: string;
+  landmark?: string;
+  city: string;
+  state: string;
+  pincode: string; // 6-digit Indian PIN
+}
+
 export interface OnboardingQuestion {
   key: string;
   label: string;
   description?: string;
-  type: "text" | "number" | "select" | "multiselect" | "boolean" | "file";
+  type: QuestionType;
   required: boolean;
-  options?: string[];
+  defaultValue?: unknown;
   placeholder?: string;
+  options?: Array<string | QuestionOption>;
+  validation?: QuestionValidationRules;
+  displayOrder?: number;
+  condition?: QuestionCondition;
+  group?: string; // e.g. "profile", "operations", "services", "catalog", "delivery"
+  helpUrl?: string;
+}
+
+export interface MissingFieldItem {
+  key: string;
+  label: string;
+  group?: string;
+  message: string;
+}
+
+export interface ValidationErrorItem {
+  key: string;
+  label: string;
+  group?: string;
+  error: string;
+}
+
+export interface OnboardingEvaluationResult {
+  isValid: boolean;
+  isComplete: boolean;
+  nicheSlug: string;
+  manifestVersion: string;
+  totalQuestions: number;
+  visibleQuestions: string[];
+  hiddenQuestions: string[];
+  missingRequiredFields: MissingFieldItem[];
+  validationErrors: ValidationErrorItem[];
+  sanitizedAnswers: Record<string, unknown>;
+}
+
+export interface BusinessOnboardingAnswersRecord {
+  id: string;
+  businessId: string;
+  nicheSlug: string;
+  manifestVersion: string;
+  answers: Record<string, unknown>;
+  isComplete: boolean;
+  missingFields: MissingFieldItem[];
+  createdAt: string;
+  updatedAt: string;
 }
 
 export interface DashboardNavItem {
@@ -62,6 +160,8 @@ export type NicheRow = Database["public"]["Tables"]["niches"]["Row"];
 export type PlatformModuleRow = Database["public"]["Tables"]["platform_modules"]["Row"];
 export type NicheModuleRow = Database["public"]["Tables"]["niche_modules"]["Row"];
 export type BusinessModuleRow = Database["public"]["Tables"]["business_modules"]["Row"];
+export type BusinessOnboardingAnswersRow =
+  Database["public"]["Tables"]["business_onboarding_answers"]["Row"];
 
 export interface NicheGroupSummary {
   id: string;

@@ -2,26 +2,36 @@
 
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 import { assertAuthenticatedUser, sanitizeTenantError } from "@/lib/auth/tenant-access";
-import { disableBusinessModuleSchema, enableBusinessModuleSchema } from "./schemas";
+import {
+  disableBusinessModuleSchema,
+  enableBusinessModuleSchema,
+  evaluateOnboardingAnswersSchema,
+  saveBusinessOnboardingAnswersSchema,
+} from "./schemas";
 import {
   canBusinessUseModule,
   disableBusinessModule,
   enableBusinessModule,
+  evaluateOnboardingAnswers,
   getBusinessModules,
+  getBusinessOnboardingAnswers,
   getNiche,
   getNicheManifest,
   listNicheGroups,
   listNiches,
   listPlatformModules,
+  saveBusinessOnboardingAnswers,
 } from "./service";
 import type {
   BusinessModuleItem,
+  BusinessOnboardingAnswersRecord,
   ModuleCategory,
   ModuleEntitlementEvaluation,
   NicheGroupSummary,
   NicheManifest,
   NicheSummary,
   NicheWithDetails,
+  OnboardingEvaluationResult,
   PlatformModuleSummary,
 } from "./types";
 
@@ -178,6 +188,86 @@ export async function disableBusinessModuleAction(
     });
 
     return { success: true, data: res };
+  } catch (err) {
+    const sanitized = sanitizeTenantError(err);
+    return { success: false, error: sanitized.error, code: sanitized.code };
+  }
+}
+
+/**
+ * Evaluates onboarding answers against the niche manifest without persisting.
+ * Used for live client validation, step completion checking, and missing-field preview.
+ */
+export async function evaluateOnboardingAnswersAction(
+  rawInput: unknown,
+): Promise<RegistryActionResult<OnboardingEvaluationResult>> {
+  try {
+    const parsed = evaluateOnboardingAnswersSchema.safeParse(rawInput);
+    if (!parsed.success) {
+      return {
+        success: false,
+        error: parsed.error.issues[0]?.message ?? "Invalid evaluation input",
+        code: "VALIDATION_FAILED",
+      };
+    }
+    const supabase = await createServerSupabaseClient();
+    const manifest = await getNicheManifest(supabase, parsed.data.nicheSlug);
+    const result = evaluateOnboardingAnswers(manifest, parsed.data.answers);
+    return { success: true, data: result };
+  } catch (err) {
+    const sanitized = sanitizeTenantError(err);
+    return { success: false, error: sanitized.error, code: sanitized.code };
+  }
+}
+
+/**
+ * Persists onboarding answers for a business tenant.
+ * Requires manager access on the business.
+ */
+export async function saveBusinessOnboardingAnswersAction(
+  rawInput: unknown,
+): Promise<RegistryActionResult<BusinessOnboardingAnswersRecord>> {
+  try {
+    const supabase = await createServerSupabaseClient();
+    const caller = await assertAuthenticatedUser(supabase);
+
+    const parsed = saveBusinessOnboardingAnswersSchema.safeParse(rawInput);
+    if (!parsed.success) {
+      return {
+        success: false,
+        error: parsed.error.issues[0]?.message ?? "Invalid onboarding answers payload",
+        code: "VALIDATION_FAILED",
+      };
+    }
+
+    const record = await saveBusinessOnboardingAnswers(supabase, {
+      businessId: parsed.data.businessId,
+      nicheSlug: parsed.data.nicheSlug,
+      manifestVersion: parsed.data.manifestVersion,
+      answers: parsed.data.answers,
+      callerUserId: caller.id,
+    });
+
+    return { success: true, data: record };
+  } catch (err) {
+    const sanitized = sanitizeTenantError(err);
+    return { success: false, error: sanitized.error, code: sanitized.code };
+  }
+}
+
+/**
+ * Fetches persisted onboarding answers for a business tenant.
+ * Requires staff access or sovereign ownership.
+ */
+export async function getBusinessOnboardingAnswersAction(
+  businessId: string,
+): Promise<RegistryActionResult<BusinessOnboardingAnswersRecord | null>> {
+  try {
+    const supabase = await createServerSupabaseClient();
+    const caller = await assertAuthenticatedUser(supabase);
+
+    const record = await getBusinessOnboardingAnswers(supabase, businessId, caller.id);
+    return { success: true, data: record };
   } catch (err) {
     const sanitized = sanitizeTenantError(err);
     return { success: false, error: sanitized.error, code: sanitized.code };
