@@ -27,6 +27,7 @@ const defaultBusiness: BusinessRow = {
   legal_name: "Sharma Enterprises Private Limited",
   slug: "sharma-kirana-sweets",
   category: "grocery",
+  niche_id: null,
   description: "Kirana store and daily essentials operating in Bengaluru.",
   gst_number: "29AAAAA0000A1Z5",
   pan_number: "AAAAA0000A",

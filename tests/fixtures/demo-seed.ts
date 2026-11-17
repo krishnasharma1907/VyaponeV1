@@ -128,6 +128,7 @@ export function createCanonicalDemoDataset(): DemoDataset {
     trade_name: "Kaveri Silks & Sarees",
     slug: "kaveri-silks",
     category: "apparel_fashion",
+    niche_id: null,
     description: "Authentic Mysore silks, Kanjeevaram weaves and traditional handlooms.",
     gst_number: "29AAAAA0000A1Z5",
     pan_number: "AAAAA0000A",

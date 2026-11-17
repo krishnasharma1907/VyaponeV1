@@ -258,6 +258,7 @@ export interface Database {
           trade_name: string;
           slug: string;
           category: string | null;
+          niche_id: string | null;
           description: string | null;
           gst_number: string | null;
           pan_number: string | null;
@@ -281,6 +282,7 @@ export interface Database {
           trade_name: string;
           slug: string;
           category?: string | null;
+          niche_id?: string | null;
           description?: string | null;
           gst_number?: string | null;
           pan_number?: string | null;
@@ -304,6 +306,7 @@ export interface Database {
           trade_name?: string;
           slug?: string;
           category?: string | null;
+          niche_id?: string | null;
           description?: string | null;
           gst_number?: string | null;
           pan_number?: string | null;
@@ -1090,6 +1093,232 @@ export interface Database {
             isOneToOne: false;
             referencedRelation: "businesses";
             referencedColumns: ["id"];
+          },
+        ];
+      };
+
+      niche_groups: {
+        Row: {
+          id: string;
+          slug: string;
+          name: string;
+          description: string | null;
+          display_order: number;
+          status: "active" | "inactive" | "deprecated";
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          slug: string;
+          name: string;
+          description?: string | null;
+          display_order?: number;
+          status?: "active" | "inactive" | "deprecated";
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          slug?: string;
+          name?: string;
+          description?: string | null;
+          display_order?: number;
+          status?: "active" | "inactive" | "deprecated";
+          created_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
+
+      niches: {
+        Row: {
+          id: string;
+          niche_group_id: string;
+          slug: string;
+          name: string;
+          description: string | null;
+          availability_label: "live_operational" | "informational_with_enquiry" | "coming_soon";
+          manifest_version: string;
+          manifest: Json;
+          display_order: number;
+          status: "active" | "inactive" | "deprecated";
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          niche_group_id: string;
+          slug: string;
+          name: string;
+          description?: string | null;
+          availability_label?: "live_operational" | "informational_with_enquiry" | "coming_soon";
+          manifest_version?: string;
+          manifest?: Json;
+          display_order?: number;
+          status?: "active" | "inactive" | "deprecated";
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          niche_group_id?: string;
+          slug?: string;
+          name?: string;
+          description?: string | null;
+          availability_label?: "live_operational" | "informational_with_enquiry" | "coming_soon";
+          manifest_version?: string;
+          manifest?: Json;
+          display_order?: number;
+          status?: "active" | "inactive" | "deprecated";
+          created_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "niches_niche_group_id_fkey";
+            columns: ["niche_group_id"];
+            isOneToOne: false;
+            referencedRelation: "niche_groups";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+
+      platform_modules: {
+        Row: {
+          id: string;
+          key: string;
+          name: string;
+          description: string | null;
+          category: "core" | "operations" | "growth" | "compliance" | "commerce";
+          entitlement_feature_key: string | null;
+          status: "active" | "beta" | "coming_soon" | "deprecated";
+          display_order: number;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          key: string;
+          name: string;
+          description?: string | null;
+          category?: "core" | "operations" | "growth" | "compliance" | "commerce";
+          entitlement_feature_key?: string | null;
+          status?: "active" | "beta" | "coming_soon" | "deprecated";
+          display_order?: number;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          key?: string;
+          name?: string;
+          description?: string | null;
+          category?: "core" | "operations" | "growth" | "compliance" | "commerce";
+          entitlement_feature_key?: string | null;
+          status?: "active" | "beta" | "coming_soon" | "deprecated";
+          display_order?: number;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
+
+      niche_modules: {
+        Row: {
+          id: string;
+          niche_id: string;
+          module_id: string;
+          is_default: boolean;
+          is_recommended: boolean;
+          display_order: number;
+          preset_config: Json;
+          status: "active" | "inactive";
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          niche_id: string;
+          module_id: string;
+          is_default?: boolean;
+          is_recommended?: boolean;
+          display_order?: number;
+          preset_config?: Json;
+          status?: "active" | "inactive";
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          niche_id?: string;
+          module_id?: string;
+          is_default?: boolean;
+          is_recommended?: boolean;
+          display_order?: number;
+          preset_config?: Json;
+          status?: "active" | "inactive";
+          created_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "niche_modules_niche_id_fkey";
+            columns: ["niche_id"];
+            isOneToOne: false;
+            referencedRelation: "niches";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "niche_modules_module_id_fkey";
+            columns: ["module_id"];
+            isOneToOne: false;
+            referencedRelation: "platform_modules";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+
+      business_modules: {
+        Row: {
+          id: string;
+          business_id: string;
+          module_key: string;
+          is_enabled: boolean;
+          custom_config: Json;
+          enabled_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          business_id: string;
+          module_key: string;
+          is_enabled?: boolean;
+          custom_config?: Json;
+          enabled_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          business_id?: string;
+          module_key?: string;
+          is_enabled?: boolean;
+          custom_config?: Json;
+          enabled_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "business_modules_business_id_fkey";
+            columns: ["business_id"];
+            isOneToOne: false;
+            referencedRelation: "businesses";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "business_modules_module_key_fkey";
+            columns: ["module_key"];
+            isOneToOne: false;
+            referencedRelation: "platform_modules";
+            referencedColumns: ["key"];
           },
         ];
       };

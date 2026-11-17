@@ -127,6 +127,7 @@ describe("Business UI Components [VO-023]", () => {
       trade_name: "Sharma Kirana",
       slug: "sharma-kirana",
       category: "grocery",
+      niche_id: null,
       description: "Local kirana store",
       gst_number: "29AAAAA0000A1Z5",
       pan_number: "AAAAA0000A",

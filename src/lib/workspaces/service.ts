@@ -252,11 +252,7 @@ export async function updateWorkspaceProfile(
     slug?: string;
   },
 ): Promise<WorkspaceRow> {
-  const { userRole } = await getWorkspaceById(
-    supabase,
-    input.workspaceId,
-    input.actorUserId,
-  );
+  const { userRole } = await getWorkspaceById(supabase, input.workspaceId, input.actorUserId);
 
   if (!hasWorkspacePermission(userRole, "workspace:update_profile")) {
     throw new WorkspaceError(
@@ -522,11 +518,7 @@ export async function revokeWorkspaceInvitation(
     actorUserId: string;
   },
 ): Promise<{ success: boolean }> {
-  const { userRole } = await getWorkspaceById(
-    supabase,
-    input.workspaceId,
-    input.actorUserId,
-  );
+  const { userRole } = await getWorkspaceById(supabase, input.workspaceId, input.actorUserId);
 
   if (!hasWorkspacePermission(userRole, "workspace:invite_member")) {
     throw new WorkspaceError("Insufficient permissions to revoke invitations", "FORBIDDEN", 403);

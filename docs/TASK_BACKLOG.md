@@ -228,13 +228,13 @@
 
 **Goal:** Make supported industries data-driven and reusable instead of hard-coded into separate applications.
 
-### [ ] VO-030 — Create niche and module registry
+### [x] VO-030 — Create niche and module registry
 
 **Scope:** Represent niche groups, niche types, enabled modules, required questions, dashboard navigation and availability labels as versioned manifests.
 
 **Acceptance:** All FINAL PRD niche groups can be represented without new bespoke routing code.
 
-**Status:** `NOT_STARTED`
+**Status:** `DONE`
 
 ### [ ] VO-031 — Create category-specific onboarding schemas
 

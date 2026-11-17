@@ -14,6 +14,7 @@ const adminNavItems = [
   { label: "System Health", href: "/platform-admin" },
   { label: "Tenants", href: "/platform-admin/tenants" },
   { label: "Master Plans", href: "/platform-admin/plans" },
+  { label: "Niches & Modules", href: "/platform-admin/niches" },
   { label: "GST Master", href: "/platform-admin/taxes" },
   { label: "Audit Trail", href: "/platform-admin/audit-logs" },
   { label: "Abuse Defense", href: "/platform-admin/abuse" },

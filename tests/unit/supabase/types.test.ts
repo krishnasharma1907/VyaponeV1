@@ -60,6 +60,7 @@ describe("Supabase Database Types [VO-017]", () => {
       trade_name: "Sharma Kirana",
       slug: "sharma-kirana",
       category: "grocery",
+      niche_id: null,
       description: "Kirana store",
       gst_number: "27AAPFU0939F1ZV",
       pan_number: "AAPFU0939F",

@@ -12,6 +12,7 @@ export function createTestBusiness(
     trade_name: "Test Store",
     slug: `test-store-${id}`,
     category: null,
+    niche_id: null,
     description: null,
     gst_number: "29AAAAA0000A1Z5",
     pan_number: "AAAAA0000A",

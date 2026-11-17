@@ -40,6 +40,7 @@ describe("VO-025 Business Profile Settings & Provenance", () => {
     trade_name: "Sharma Kirana",
     slug: "sharma-kirana",
     category: "grocery",
+    niche_id: null,
     description: "Daily essentials and kirana store.",
     gst_number: "29AAAAA0000A1Z5",
     pan_number: "AAAAA0000A",

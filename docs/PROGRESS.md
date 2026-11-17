@@ -1,10 +1,10 @@
 # VyapOne Build Progress
 
-**Current phase:** P2 — Platform identity, authentication and multi-tenancy (`COMPLETE`)  
-**Completed tasks:** VO-000, VO-001, VO-002, VO-003, VO-004, VO-005, VO-006, VO-010, VO-011, VO-012, VO-013, VO-014, VO-015, VO-016, VO-017, VO-018, VO-019, VO-020, VO-021, VO-022, VO-023, VO-024, VO-025, VO-026, VO-027, VO-028  
-**Latest task:** VO-028 — Implement audit/activity and notification foundation  
-**Next task:** VO-030 — Create niche and module registry (P3)  
-**Project status:** AUDIT/ACTIVITY AND NOTIFICATION FOUNDATION IMPLEMENTED / PHASE P2 COMPLETE  
+**Current phase:** P3 — Niche registry, presets and business onboarding (`IN_PROGRESS`)  
+**Completed tasks:** VO-000, VO-001, VO-002, VO-003, VO-004, VO-005, VO-006, VO-010, VO-011, VO-012, VO-013, VO-014, VO-015, VO-016, VO-017, VO-018, VO-019, VO-020, VO-021, VO-022, VO-023, VO-024, VO-025, VO-026, VO-027, VO-028, VO-030  
+**Latest task:** VO-030 — Create niche and module registry  
+**Next task:** VO-031 — Create category-specific onboarding schemas (P3)  
+**Project status:** NICHE & MODULE REGISTRY IMPLEMENTED / PHASE P3 IN PROGRESS  
 
 ## Phase status
 
@@ -13,7 +13,53 @@
 | P0 — Project audit, decisions and architecture | COMPLETE | All tasks VO-000 to VO-006 verified and done; Phase P0 gate passed |
 | P1 — Repository, design system and application shell | COMPLETE | All tasks VO-010 to VO-019 verified and done; Phase P1 gate passed |
 | P2 — Platform identity, authentication and multi-tenancy | COMPLETE | All tasks VO-020 to VO-028 verified and done; Phase P2 gate passed |
-| P3 — Niche registry, presets and business onboarding | NOT_STARTED | VO-030 is next |
+| P3 — Niche registry, presets and business onboarding | IN_PROGRESS | VO-030 complete; VO-031 is next |
+
+## Task report: VO-030
+
+- **Task ID:** VO-030
+- **Title:** Create niche and module registry
+- **Status:** DONE
+- **Summary:** Implemented the reusable platform foundation defining supported business niches, product modules, versioned manifests, availability labels, and tenant module selections with strict plan entitlement separation, strictly adhering to PRD FINAL v2 (§7, §8, §9.1/§9.2, §21.2) and `docs/TASK_BACKLOG.md`:
+  1. **Database Schema & Forward-Only Migration (`20261118000001_niche_and_module_registry.sql`):**
+     - Created `public.niche_groups` table defining the 9 canonical industry groups with priority display order and status.
+     - Created `public.niches` table defining specific business categories with foreign key to groups, availability labels (`live_operational`, `informational_with_enquiry`, `coming_soon`), and versioned JSONB manifests (`v1`).
+     - Created `public.platform_modules` table defining all 21 modular capabilities across Core, Operations, Growth, Compliance, and Commerce.
+     - Created `public.niche_modules` table mapping recommended/default modules and preset configuration per niche.
+     - Created `public.business_modules` table recording tenant-selected active capabilities with custom JSONB configurations.
+     - Added optional foreign key `public.businesses.niche_id REFERENCES public.niches(id) ON DELETE SET NULL`.
+     - Configured fail-closed Row-Level Security (`ENABLE ROW LEVEL SECURITY` and `FORCE ROW LEVEL SECURITY`) across all 5 tables:
+       - Registry tables (`niche_groups`, `niches`, `platform_modules`, `niche_modules`) are read-only to public/authenticated users and mutating strictly to `service_role`.
+       - Tenant table `business_modules` enforces business-scoped access via sovereign ownership or active membership.
+     - Seeded all 9 canonical PRD §7 niche groups, canonical PRD §8 platform modules, initial niches with full versioned manifests, and module mappings idempotently.
+     - Synchronized migration into `supabase/combined_migrations.sql`.
+  2. **TypeScript Domain & Service Layer (`src/lib/niches/`):**
+     - Defined contracts in `types.ts` for manifests, onboarding questions, dashboard navigation, availability labels, module categories, and 5-stage entitlement evaluations.
+     - Defined constants in `constants.ts` with canonical groups, 21 platform modules, and fallback versioned manifests for Food, Beauty, Retail, Real Estate, and Other.
+     - Defined validation schemas in `schemas.ts` using strict Zod schemas with regex keys and version literals.
+     - Implemented `src/lib/niches/service.ts`:
+       - `listNicheGroups()`, `getNicheGroup()`, `listNiches()`, `getNiche()`, `getNicheManifest()` with graceful offline fallback to canonical constants.
+       - `listPlatformModules()`, `getPlatformModule()`, `getBusinessModules()`.
+       - `enableBusinessModule()`, `disableBusinessModule()` with caller authority validation (`assertBusinessAccess`), core module protection (preventing disabling `website_engine`), and immutable audit logging (`business.module_enabled`, `business.module_disabled`).
+       - `resolveDashboardNavigation()`: dynamically computes dashboard tabs based on the niche manifest and enabled modules without bespoke routing code.
+       - `canBusinessUseModule()`: strictly enforces 5-stage check (Registry -> Status -> Tenant Enablement -> Plan Entitlement -> Execution) using `checkFeatureEntitlement`.
+     - Implemented Server Actions in `src/lib/niches/actions.ts` with session authentication and tenant boundary sanitization.
+  3. **Platform Administration UI (`src/app/(admin)/platform-admin/`):**
+     - Updated `layout.tsx` to include `Niches & Modules` (`/platform-admin/niches`) in governance navigation.
+     - Built `src/app/(admin)/platform-admin/niches/page.tsx` displaying summary stats, canonical PRD §7 niche groups with availability badges, and 21 platform modules with category badges and entitlement keys.
+  4. **Automated Test Coverage:**
+     - `tests/unit/niches/registry.test.ts`: 8/8 tests passed (all 9 canonical groups, display order, fallback, database query, slug lookup, manifest retrieval).
+     - `tests/unit/niches/modules.test.ts`: 7/7 tests passed (all 21 canonical modules, core module identification, business state combination, core module disable protection, module enable with audit event).
+     - `tests/unit/niches/manifests.test.ts`: 8/8 tests passed (Zod manifest validation, version semantics, required onboarding questions, dynamic dashboard navigation without bespoke routing code).
+     - `tests/unit/niches/entitlements.test.ts`: 6/6 tests passed (Stage 1 unregistered, Stage 2 inactive, Stage 3 business disabled, Stage 4 plan not entitled, Stage 5 entitled, core module entitlement).
+     - `tests/unit/database/niche-module-migration.test.ts`: 10/10 tests passed (table schemas, FKs, constraints, fail-closed RLS, seed statements, combined migrations synchronization).
+     - Full test suite: 723/723 tests passed across 63 test files with zero regressions.
+  5. **Quality Gates Passed:**
+     - Prettier: 100% matched code style.
+     - ESLint: 0 errors, 0 warnings.
+     - TypeScript: strict mode (`tsc --noEmit`), 0 errors.
+     - Vitest: 723 passed tests.
+     - Next.js Build: 36/36 static/dynamic routes successfully compiled.
 
 ## Task report: VO-028
 
