@@ -1,10 +1,10 @@
 # VyapOne Build Progress
 
-**Current phase:** P2 — Platform identity, authentication and multi-tenancy (`IN_PROGRESS`)  
-**Completed tasks:** VO-000, VO-001, VO-002, VO-003, VO-004, VO-005, VO-006, VO-010, VO-011, VO-012, VO-013, VO-014, VO-015, VO-016, VO-017, VO-018, VO-019, VO-020, VO-021, VO-022, VO-023, VO-024, VO-025, VO-026, VO-027  
-**Latest fix:** Registration authentication error fix & dynamic Cloudflare environment variable resolution  
-**Next task:** VO-028 — Implement audit/activity and notification foundation  
-**Project status:** TEAM INVITATIONS AND MEMBERSHIP LIFECYCLE IMPLEMENTED / IN PHASE P2  
+**Current phase:** P2 — Platform identity, authentication and multi-tenancy (`COMPLETE`)  
+**Completed tasks:** VO-000, VO-001, VO-002, VO-003, VO-004, VO-005, VO-006, VO-010, VO-011, VO-012, VO-013, VO-014, VO-015, VO-016, VO-017, VO-018, VO-019, VO-020, VO-021, VO-022, VO-023, VO-024, VO-025, VO-026, VO-027, VO-028  
+**Latest task:** VO-028 — Implement audit/activity and notification foundation  
+**Next task:** VO-030 — Create niche and module registry (P3)  
+**Project status:** AUDIT/ACTIVITY AND NOTIFICATION FOUNDATION IMPLEMENTED / PHASE P2 COMPLETE  
 
 ## Phase status
 
@@ -12,7 +12,51 @@
 |---|---|---|
 | P0 — Project audit, decisions and architecture | COMPLETE | All tasks VO-000 to VO-006 verified and done; Phase P0 gate passed |
 | P1 — Repository, design system and application shell | COMPLETE | All tasks VO-010 to VO-019 verified and done; Phase P1 gate passed |
-| P2 — Platform identity, authentication and multi-tenancy | IN_PROGRESS | VO-020, VO-021, VO-022, VO-023, VO-024, VO-025, VO-026, and VO-027 done; VO-028 is next |
+| P2 — Platform identity, authentication and multi-tenancy | COMPLETE | All tasks VO-020 to VO-028 verified and done; Phase P2 gate passed |
+| P3 — Niche registry, presets and business onboarding | NOT_STARTED | VO-030 is next |
+
+## Task report: VO-028
+
+- **Task ID:** VO-028
+- **Title:** Implement audit/activity and notification foundation
+- **Status:** DONE
+- **Summary:** Implemented the centralized audit logging service and in-app notifications foundation strictly according to PRD FINAL v2 (§14, §16, §18.5, FR-13, SEC-06) and `docs/TASK_BACKLOG.md`:
+  1. **Database Schema & Forward-Only Migration (`20261117000002_audit_and_notification_foundation.sql`):**
+     - Created `public.notifications` table for tamper-evident, typed in-app notifications with recipient-scoped access, read/unread states, and idempotency protection.
+     - Defined canonical types check: `'workspace_invitation'`, `'business_invitation'`, `'membership_change'`, `'role_updated'`, `'member_removed'`, `'capacity_warning'`, `'site_status_changed'`, `'security_alert'`, `'system_announcement'`.
+     - Created query performance indexes: `idx_notifications_recipient_created`, `idx_notifications_recipient_unread`, `idx_notifications_workspace_id`, `idx_notifications_business_id`.
+     - Configured fail-closed Row-Level Security (`ENABLE ROW LEVEL SECURITY` and `FORCE ROW LEVEL SECURITY`):
+       - SELECT: `recipient_user_id = auth.uid()`
+       - UPDATE: `recipient_user_id = auth.uid()` WITH CHECK `recipient_user_id = auth.uid()`
+       - INSERT: `WITH CHECK (false)` (clients cannot forge notifications)
+       - DELETE: `USING (false)` (immutable/append-only notifications)
+     - Implemented trusted server stored procedure `public.create_in_app_notification(...)` (`LANGUAGE plpgsql SECURITY DEFINER SET search_path = ''`).
+     - Revoked all table DML and function execution from `PUBLIC` and `anon`; granted SELECT and UPDATE (read, read_at) strictly to `authenticated`; granted full access to `service_role`.
+     - Appended migration to `supabase/combined_migrations.sql`.
+  2. **Centralized Audit Service (`src/lib/audit/`):**
+     - Strongly typed actions (`WorkspaceAuditAction`, `BusinessAuditAction`, `SiteAuditAction`, `SecurityAuditAction`) and resources.
+     - Automated sensitive credential redaction (`redactSensitiveData`): recursively sanitizes passwords, tokens, API keys, client secrets, OTPs, private keys, credit cards, CVVs, and Bearer authorization strings across nested objects and arrays with circular-reference protection.
+     - Server-derived identity and tenant boundary enforcement (`recordAuditEvent`, `listWorkspaceAuditLogs`, `listBusinessAuditLogs`).
+     - Tenant-scoped query operations with filtering (action, resource, userId, date ranges) and pagination.
+     - Server Actions (`listWorkspaceAuditLogsAction`, `listBusinessAuditLogsAction`) with fail-closed tenant validation and anti-enumeration error sanitization.
+  3. **In-App Notifications Service (`src/lib/notifications/`):**
+     - Transactional, recipient-isolated notification operations: `createNotification` (via trusted RPC with idempotency), `listUserNotifications` (recipient-scoped with unread filtering), `getUnreadNotificationCount`, `markNotificationAsRead`, `markAllNotificationsAsRead`.
+     - Server Actions (`listNotificationsAction`, `getUnreadNotificationCountAction`, `markNotificationAsReadAction`, `markAllNotificationsAsReadAction`) verifying caller identity strictly from server Supabase session.
+  4. **Accessible Notification Center UI (`src/components/notifications/`):**
+     - Created `NotificationCenter` adhering to WCAG 2.2 AA (visible focus, $\ge 4.5:1$ contrast, keyboard escape/outside click close, ARIA attributes `aria-expanded`, `aria-label`, `aria-haspopup="dialog"`).
+     - Responsive mobile-first design down to 320/390px with Emerald + Marigold status indicators.
+     - Includes unread count badge, filter tabs (All / Unread), category badges, relative time formatting, empty state ("All caught up!"), and instant optimistic read updates.
+  5. **Automated Test Coverage:**
+     - `tests/unit/audit/service.test.ts`: 12/12 tests passed (credential redaction, Bearer header masking, circular reference handling, audit event insertion, tenant boundary checks, Server Actions).
+     - `tests/unit/notifications/service.test.ts`: 11/11 tests passed (trusted RPC creation, recipient isolation, unread count queries, ownership verification on mark as read, batch mark read, Server Actions).
+     - `tests/unit/notifications/components.test.tsx`: 9/9 tests passed (bell trigger rendering, badge display, popover open/close, escape key navigation, category badges, unread filtering, empty state, mark read / mark all read).
+     - `tests/unit/database/audit-notification-migration.test.ts`: 9/9 tests passed (table schema, constraints, indexes, RLS policies, SECURITY DEFINER procedure, search_path, permissions, combined migrations sync).
+  6. **Quality Gate Verification:**
+     - Prettier: 100% compliant (`pnpm format:check` passed).
+     - ESLint: 0 errors, 0 warnings (`pnpm lint` passed).
+     - TypeScript: Strict mode, 0 errors, 0 `any` types (`tsc --noEmit` passed).
+     - Vitest: 58 test files, 682 tests passed (`pnpm test` passed).
+     - Next.js Build: 35 routes compiled successfully (`pnpm build` passed).
 
 ## Task report: VO-027
 

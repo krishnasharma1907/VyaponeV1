@@ -995,6 +995,104 @@ export interface Database {
           },
         ];
       };
+
+      notifications: {
+        Row: {
+          id: string;
+          recipient_user_id: string;
+          workspace_id: string | null;
+          business_id: string | null;
+          type:
+            | "workspace_invitation"
+            | "business_invitation"
+            | "membership_change"
+            | "role_updated"
+            | "member_removed"
+            | "capacity_warning"
+            | "site_status_changed"
+            | "security_alert"
+            | "system_announcement";
+          title: string;
+          message: string;
+          data: Json;
+          read: boolean;
+          read_at: string | null;
+          idempotency_key: string | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          recipient_user_id: string;
+          workspace_id?: string | null;
+          business_id?: string | null;
+          type:
+            | "workspace_invitation"
+            | "business_invitation"
+            | "membership_change"
+            | "role_updated"
+            | "member_removed"
+            | "capacity_warning"
+            | "site_status_changed"
+            | "security_alert"
+            | "system_announcement";
+          title: string;
+          message: string;
+          data?: Json;
+          read?: boolean;
+          read_at?: string | null;
+          idempotency_key?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          recipient_user_id?: string;
+          workspace_id?: string | null;
+          business_id?: string | null;
+          type?:
+            | "workspace_invitation"
+            | "business_invitation"
+            | "membership_change"
+            | "role_updated"
+            | "member_removed"
+            | "capacity_warning"
+            | "site_status_changed"
+            | "security_alert"
+            | "system_announcement";
+          title?: string;
+          message?: string;
+          data?: Json;
+          read?: boolean;
+          read_at?: string | null;
+          idempotency_key?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "notifications_recipient_user_id_fkey";
+            columns: ["recipient_user_id"];
+            isOneToOne: false;
+            referencedRelation: "users";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "notifications_workspace_id_fkey";
+            columns: ["workspace_id"];
+            isOneToOne: false;
+            referencedRelation: "workspaces";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "notifications_business_id_fkey";
+            columns: ["business_id"];
+            isOneToOne: false;
+            referencedRelation: "businesses";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
     };
     Views: {
       user_directory: {
@@ -1135,6 +1233,19 @@ export interface Database {
           p_user_id?: string;
         };
         Returns: boolean;
+      };
+      create_in_app_notification: {
+        Args: {
+          p_recipient_user_id: string;
+          p_type: string;
+          p_title: string;
+          p_message: string;
+          p_data?: Json;
+          p_workspace_id?: string | null;
+          p_business_id?: string | null;
+          p_idempotency_key?: string | null;
+        };
+        Returns: string;
       };
     };
     Enums: {

@@ -216,13 +216,13 @@
 
 **Status:** `DONE`
 
-### [ ] VO-028 — Implement audit/activity and notification foundation
+### [x] VO-028 — Implement audit/activity and notification foundation
 
 **Scope:** Record actor, tenant, action, time, source and sensitive change; build in-app notification primitives.
 
 **Acceptance:** Sensitive writes create audit events; users receive only authorized notifications.
 
-**Status:** `NOT_STARTED`
+**Status:** `DONE`
 
 ## P3 — Niche registry, presets and business onboarding
 

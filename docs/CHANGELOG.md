@@ -4,6 +4,37 @@ Record implementation changes by task ID. Do not record planned work as complete
 
 ## Unreleased
 
+### [VO-028] — Implement audit/activity and notification foundation (2026-11-17)
+- Implemented centralized audit logging and in-app notifications foundation strictly according to PRD FINAL v2 (§14, §16, §18.5, FR-13, SEC-06) and `docs/TASK_BACKLOG.md`:
+  - **Database Migration (`supabase/migrations/20261117000002_audit_and_notification_foundation.sql`):**
+    - Created `public.notifications` table for tamper-evident, typed in-app notifications with recipient-scoped access, read/unread tracking, and idempotency protection.
+    - Defined canonical notification types: `'workspace_invitation'`, `'business_invitation'`, `'membership_change'`, `'role_updated'`, `'member_removed'`, `'capacity_warning'`, `'site_status_changed'`, `'security_alert'`, `'system_announcement'`.
+    - Added query performance indexes on `(recipient_user_id, created_at DESC)`, `(recipient_user_id) WHERE read = FALSE`, `workspace_id`, and `business_id`.
+    - Enabled fail-closed Row-Level Security (`ENABLE ROW LEVEL SECURITY` and `FORCE ROW LEVEL SECURITY`):
+      - SELECT: `recipient_user_id = auth.uid()`.
+      - UPDATE: `recipient_user_id = auth.uid()` WITH CHECK `recipient_user_id = auth.uid()` (scoped to marking read).
+      - INSERT: `WITH CHECK (false)` (direct client writes denied; creation occurs exclusively through trusted server operations).
+      - DELETE: `USING (false)` (tamper-evident, immutable notifications).
+    - Implemented trusted server procedure `public.create_in_app_notification(...)` with `SECURITY DEFINER` and empty `search_path = ''`.
+    - Revoked all privileges from `PUBLIC` and `anon`; granted SELECT, UPDATE (read, read_at) to `authenticated`; granted full access to `service_role`.
+    - Synchronized migration text into `supabase/combined_migrations.sql`.
+  - **Centralized Audit Service (`src/lib/audit/`):**
+     - Strongly typed actions (`WorkspaceAuditAction`, `BusinessAuditAction`, `SiteAuditAction`, `SecurityAuditAction`) and resources.
+     - Automated sensitive credential redaction (`redactSensitiveData`): recursively sanitizes passwords, tokens, API keys, client secrets, OTPs, private keys, credit cards, CVVs, and Bearer authorization strings across nested objects and arrays with circular-reference protection.
+     - Server-derived identity and tenant boundary enforcement (`recordAuditEvent`, `listWorkspaceAuditLogs`, `listBusinessAuditLogs`).
+     - Tenant-scoped query operations with filtering (action, resource, userId, date ranges) and pagination.
+     - Server Actions (`listWorkspaceAuditLogsAction`, `listBusinessAuditLogsAction`) with fail-closed tenant validation and anti-enumeration error sanitization.
+  - **In-App Notifications Service (`src/lib/notifications/`):**
+    - Transactional, recipient-isolated notification operations: `createNotification` (via trusted RPC with idempotency), `listUserNotifications` (recipient-scoped with unread filtering), `getUnreadNotificationCount`, `markNotificationAsRead`, `markAllNotificationsAsRead`.
+    - Server Actions (`listNotificationsAction`, `getUnreadNotificationCountAction`, `markNotificationAsReadAction`, `markAllNotificationsAsReadAction`) verifying caller identity strictly from server Supabase session.
+  - **Accessible Notification Center UI (`src/components/notifications/`):**
+    - Created `NotificationCenter` component adhering to WCAG 2.2 AA (visible focus, $\ge 4.5:1$ contrast, keyboard escape/outside click close, ARIA attributes `aria-expanded`, `aria-label`, `aria-haspopup="dialog"`).
+    - Responsive mobile-first design down to 320/390px with Emerald + Marigold status indicators.
+    - Includes unread count badge, filter tabs (All / Unread), category badges, relative time formatting, empty state ("All caught up!"), and instant optimistic read updates.
+  - **Automated Verification:**
+    - 58 test files, 682 unit/integration tests passed with 0 failures.
+    - `pnpm format:check`, `pnpm lint`, `pnpm typecheck`, `pnpm test`, and `pnpm build` all passed.
+
 ### [VO-027] — Implement team invitations and membership lifecycle (2026-11-17)
 - Implemented team invitations and membership lifecycle across Reseller Workspaces and Business Operational domains strictly according to PRD FINAL v2 (§4, §9.1, §9.2, §15, §19) and `docs/TASK_BACKLOG.md`:
   - **Database Migration (`supabase/migrations/20261117000001_team_invitations_and_membership_lifecycle.sql`):**
