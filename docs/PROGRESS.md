@@ -1,10 +1,10 @@
 # VyapOne Build Progress
 
 **Current phase:** P3 — Niche registry, presets and business onboarding (`IN_PROGRESS`)  
-**Completed tasks:** VO-000, VO-001, VO-002, VO-003, VO-004, VO-005, VO-006, VO-010, VO-011, VO-012, VO-013, VO-014, VO-015, VO-016, VO-017, VO-018, VO-019, VO-020, VO-021, VO-022, VO-023, VO-024, VO-025, VO-026, VO-027, VO-028, VO-030, VO-031  
-**Latest task:** VO-031 — Create category-specific onboarding schemas  
-**Next task:** VO-032 — Implement secure media upload pipeline (P3)  
-**Project status:** ONBOARDING SCHEMAS & CONDITIONAL ENGINE IMPLEMENTED / PHASE P3 IN PROGRESS  
+**Completed tasks:** VO-000, VO-001, VO-002, VO-003, VO-004, VO-005, VO-006, VO-010, VO-011, VO-012, VO-013, VO-014, VO-015, VO-016, VO-017, VO-018, VO-019, VO-020, VO-021, VO-022, VO-023, VO-024, VO-025, VO-026, VO-027, VO-028, VO-030, VO-031, VO-032  
+**Latest task:** VO-032 — Implement secure media upload pipeline  
+**Next task:** VO-033 — Build mobile-first create-business flow (P3)  
+**Project status:** SECURE MEDIA UPLOAD PIPELINE IMPLEMENTED / PHASE P3 IN PROGRESS  
 
 ## Phase status
 
@@ -13,7 +13,104 @@
 | P0 — Project audit, decisions and architecture | COMPLETE | All tasks VO-000 to VO-006 verified and done; Phase P0 gate passed |
 | P1 — Repository, design system and application shell | COMPLETE | All tasks VO-010 to VO-019 verified and done; Phase P1 gate passed |
 | P2 — Platform identity, authentication and multi-tenancy | COMPLETE | All tasks VO-020 to VO-028 verified and done; Phase P2 gate passed |
-| P3 — Niche registry, presets and business onboarding | IN_PROGRESS | VO-030 and VO-031 complete; VO-032 is next |
+| P3 — Niche registry, presets and business onboarding | IN_PROGRESS | VO-030, VO-031, VO-032 complete; VO-033 is next |
+
+## Task report: VO-032
+
+- **Task ID:** VO-032
+- **Title:** Implement secure media upload pipeline
+- **Status:** DONE
+- **Summary:** Implemented an enterprise-grade, secure, multi-tenant media upload pipeline supporting direct-to-storage uploads, pure-TypeScript magic byte verification, dimension extraction, SVG anti-XSS scanning, category-level constraint enforcement, tenant-scoped paths, safe deletion, and an accessible UI component strictly adhering to PRD FINAL v2 (§15.6, §16, §17.1, §17.2, §18.1), ADR-003, and `docs/TASK_BACKLOG.md`:
+  1. **Database Schema & Forward-Only Migration (`20261118000003_secure_media_upload_pipeline.sql`):**
+     - Created `public.media_items` table (`id`, `business_id`, `workspace_id`, `uploaded_by`, `category`, `bucket`, `object_key`, `original_filename`, `declared_content_type`, `detected_content_type`, `file_size_bytes`, `width`, `height`, `is_public`, `status`, `metadata`, `expires_at`, `verified_at`, `created_at`, `updated_at`).
+     - Added check constraints:
+       - `chk_media_items_category`: `business_logo`, `catalogue_image`, `website_asset`, `document_attachment`, `onboarding_upload`.
+       - `chk_media_items_status`: `pending_upload`, `ready`, `failed`, `archived`.
+       - `chk_media_items_bucket`: `vyapone-public-media`, `vyapone-private-media`.
+     - Added performance indexes: `idx_media_items_business_status`, `idx_media_items_object_key`, `idx_media_items_category`, `idx_media_items_expires_at`.
+     - Configured fail-closed Row-Level Security (`ENABLE ROW LEVEL SECURITY` and `FORCE ROW LEVEL SECURITY`).
+     - Created SELECT, INSERT, UPDATE, DELETE policies isolating access strictly to sovereign owners, business managers, or parent workspace admins, with public read access granted only when `is_public = true AND status = 'ready'`.
+     - Granted least privileges: read-only for `anon` (scoped by RLS), full CRUD for `authenticated`, administrative for `service_role`; revoked all from `PUBLIC`.
+     - Synchronized into `supabase/combined_migrations.sql` and updated TypeScript Database types (`src/lib/supabase/types.ts`).
+  2. **Storage Provider Layer (`src/lib/media/storage/`):**
+     - Defined provider-neutral interface `IStorageProvider` adhering to ADR-003 and DECISION_REGISTER.md `ACCEPTED_DIRECTION`.
+     - Implemented `SupabaseStorageProvider` guarded by `import "server-only"`, using service-role administrative storage API.
+     - Implemented `MemoryStorageProvider` for isolated unit tests, offline development, and runtime test environments.
+     - Implemented provider factory `getStorageProvider()`.
+  3. **Content & Magic Byte Validation Engine (`src/lib/media/validation.ts`):**
+     - Implemented pure-TypeScript magic byte detector `detectMimeType` for PNG (`89 50 4E 47...`), JPEG (`FF D8 FF`), WebP (`RIFF...WEBP`), GIF (`GIF87a`/`GIF89a`), PDF (`%PDF-`), and SVG.
+     - Implemented pure-TypeScript image dimension extraction `extractImageDimensions` for PNG (IHDR), JPEG (SOF markers), WebP (VP8 lossy, VP8L lossless, VP8X extended canvas), and GIF without external C++ or native binaries.
+     - Implemented strict SVG anti-XSS sanitizer `sanitizeSvgContent` rejecting `<script>`, active event handlers (`onload`, `onerror`), `javascript:` URLs, and dangerous tags (`foreignObject`, `iframe`, `embed`, `object`).
+     - Enforced category constraints:
+       - `business_logo`: Max 2 MB, max 2048x2048 px, public.
+       - `catalogue_image`: Max 5 MB, max 4096x4096 px, public.
+       - `website_asset`: Max 5 MB, max 4096x4096 px, public.
+       - `document_attachment`: Max 10 MB, private bucket (`vyapone-private-media`).
+       - `onboarding_upload`: Max 10 MB, private bucket.
+     - Implemented filename sanitizer `sanitizeFilename` stripping path traversal sequences (`..`), null bytes, control characters, and limiting length.
+     - Implemented deterministic tenant object key generator `generateTenantObjectKey`: `tenants/{business_id}/{category}/{media_id}.{ext}`.
+  4. **Domain Service & Server Actions (`src/lib/media/`):**
+     - `requestUploadAuthorization`: Enforces business authorization, validates declarations, provisions UUID and tenant object key, creates short-lived signed upload URL, inserts pending DB record with 15-minute TTL, and logs `media.upload_requested` audit event.
+     - `finalizeMediaUpload`: Reads stored bytes, verifies magic bytes and dimensions, detects content spoofing, marks ready/failed, updates verified metadata, and logs `media.upload_finalized` or `media.upload_failed` audit events.
+     - `getMediaUrl`: Returns permanent CDN URL for public assets or generates short-lived signed read URL for private assets after tenant verification.
+     - `deleteMediaItem`: Deletes storage object, marks DB record archived, and logs `media.deleted` audit event.
+     - Implemented typed Server Actions in `src/lib/media/actions.ts`:
+       - `requestUploadAuthorizationAction`
+       - `finalizeMediaUploadAction`
+       - `getMediaUrlAction`
+       - `deleteMediaItemAction`
+  5. **Accessible UI Component (`src/components/media/media-uploader.tsx`):**
+     - Built accessible `MediaUploader` component with drag-and-drop dropzone, file browser trigger, preview thumbnail, and upload progress bar.
+     - Evaluates immediate client-side pre-validation (size limits and file formats) before making network requests.
+     - Meets WCAG 2.2 AA standards: explicit labels, keyboard activation (Enter/Space), visible focus rings, contrast $\ge 4.5:1$, and actionable error alerts in `role="alert"` with `aria-live="assertive"`.
+  6. **Quality Gates & Verification:**
+     - 74 test files, 828 unit and integration tests passing (`pnpm test`).
+     - TypeScript strict typecheck passed with zero errors (`pnpm typecheck`).
+     - ESLint passed with zero warnings/errors (`pnpm lint`).
+     - Prettier format check passed (`pnpm format:check`).
+     - Next.js production build succeeded with all 36 routes compiled (`pnpm build`).
+- **Files changed:**
+  - Added: `supabase/migrations/20261118000003_secure_media_upload_pipeline.sql`
+  - Added: `src/lib/media/types.ts`
+  - Added: `src/lib/media/validation.ts`
+  - Added: `src/lib/media/schemas.ts`
+  - Added: `src/lib/media/storage/types.ts`
+  - Added: `src/lib/media/storage/memory-storage.ts`
+  - Added: `src/lib/media/storage/supabase-storage.ts`
+  - Added: `src/lib/media/storage/index.ts`
+  - Added: `src/lib/media/service.ts`
+  - Added: `src/lib/media/actions.ts`
+  - Added: `src/lib/media/index.ts`
+  - Added: `src/components/media/media-uploader.tsx`
+  - Added: `tests/unit/database/media-migration.test.ts`
+  - Added: `tests/unit/media/validation.test.ts`
+  - Added: `tests/unit/media/storage-provider.test.ts`
+  - Added: `tests/unit/media/service.test.ts`
+  - Added: `tests/unit/components/media-uploader.test.tsx`
+  - Modified: `supabase/combined_migrations.sql`
+  - Modified: `src/lib/supabase/types.ts`
+  - Modified: `docs/TASK_BACKLOG.md` (marked VO-032 as DONE)
+  - Modified: `docs/PROGRESS.md`
+  - Modified: `docs/CHANGELOG.md`
+- **Commands/tests run:**
+  - `pnpm test tests/unit/database/media-migration.test.ts`: Passed (8 tests).
+  - `pnpm test tests/unit/media/`: Passed (32 tests across 3 files).
+  - `pnpm test tests/unit/components/media-uploader.test.tsx`: Passed (5 tests).
+  - `pnpm test`: Passed (828 tests across 74 test files, 0 failed).
+  - `pnpm typecheck`: Passed (`tsc --noEmit`, 0 errors).
+  - `pnpm lint`: Passed (0 errors, 0 warnings).
+  - `pnpm format:check`: Passed (All matched files use Prettier code style).
+  - `pnpm build`: Passed (All 36 pages compiled successfully).
+- **Results:** Secure media upload pipeline is fully operational with tenant path scoping, pure TypeScript magic byte validation, dimension limits, SVG anti-XSS protection, safe deletion, and accessible UI component.
+- **Acceptance criteria met:**
+  - [x] Files cannot be accessed across tenants (`TenantAccessError` fail-closed enforcement).
+  - [x] Rejected files produce actionable errors (`MediaValidationError` with descriptive feedback).
+  - [x] Direct uploads to cloud storage supported via short-lived presigned URLs.
+  - [x] File size, MIME type, and image dimensions validated.
+  - [x] Business-scoped object paths (`tenants/{business_id}/{category}/{media_id}.{ext}`).
+  - [x] Safe deletion and storage removal implemented.
+- **Blockers/decisions:** None for VO-032.
+- **Next task ID:** VO-033 — Build mobile-first create-business flow
 
 ## Task report: VO-031
 

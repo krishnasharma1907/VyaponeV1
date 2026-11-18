@@ -5264,3 +5264,144 @@ CREATE POLICY "business_onboarding_answers_delete_policy"
 REVOKE ALL ON public.business_onboarding_answers FROM PUBLIC, anon;
 GRANT SELECT, INSERT, UPDATE, DELETE ON public.business_onboarding_answers TO authenticated;
 GRANT ALL ON public.business_onboarding_answers TO service_role;
+
+
+-- ==============================================================================
+-- VyapOne — Secure Media Upload Pipeline Schema [VO-032]
+-- ==============================================================================
+
+-- 1. Create Media Items Table
+CREATE TABLE IF NOT EXISTS public.media_items (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    business_id UUID NOT NULL REFERENCES public.businesses(id) ON DELETE CASCADE,
+    workspace_id UUID REFERENCES public.workspaces(id) ON DELETE SET NULL,
+    uploaded_by UUID NOT NULL REFERENCES public.users(id),
+    category VARCHAR(32) NOT NULL,
+    bucket VARCHAR(64) NOT NULL,
+    object_key TEXT NOT NULL UNIQUE,
+    original_filename TEXT NOT NULL,
+    declared_content_type VARCHAR(128) NOT NULL,
+    detected_content_type VARCHAR(128),
+    file_size_bytes BIGINT NOT NULL,
+    width INTEGER,
+    height INTEGER,
+    is_public BOOLEAN NOT NULL DEFAULT false,
+    status VARCHAR(32) NOT NULL DEFAULT 'pending_upload',
+    metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
+    expires_at TIMESTAMPTZ,
+    verified_at TIMESTAMPTZ,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT timezone('utc', now()),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT timezone('utc', now()),
+    CONSTRAINT chk_media_items_category CHECK (
+        category IN ('business_logo', 'catalogue_image', 'website_asset', 'document_attachment', 'onboarding_upload')
+    ),
+    CONSTRAINT chk_media_items_status CHECK (
+        status IN ('pending_upload', 'ready', 'failed', 'archived')
+    ),
+    CONSTRAINT chk_media_items_bucket CHECK (
+        bucket IN ('vyapone-public-media', 'vyapone-private-media')
+    )
+);
+
+-- 2. Indexes for tenant lookup, object key resolution and lifecycle management
+CREATE INDEX IF NOT EXISTS idx_media_items_business_status
+    ON public.media_items (business_id, status);
+
+CREATE INDEX IF NOT EXISTS idx_media_items_object_key
+    ON public.media_items (object_key);
+
+CREATE INDEX IF NOT EXISTS idx_media_items_category
+    ON public.media_items (business_id, category);
+
+CREATE INDEX IF NOT EXISTS idx_media_items_expires_at
+    ON public.media_items (expires_at)
+    WHERE status = 'pending_upload';
+
+-- 3. Row-Level Security Configuration (Fail-Closed)
+ALTER TABLE public.media_items ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.media_items FORCE ROW LEVEL SECURITY;
+
+CREATE POLICY "media_items_select_policy"
+    ON public.media_items
+    FOR SELECT
+    USING (
+        auth.role() = 'service_role' OR
+        (is_public = true AND status = 'ready') OR
+        EXISTS (
+            SELECT 1 FROM public.businesses b
+            WHERE b.id = media_items.business_id
+              AND (
+                  b.sovereign_owner_id = auth.uid() OR
+                  public.is_business_owner_or_manager(b.id, auth.uid()) OR
+                  (b.workspace_id IS NOT NULL AND public.is_workspace_admin_or_owner(b.workspace_id, auth.uid()))
+              )
+        )
+    );
+
+CREATE POLICY "media_items_insert_policy"
+    ON public.media_items
+    FOR INSERT
+    WITH CHECK (
+        auth.role() = 'service_role' OR
+        (
+            uploaded_by = auth.uid() AND
+            EXISTS (
+                SELECT 1 FROM public.businesses b
+                WHERE b.id = media_items.business_id
+                  AND (
+                      b.sovereign_owner_id = auth.uid() OR
+                      public.is_business_owner_or_manager(b.id, auth.uid()) OR
+                      (b.workspace_id IS NOT NULL AND public.is_workspace_admin_or_owner(b.workspace_id, auth.uid()))
+                  )
+            )
+        )
+    );
+
+CREATE POLICY "media_items_update_policy"
+    ON public.media_items
+    FOR UPDATE
+    USING (
+        auth.role() = 'service_role' OR
+        EXISTS (
+            SELECT 1 FROM public.businesses b
+            WHERE b.id = media_items.business_id
+              AND (
+                  b.sovereign_owner_id = auth.uid() OR
+                  public.is_business_owner_or_manager(b.id, auth.uid()) OR
+                  (b.workspace_id IS NOT NULL AND public.is_workspace_admin_or_owner(b.workspace_id, auth.uid()))
+              )
+        )
+    )
+    WITH CHECK (
+        auth.role() = 'service_role' OR
+        EXISTS (
+            SELECT 1 FROM public.businesses b
+            WHERE b.id = media_items.business_id
+              AND (
+                  b.sovereign_owner_id = auth.uid() OR
+                  public.is_business_owner_or_manager(b.id, auth.uid()) OR
+                  (b.workspace_id IS NOT NULL AND public.is_workspace_admin_or_owner(b.workspace_id, auth.uid()))
+              )
+        )
+    );
+
+CREATE POLICY "media_items_delete_policy"
+    ON public.media_items
+    FOR DELETE
+    USING (
+        auth.role() = 'service_role' OR
+        EXISTS (
+            SELECT 1 FROM public.businesses b
+            WHERE b.id = media_items.business_id
+              AND (
+                  b.sovereign_owner_id = auth.uid() OR
+                  public.is_business_owner_or_manager(b.id, auth.uid()) OR
+                  (b.workspace_id IS NOT NULL AND public.is_workspace_admin_or_owner(b.workspace_id, auth.uid()))
+              )
+        )
+    );
+
+REVOKE ALL ON public.media_items FROM PUBLIC;
+GRANT SELECT ON public.media_items TO anon;
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.media_items TO authenticated;
+GRANT ALL ON public.media_items TO service_role;

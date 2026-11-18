@@ -244,13 +244,13 @@
 
 **Status:** `DONE`
 
-### [ ] VO-032 — Implement secure media upload pipeline
+### [x] VO-032 — Implement secure media upload pipeline
 
 **Scope:** Support authorized direct uploads, file size/type/dimension validation, business-scoped object paths, optimization and safe deletion.
 
 **Acceptance:** Files cannot be accessed across tenants; rejected files produce actionable errors.
 
-**Status:** `NOT_STARTED`
+**Status:** `DONE`
 
 ### [ ] VO-033 — Build mobile-first create-business flow
 

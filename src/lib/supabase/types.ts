@@ -1367,6 +1367,113 @@ export interface Database {
           },
         ];
       };
+
+      media_items: {
+        Row: {
+          id: string;
+          business_id: string;
+          workspace_id: string | null;
+          uploaded_by: string;
+          category:
+            | "business_logo"
+            | "catalogue_image"
+            | "website_asset"
+            | "document_attachment"
+            | "onboarding_upload";
+          bucket: "vyapone-public-media" | "vyapone-private-media";
+          object_key: string;
+          original_filename: string;
+          declared_content_type: string;
+          detected_content_type: string | null;
+          file_size_bytes: number;
+          width: number | null;
+          height: number | null;
+          is_public: boolean;
+          status: "pending_upload" | "ready" | "failed" | "archived";
+          metadata: Json;
+          expires_at: string | null;
+          verified_at: string | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          business_id: string;
+          workspace_id?: string | null;
+          uploaded_by: string;
+          category:
+            | "business_logo"
+            | "catalogue_image"
+            | "website_asset"
+            | "document_attachment"
+            | "onboarding_upload";
+          bucket: "vyapone-public-media" | "vyapone-private-media";
+          object_key: string;
+          original_filename: string;
+          declared_content_type: string;
+          detected_content_type?: string | null;
+          file_size_bytes: number;
+          width?: number | null;
+          height?: number | null;
+          is_public?: boolean;
+          status?: "pending_upload" | "ready" | "failed" | "archived";
+          metadata?: Json;
+          expires_at?: string | null;
+          verified_at?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          business_id?: string;
+          workspace_id?: string | null;
+          uploaded_by?: string;
+          category?:
+            | "business_logo"
+            | "catalogue_image"
+            | "website_asset"
+            | "document_attachment"
+            | "onboarding_upload";
+          bucket?: "vyapone-public-media" | "vyapone-private-media";
+          object_key?: string;
+          original_filename?: string;
+          declared_content_type?: string;
+          detected_content_type?: string | null;
+          file_size_bytes?: number;
+          width?: number | null;
+          height?: number | null;
+          is_public?: boolean;
+          status?: "pending_upload" | "ready" | "failed" | "archived";
+          metadata?: Json;
+          expires_at?: string | null;
+          verified_at?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "media_items_business_id_fkey";
+            columns: ["business_id"];
+            isOneToOne: false;
+            referencedRelation: "businesses";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "media_items_workspace_id_fkey";
+            columns: ["workspace_id"];
+            isOneToOne: false;
+            referencedRelation: "workspaces";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "media_items_uploaded_by_fkey";
+            columns: ["uploaded_by"];
+            isOneToOne: false;
+            referencedRelation: "users";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
     };
     Views: {
       user_directory: {
