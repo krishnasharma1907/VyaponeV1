@@ -13,6 +13,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { assertBusinessAccess, TenantAccessError } from "@/lib/auth/tenant-access";
 import { recordAuditEvent } from "@/lib/audit/service";
+import { createAdminSupabaseClient } from "@/lib/supabase/admin";
 import type { Database } from "@/lib/supabase/types";
 import { getStorageProvider, type IStorageProvider } from "./storage";
 import {
@@ -69,10 +70,21 @@ function mapMediaRow(
 }
 
 export class MediaService {
+  private readonly adminClient: SupabaseClient<Database>;
+
   constructor(
     private readonly supabase: SupabaseClient<Database>,
     private readonly storageProvider: IStorageProvider = getStorageProvider(),
-  ) {}
+    adminSupabase?: SupabaseClient<Database>,
+  ) {
+    if (adminSupabase) {
+      this.adminClient = adminSupabase;
+    } else if (process.env.NODE_ENV === "test") {
+      this.adminClient = this.supabase;
+    } else {
+      this.adminClient = createAdminSupabaseClient();
+    }
+  }
 
   /**
    * Authorizes a direct upload to cloud storage.
@@ -118,8 +130,8 @@ export class MediaService {
     const ttlSeconds = 900; // 15 minutes
     const expiresAt = new Date(Date.now() + ttlSeconds * 1000).toISOString();
 
-    // 1. Insert pending record into database
-    const { error: insertErr } = await this.supabase.from("media_items").insert({
+    // 1. Insert pending record into database using administrative client
+    const { error: insertErr } = await this.adminClient.from("media_items").insert({
       id: mediaId,
       business_id: validated.businessId,
       workspace_id: businessContext.business.workspace_id,
@@ -208,8 +220,30 @@ export class MediaService {
       return mapMediaRow(row, url);
     }
 
-    if (row.status === "archived") {
-      throw new MediaValidationError("Cannot finalize an archived media item", "MALICIOUS_CONTENT");
+    if (row.status === "archived" || row.status === "deletion_pending") {
+      throw new MediaValidationError(
+        "Cannot finalize an archived or deleting media item",
+        "MALICIOUS_CONTENT",
+      );
+    }
+
+    if (row.status === "failed") {
+      throw new MediaValidationError("Media item verification previously failed.", "CORRUPT_FILE");
+    }
+
+    // Verify authorization expiration
+    if (row.status === "pending_upload" && row.expires_at) {
+      if (new Date(row.expires_at).getTime() < Date.now()) {
+        await this.adminClient
+          .from("media_items")
+          .update({ status: "failed", updated_at: new Date().toISOString() })
+          .eq("id", row.id);
+
+        throw new MediaValidationError(
+          "Upload authorization has expired. Please initiate a new upload request.",
+          "EXPIRED_AUTHORIZATION",
+        );
+      }
     }
 
     // Read stored bytes for verification (up to 64KB is sufficient for magic bytes, SOF/IHDR headers and SVGs)
@@ -220,7 +254,7 @@ export class MediaService {
     });
 
     if (!storedBytes || storedBytes.length === 0) {
-      await this.supabase
+      await this.adminClient
         .from("media_items")
         .update({ status: "failed", updated_at: new Date().toISOString() })
         .eq("id", row.id);
@@ -248,7 +282,7 @@ export class MediaService {
       const actualSize = metadata?.size ?? row.file_size_bytes;
 
       const now = new Date().toISOString();
-      const { data: updatedRow, error: updateErr } = await this.supabase
+      const { data: updatedRow, error: updateErr } = await this.adminClient
         .from("media_items")
         .update({
           status: "ready",
@@ -285,8 +319,8 @@ export class MediaService {
       const url = await this.resolveItemUrl(updatedRow);
       return mapMediaRow(updatedRow, url);
     } catch (err) {
-      // Mark as failed in DB
-      await this.supabase
+      // Mark as failed in DB using admin client
+      await this.adminClient
         .from("media_items")
         .update({ status: "failed", updated_at: new Date().toISOString() })
         .eq("id", row.id);
@@ -343,7 +377,11 @@ export class MediaService {
   }
 
   /**
-   * Deletes a media item from storage and database.
+   * Deletes a media item using a safe two-phase deletion lifecycle:
+   * 1. Mark status as 'deletion_pending' in DB
+   * 2. Remove object from storage
+   * 3. Mark status as 'archived' in DB
+   * If storage removal fails, the item remains in 'deletion_pending' for retry.
    */
   async deleteMediaItem(input: DeleteMediaInput): Promise<boolean> {
     const validated = deleteMediaSchema.parse(input);
@@ -360,28 +398,116 @@ export class MediaService {
       throw new TenantAccessError("Media item not found", "NOT_FOUND", 404);
     }
 
-    // 1. Delete object from storage provider
-    await this.storageProvider.deleteObject({
-      bucket: row.bucket,
-      key: row.object_key,
-    });
+    if (row.status === "archived") {
+      return true; // Already archived idempotency
+    }
 
-    // 2. Mark as archived in database
     const now = new Date().toISOString();
-    await this.supabase
+
+    // Phase 1: Mark as deletion_pending in database
+    await this.adminClient
       .from("media_items")
       .update({
-        status: "archived",
+        status: "deletion_pending",
         updated_at: now,
       })
       .eq("id", row.id);
 
-    // 3. Record audit event
+    // Phase 2: Delete object from storage provider
+    try {
+      await this.storageProvider.deleteObject({
+        bucket: row.bucket,
+        key: row.object_key,
+      });
+    } catch (storageErr) {
+      // Storage deletion failed: Record failure and leave in deletion_pending for reconciliation retry
+      await recordAuditEvent(this.supabase, {
+        businessId: validated.businessId,
+        workspaceId: businessContext.business.workspace_id,
+        actorUserId: businessContext.callerUserId,
+        action: "media.deletion_failed",
+        resource: "media_items",
+        metadata: {
+          mediaId: row.id,
+          error: storageErr instanceof Error ? storageErr.message : String(storageErr),
+          status: "deletion_pending",
+        },
+      });
+
+      throw new Error(
+        `Failed to remove media object from storage: ${storageErr instanceof Error ? storageErr.message : "unknown storage error"}`,
+      );
+    }
+
+    // Phase 3: Mark as archived in database
+    await this.adminClient
+      .from("media_items")
+      .update({
+        status: "archived",
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", row.id);
+
+    // Record audit event
     await recordAuditEvent(this.supabase, {
       businessId: validated.businessId,
       workspaceId: businessContext.business.workspace_id,
       actorUserId: businessContext.callerUserId,
       action: "media.deleted",
+      resource: "media_items",
+      metadata: {
+        mediaId: row.id,
+        category: row.category,
+        objectKey: row.object_key,
+      },
+    });
+
+    return true;
+  }
+
+  /**
+   * Reconciles or retries pending deletions that failed storage removal.
+   */
+  async retryPendingDeletion(input: { mediaId: string; businessId: string }): Promise<boolean> {
+    const businessContext = await assertBusinessAccess(this.supabase, input.businessId);
+
+    const { data: row, error: fetchErr } = await this.adminClient
+      .from("media_items")
+      .select("*")
+      .eq("id", input.mediaId)
+      .eq("business_id", input.businessId)
+      .maybeSingle();
+
+    if (fetchErr || !row) {
+      throw new TenantAccessError("Media item not found", "NOT_FOUND", 404);
+    }
+
+    if (row.status === "archived") {
+      return true;
+    }
+
+    if (row.status !== "deletion_pending") {
+      throw new Error(`Media item is in status "${row.status}", not "deletion_pending".`);
+    }
+
+    await this.storageProvider.deleteObject({
+      bucket: row.bucket,
+      key: row.object_key,
+    });
+
+    await this.adminClient
+      .from("media_items")
+      .update({
+        status: "archived",
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", row.id);
+
+    await recordAuditEvent(this.supabase, {
+      businessId: input.businessId,
+      workspaceId: businessContext.business.workspace_id,
+      actorUserId: businessContext.callerUserId,
+      action: "media.deletion_reconciled",
       resource: "media_items",
       metadata: {
         mediaId: row.id,

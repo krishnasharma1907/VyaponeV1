@@ -4,6 +4,30 @@ Record implementation changes by task ID. Do not record planned work as complete
 
 ## Unreleased
 
+### [VO-032 Security Audit] — Storage Security and Data Integrity Hardening (2026-11-18)
+- Performed comprehensive storage security and data integrity audit on VO-032 media pipeline:
+  - **Database Migration (`supabase/migrations/20261118000004_harden_media_items_security.sql`):**
+    - Revoked table-level `INSERT`, `UPDATE`, `DELETE` on `public.media_items` from `authenticated` and `anon`. Granted `SELECT` only (constrained by RLS).
+    - Updated RLS write policies to require `auth.role() = 'service_role'`, eliminating privilege escalation / direct row tampering via PostgREST.
+    - Added `chk_media_items_status` constraint including `'deletion_pending'`.
+    - Added `chk_media_items_bucket_visibility` constraint enforcing `bucket = 'vyapone-public-media' AND is_public = true` or `bucket = 'vyapone-private-media' AND is_public = false`.
+    - Changed `media_items_business_id_fkey` from `ON DELETE CASCADE` to `ON DELETE RESTRICT` to prevent business deletion from leaving orphaned cloud storage objects.
+    - Added partial index `idx_media_items_deletion_pending` for stuck deletion reconciliation.
+  - **Two-Phase Deletion Protocol:**
+    - Updated `MediaService.deleteMediaItem` to mark `deletion_pending` -> delete storage object -> mark `archived`.
+    - Added `MediaService.retryPendingDeletion` and `retryPendingDeletionAction` to reconcile stuck pending deletions.
+  - **Content Validation Hardening:**
+    - Corrupt/truncated image header rejection for PNG, JPEG, WebP, and GIF in `extractImageDimensions`.
+    - Sanitized SVG XML entity / XXE injection (`<!ENTITY`, `<!DOCTYPE`, `SYSTEM`, `PUBLIC`), CDATA blocks, and forbidden elements.
+    - Filename extension and declared MIME type consistency validation.
+  - **Storage Provider Security:**
+    - Implemented fail-closed production check: `MemoryStorageProvider` explicitly forbidden when `NODE_ENV === 'production'`.
+  - **Audit Log Redaction:**
+    - Added automated redaction for presigned URLs, query tokens (`?token=`, `x-amz-signature=`), and storage credentials in `src/lib/audit/redaction.ts`.
+  - **Documentation & Architecture Decisions:**
+    - Added `docs/guides/media-storage-setup.md` detailing bucket configurations, RLS policies, privilege models, and two-phase deletion.
+    - Registered ADR-026 in `docs/DECISION_REGISTER.md` establishing provisional engineering defaults for media upload limits.
+
 ### [VO-032] — Implement secure media upload pipeline (2026-11-18)
 - Implemented an enterprise-grade, secure, multi-tenant media upload pipeline supporting direct-to-storage uploads, pure-TypeScript magic byte verification, dimension extraction, SVG anti-XSS scanning, category-level constraint enforcement, tenant-scoped paths, safe deletion, and an accessible UI component strictly adhering to PRD FINAL v2 (§15.6, §16, §17.1, §17.2, §18.1), ADR-003, and `docs/TASK_BACKLOG.md`:
   - **Database Migration (`supabase/migrations/20261118000003_secure_media_upload_pipeline.sql`):**

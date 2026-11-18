@@ -1389,7 +1389,7 @@ export interface Database {
           width: number | null;
           height: number | null;
           is_public: boolean;
-          status: "pending_upload" | "ready" | "failed" | "archived";
+          status: "pending_upload" | "ready" | "failed" | "deletion_pending" | "archived";
           metadata: Json;
           expires_at: string | null;
           verified_at: string | null;
@@ -1416,7 +1416,7 @@ export interface Database {
           width?: number | null;
           height?: number | null;
           is_public?: boolean;
-          status?: "pending_upload" | "ready" | "failed" | "archived";
+          status?: "pending_upload" | "ready" | "failed" | "deletion_pending" | "archived";
           metadata?: Json;
           expires_at?: string | null;
           verified_at?: string | null;
@@ -1443,7 +1443,7 @@ export interface Database {
           width?: number | null;
           height?: number | null;
           is_public?: boolean;
-          status?: "pending_upload" | "ready" | "failed" | "archived";
+          status?: "pending_upload" | "ready" | "failed" | "deletion_pending" | "archived";
           metadata?: Json;
           expires_at?: string | null;
           verified_at?: string | null;

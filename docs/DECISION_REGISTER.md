@@ -29,6 +29,7 @@ Track each unresolved decision here. Do not treat a suggested vendor, price, dea
 | ADR-023 | Observability, telemetry & health dashboard | OpenTelemetry + structured JSON logging + request IDs + health dashboard | Technical Lead | PROPOSED | VO-017, VO-123 |
 | ADR-024 | Testing architecture & golden eval suite | Vitest (unit/component) + Playwright (mobile E2E) + Vya eval suite | Technical Lead | PROPOSED | VO-019, VO-051, VO-130 |
 | ADR-025 | Security threat defense & disaster recovery | Dual-layer tenant isolation (RLS) + CERT-In 6hr runbook + hourly snapshots | Technical Lead | PROPOSED | VO-004, VO-131, VO-134 |
+| ADR-026 | Media storage file limits & provider candidate | Provisional engineering defaults (Logo 2MB/2048px, Catalogue 5MB/4096px, Docs 10MB) | Technical Lead / Product Owner | PROVISIONAL | VO-032, VO-033, VO-040 |
 
 ## New decision template
 

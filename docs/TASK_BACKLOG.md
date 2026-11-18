@@ -250,7 +250,7 @@
 
 **Acceptance:** Files cannot be accessed across tenants; rejected files produce actionable errors.
 
-**Status:** `DONE`
+**Status:** `DONE` (Security audit completed; write privileges revoked from authenticated, service-role exclusive writes enforced, two-phase deletion with `deletion_pending` state, corrupt image/SVG anti-XSS hardening, fail-closed production storage provider, ADR-026 registered)
 
 ### [ ] VO-033 — Build mobile-first create-business flow
 

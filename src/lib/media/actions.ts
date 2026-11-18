@@ -138,3 +138,23 @@ export async function deleteMediaItemAction(
     return handleMediaActionError(err);
   }
 }
+
+/**
+ * Server Action: Retries deletion for media items stuck in deletion_pending status.
+ */
+export async function retryPendingDeletionAction(input: {
+  businessId: string;
+  mediaId: string;
+}): Promise<MediaActionResult<boolean>> {
+  try {
+    const supabase = await createServerSupabaseClient();
+    const service = new MediaService(supabase);
+    const result = await service.retryPendingDeletion(input);
+    return {
+      success: true,
+      data: result,
+    };
+  } catch (err) {
+    return handleMediaActionError(err);
+  }
+}

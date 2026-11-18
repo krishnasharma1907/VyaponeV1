@@ -100,7 +100,9 @@ export class MediaValidationError extends Error {
       | "TYPE_MISMATCH"
       | "DIMENSIONS_EXCEEDED"
       | "MALICIOUS_CONTENT"
-      | "INVALID_FILENAME",
+      | "INVALID_FILENAME"
+      | "CORRUPT_FILE"
+      | "EXPIRED_AUTHORIZATION",
   ) {
     super(message);
     this.name = "MediaValidationError";
@@ -190,6 +192,7 @@ export function detectMimeType(bytes: Uint8Array): string | null {
 
 /**
  * Extracts dimensions from image bytes in pure TypeScript without external C++ or native binaries.
+ * Validates header integrity and rejects corrupt or truncated chunks.
  */
 export function extractImageDimensions(
   bytes: Uint8Array,
@@ -200,8 +203,20 @@ export function extractImageDimensions(
       case "image/png": {
         if (bytes.length < 24) return null;
         const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+
+        // Verify IHDR chunk length (must be 13 bytes)
+        const chunkLength = view.getUint32(8, false);
+        if (chunkLength !== 13) return null;
+
+        // Verify chunk type is 'IHDR' (0x49 0x48 0x44 0x52)
+        if (bytes[12] !== 0x49 || bytes[13] !== 0x48 || bytes[14] !== 0x44 || bytes[15] !== 0x52) {
+          return null;
+        }
+
         const width = view.getUint32(16, false); // Big endian
         const height = view.getUint32(20, false);
+        if (width === 0 || height === 0) return null;
+
         return { width, height };
       }
 
@@ -210,6 +225,8 @@ export function extractImageDimensions(
         const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
         const width = view.getUint16(6, true); // Little endian
         const height = view.getUint16(8, true);
+        if (width === 0 || height === 0) return null;
+
         return { width, height };
       }
 
@@ -222,6 +239,7 @@ export function extractImageDimensions(
           if (bytes[23] === 0x9d && bytes[24] === 0x01 && bytes[25] === 0x2a) {
             const width = (bytes[26] | (bytes[27] << 8)) & 0x3fff;
             const height = (bytes[28] | (bytes[29] << 8)) & 0x3fff;
+            if (width === 0 || height === 0) return null;
             return { width, height };
           }
         } else if (chunkType === "VP8L") {
@@ -233,12 +251,14 @@ export function extractImageDimensions(
             const b3 = bytes[24];
             const width = 1 + ((b0 | (b1 << 8)) & 0x3fff);
             const height = 1 + (((b1 >> 6) | (b2 << 2) | ((b3 & 0x0f) << 10)) & 0x3fff);
+            if (width === 0 || height === 0) return null;
             return { width, height };
           }
         } else if (chunkType === "VP8X") {
           // Extended format: 24-bit canvas width and height
           const width = 1 + (bytes[24] | (bytes[25] << 8) | (bytes[26] << 16));
           const height = 1 + (bytes[27] | (bytes[28] << 8) | (bytes[29] << 16));
+          if (width === 0 || height === 0) return null;
           return { width, height };
         }
         return null;
@@ -269,7 +289,9 @@ export function extractImageDimensions(
             continue;
           }
 
+          if (offset + 3 >= length) return null;
           const segmentLength = view.getUint16(offset + 2, false);
+          if (segmentLength < 2) return null;
 
           // SOF markers (Start of Frame)
           if (
@@ -287,8 +309,10 @@ export function extractImageDimensions(
             marker === 0xce ||
             marker === 0xcf
           ) {
+            if (offset + 8 >= length) return null;
             const height = view.getUint16(offset + 5, false);
             const width = view.getUint16(offset + 7, false);
+            if (width === 0 || height === 0) return null;
             return { width, height };
           }
 
@@ -305,13 +329,55 @@ export function extractImageDimensions(
   }
 }
 
+export const ALLOWED_SVG_ELEMENTS = new Set([
+  "svg",
+  "g",
+  "path",
+  "rect",
+  "circle",
+  "ellipse",
+  "line",
+  "polyline",
+  "polygon",
+  "text",
+  "tspan",
+  "defs",
+  "lineargradient",
+  "radialgradient",
+  "stop",
+  "use",
+  "symbol",
+  "title",
+  "desc",
+  "clippath",
+  "mask",
+  "pattern",
+]);
+
 /**
- * Validates SVG content against script injection, active event handlers, and dangerous foreign tags.
+ * Validates SVG content against script injection, active event handlers,
+ * XML entity injection (XXE), and unapproved foreign elements.
  */
 export function sanitizeSvgContent(bytes: Uint8Array): void {
   const content = new TextDecoder("utf-8", { fatal: false }).decode(bytes);
 
-  // Check for script tag
+  // 1. XXE & DTD entities mitigation (Billion Laughs / file inclusion)
+  if (/<!(ENTITY|DOCTYPE)\b/i.test(content) || /\b(SYSTEM|PUBLIC)\b/i.test(content)) {
+    throw new MediaValidationError(
+      "SVG file contains forbidden XML entity or DOCTYPE declarations (XXE mitigation).",
+      "MALICIOUS_CONTENT",
+    );
+  }
+
+  // 2. CDATA sections mitigation
+  if (/<!\[CDATA\[/i.test(content)) {
+    throw new MediaValidationError(
+      "SVG file contains forbidden CDATA blocks.",
+      "MALICIOUS_CONTENT",
+    );
+  }
+
+  // 3. Executable <script> elements
   if (/<script\b/i.test(content)) {
     throw new MediaValidationError(
       "SVG file contains forbidden executable <script> elements.",
@@ -319,7 +385,7 @@ export function sanitizeSvgContent(bytes: Uint8Array): void {
     );
   }
 
-  // Check for inline event handlers (e.g. onload, onerror, onclick)
+  // 4. Inline active event handlers (e.g. onload, onerror, onclick)
   if (/\bon[a-z]+\s*=/i.test(content)) {
     throw new MediaValidationError(
       "SVG file contains forbidden active event handlers.",
@@ -327,21 +393,73 @@ export function sanitizeSvgContent(bytes: Uint8Array): void {
     );
   }
 
-  // Check for javascript: pseudoprotocol
-  if (/javascript\s*:/i.test(content)) {
-    throw new MediaValidationError(
-      "SVG file contains forbidden 'javascript:' URLs.",
-      "MALICIOUS_CONTENT",
-    );
-  }
-
-  // Check for external embed / iframe / foreignObject / object tags
-  if (/<(foreignObject|iframe|embed|object|base|link)\b/i.test(content)) {
+  // 5. Forbidden embedded/foreign/active elements
+  if (
+    /<(foreignObject|iframe|embed|object|base|link|meta|form|input|button|audio|video|source|track|applet|frame|frameset|feComponentTransfer|handler|listener|animate|set)\b/i.test(
+      content,
+    )
+  ) {
     throw new MediaValidationError(
       "SVG file contains forbidden embedded or foreign object elements.",
       "MALICIOUS_CONTENT",
     );
   }
+
+  // 6. Dangerous URLs / pseudoprotocols
+  if (/(javascript|vbscript)\s*:/i.test(content)) {
+    throw new MediaValidationError(
+      "SVG file contains forbidden 'javascript:' URLs.",
+      "MALICIOUS_CONTENT",
+    );
+  }
+  if (/(href|src|xlink:href)\s*=\s*['"]\s*data:/i.test(content)) {
+    throw new MediaValidationError(
+      "SVG file contains forbidden 'data:' URL references.",
+      "MALICIOUS_CONTENT",
+    );
+  }
+  if (/(href|src|xlink:href)\s*=\s*['"]\s*(https?:|\/\/)/i.test(content)) {
+    throw new MediaValidationError(
+      "SVG file contains forbidden external network resource references.",
+      "MALICIOUS_CONTENT",
+    );
+  }
+
+  // 7. Embedded CSS expressions or imports
+  if (/<style\b[^>]*>[\s\S]*?(url\(|@import|-moz-binding|expression\()/i.test(content)) {
+    throw new MediaValidationError(
+      "SVG style block contains forbidden external imports or expressions.",
+      "MALICIOUS_CONTENT",
+    );
+  }
+
+  // 8. Element allow-list validation: every element tag must be approved
+  const tagMatches = content.matchAll(/<\s*([a-zA-Z0-9:-]+)/g);
+  for (const match of tagMatches) {
+    const rawTag = match[1];
+    if (rawTag.startsWith("?") || rawTag.startsWith("!--")) {
+      continue; // XML processing instruction or comment
+    }
+    const tag = rawTag.toLowerCase().replace(/^svg:/, "");
+    if (!ALLOWED_SVG_ELEMENTS.has(tag)) {
+      throw new MediaValidationError(
+        `SVG element <${rawTag}> is not in the approved safe element allowlist.`,
+        "MALICIOUS_CONTENT",
+      );
+    }
+  }
+}
+
+/**
+ * Extracts normalized file extension from a filename.
+ */
+export function getExtensionFromFilename(filename: string): string | null {
+  const clean = sanitizeFilename(filename);
+  const lastDot = clean.lastIndexOf(".");
+  if (lastDot < 0 || lastDot === clean.length - 1) {
+    return null;
+  }
+  return clean.substring(lastDot + 1).toLowerCase();
 }
 
 /**
@@ -427,6 +545,19 @@ export function validateUploadDeclaration(params: {
       "UNSUPPORTED_TYPE",
     );
   }
+
+  // Filename extension consistency verification
+  const ext = getExtensionFromFilename(params.filename);
+  if (ext) {
+    const expectedExt = MIME_TO_EXTENSION[normalizedMime];
+    const isJpegVariant = normalizedMime === "image/jpeg" && (ext === "jpg" || ext === "jpeg");
+    if (ext !== expectedExt && !isJpegVariant) {
+      throw new MediaValidationError(
+        `File extension ".${ext}" does not agree with declared MIME type "${params.contentType}".`,
+        "TYPE_MISMATCH",
+      );
+    }
+  }
 }
 
 /**
@@ -492,20 +623,24 @@ export function validateUploadedBytes(params: {
 
   if (effectiveMime.startsWith("image/") && effectiveMime !== "image/svg+xml") {
     const dimensions = extractImageDimensions(params.bytes, effectiveMime);
-    if (dimensions) {
-      width = dimensions.width;
-      height = dimensions.height;
+    if (!dimensions || dimensions.width <= 0 || dimensions.height <= 0) {
+      throw new MediaValidationError(
+        `Corrupt or malformed ${effectiveMime} header. Dimensions could not be extracted.`,
+        "CORRUPT_FILE",
+      );
+    }
+    width = dimensions.width;
+    height = dimensions.height;
 
-      if (constraints.maxDimensions) {
-        if (
-          width > constraints.maxDimensions.maxWidth ||
-          height > constraints.maxDimensions.maxHeight
-        ) {
-          throw new MediaValidationError(
-            `Image dimensions (${width}x${height} px) exceed maximum permitted (${constraints.maxDimensions.maxWidth}x${constraints.maxDimensions.maxHeight} px) for ${params.category}.`,
-            "DIMENSIONS_EXCEEDED",
-          );
-        }
+    if (constraints.maxDimensions) {
+      if (
+        width > constraints.maxDimensions.maxWidth ||
+        height > constraints.maxDimensions.maxHeight
+      ) {
+        throw new MediaValidationError(
+          `Image dimensions (${width}x${height} px) exceed maximum permitted (${constraints.maxDimensions.maxWidth}x${constraints.maxDimensions.maxHeight} px) for ${params.category}.`,
+          "DIMENSIONS_EXCEEDED",
+        );
       }
     }
   }

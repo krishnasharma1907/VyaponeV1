@@ -6,10 +6,10 @@
  */
 
 const SENSITIVE_KEY_PATTERN =
-  /^(password|token|secret|otp|authorization|credit_card|card_number|pin|api_key|access_token|refresh_token|service_key|private_key|cvv|ssn|auth_code|credentials?)$/i;
+  /^(password|token|secret|otp|authorization|credit_card|card_number|pin|api_key|access_token|refresh_token|service_key|private_key|cvv|ssn|auth_code|credentials?|signed_url|presigned_url|upload_url|storage_token|storage_key|signature)$/i;
 
 const SENSITIVE_SUBSTRING_PATTERN =
-  /(password|secret|bearer\s+|private_key|refresh_token|access_token)/i;
+  /(password|secret|bearer\s+|private_key|refresh_token|access_token|signed_url|presigned_url)/i;
 
 /**
  * Checks whether a property key matches sensitive credential naming conventions.
@@ -48,6 +48,10 @@ export function isSensitiveKey(key: string): boolean {
     normalized.includes("debitcard") ||
     normalized.includes("cardnumber") ||
     normalized.includes("credential") ||
+    normalized.includes("signedurl") ||
+    normalized.includes("presignedurl") ||
+    normalized.includes("uploadurl") ||
+    normalized.includes("signature") ||
     (normalized.includes("pin") && !normalized.includes("pincode"))
   );
 }
@@ -64,9 +68,17 @@ export function redactSensitiveData<T>(data: T, seen: WeakSet<object> = new Weak
 
   // Primitive values
   if (typeof data !== "object") {
-    if (typeof data === "string" && SENSITIVE_SUBSTRING_PATTERN.test(data)) {
+    if (typeof data === "string") {
       // If a raw string looks like a bearer header or token, redact it
-      if (data.toLowerCase().startsWith("bearer ")) {
+      if (data.toLowerCase().startsWith("bearer ") && SENSITIVE_SUBSTRING_PATTERN.test(data)) {
+        return "[REDACTED]" as unknown as T;
+      }
+      // If a string contains signed token/signature query params in URLs, redact it
+      if (
+        /((\?|&)token=[a-zA-Z0-9_\-\.]+|x-amz-signature=[a-zA-Z0-9_\-]+|sig=[a-zA-Z0-9_\-]+)/i.test(
+          data,
+        )
+      ) {
         return "[REDACTED]" as unknown as T;
       }
     }

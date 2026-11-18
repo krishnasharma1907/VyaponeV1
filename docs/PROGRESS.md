@@ -15,6 +15,34 @@
 | P2 — Platform identity, authentication and multi-tenancy | COMPLETE | All tasks VO-020 to VO-028 verified and done; Phase P2 gate passed |
 | P3 — Niche registry, presets and business onboarding | IN_PROGRESS | VO-030, VO-031, VO-032 complete; VO-033 is next |
 
+## Security Audit Report: VO-032 Final Storage Security and Data Integrity Audit
+
+- **Audit Target:** VO-032 — Implement secure media upload pipeline
+- **Base Commit:** `ba4901c`
+- **Audit Status:** VERIFIED & HARDENED
+- **Summary of Findings & Corrective Action:**
+  1. **Privilege Hardening (`public.media_items`):**
+     - Identified that granting table-level `INSERT`, `UPDATE`, `DELETE` to `authenticated` allowed potential postgREST clients to bypass server validation and tamper with `bucket`, `object_key`, `status = 'ready'`, or `is_public`.
+     - Applied forward-only migration `20261118000004_harden_media_items_security.sql`: revoked table-level write privileges from `authenticated` and `anon`. Resticted RLS write policies to `auth.role() = 'service_role'`. Granted `SELECT` only (constrained by tenant RLS).
+  2. **Public vs Private Bucket Consistency:**
+     - Added `chk_media_items_bucket_visibility` constraint enforcing that rows in `vyapone-public-media` must have `is_public = true` and `vyapone-private-media` must have `is_public = false`.
+  3. **Two-Phase Deletion & Orphan Storage Prevention:**
+     - Added `deletion_pending` status and partial index `idx_media_items_deletion_pending`.
+     - Deletion lifecycle: marks `deletion_pending` in database -> deletes cloud storage object -> marks `archived`.
+     - Added `retryPendingDeletion` service method and Server Action to reconcile transient storage deletion failures.
+     - Changed `media_items_business_id_fkey` from `ON DELETE CASCADE` to `ON DELETE RESTRICT` preventing business deletion from leaving orphaned cloud storage objects.
+  4. **Content Validation Hardening:**
+     - Reject corrupt or truncated image chunks for PNG, JPEG, WebP, GIF in `extractImageDimensions`.
+     - Sanitized SVG XML entity injection (XXE: `<!ENTITY`, `<!DOCTYPE`, `SYSTEM`, `PUBLIC`), CDATA blocks, script tags, event handlers, and non-whitelisted elements.
+     - Added extension vs MIME type consistency check in `validateUploadDeclaration`.
+  5. **Storage Provider Security:**
+     - Added fail-closed check forbidding `MemoryStorageProvider` in production (`process.env.NODE_ENV === 'production'`).
+  6. **Audit Redaction:**
+     - Added redaction for presigned URLs, query tokens (`?token=`, `x-amz-signature=`), and storage credentials.
+  7. **ADR-026 Recorded:**
+     - Documented media upload limits as provisional engineering defaults in `docs/DECISION_REGISTER.md`.
+  8. **Quality Gates:** All 853 tests passing across 76 test files; typecheck clean, lint clean, format clean, Next.js build clean.
+
 ## Task report: VO-032
 
 - **Task ID:** VO-032

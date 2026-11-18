@@ -13,7 +13,7 @@ import type { MediaCategory } from "./validation";
 
 export type { MediaCategory };
 
-export type MediaStatus = "pending_upload" | "ready" | "failed" | "archived";
+export type MediaStatus = "pending_upload" | "ready" | "failed" | "deletion_pending" | "archived";
 
 export interface MediaItem {
   id: string;
