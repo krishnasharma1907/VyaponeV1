@@ -165,6 +165,17 @@ export interface BusinessSummary {
 }
 
 /**
+ * Result representation for mobile-first business creation with setup [VO-033].
+ */
+export interface CreateBusinessWithSetupResult {
+  business: BusinessRow;
+  primaryLocation: LocationRow;
+  nicheSlug: string;
+  isComplete: boolean;
+  missingFields: string[];
+}
+
+/**
  * Generic result format for business Server Actions.
  */
 export type BusinessActionResult<T = unknown> =

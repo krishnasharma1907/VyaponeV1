@@ -93,9 +93,9 @@ export default function ResellerOverviewPage() {
           </CardDescription>
         </CardHeader>
         <CardContent style={{ display: "flex", gap: "var(--space-3)", flexWrap: "wrap" }}>
-          <Button variant="primary" disabled>
-            Provision Client Business (VO-110)
-          </Button>
+          <Link href="/workspace/clients/new" style={{ textDecoration: "none" }}>
+            <Button variant="primary">Provision Client Business</Button>
+          </Link>
           <Button variant="secondary" disabled>
             Invite Agency Staff (VO-110)
           </Button>

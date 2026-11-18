@@ -448,3 +448,87 @@ export const revokeBusinessInvitationSchema = z.object({
 });
 
 export type RevokeBusinessInvitationInput = z.input<typeof revokeBusinessInvitationSchema>;
+
+/**
+ * Schema for creating a business with full mobile-first onboarding setup [VO-033].
+ * Enforces niche selection, trade facts, primary location, optional media, and category answers.
+ */
+export const createBusinessWithSetupSchema = z.object({
+  workspace_id: z.string().uuid("Invalid workspace ID"),
+  niche_slug: z
+    .string()
+    .trim()
+    .min(2, "Niche slug must be at least 2 characters")
+    .max(60, "Niche slug cannot exceed 60 characters"),
+  niche_group_slug: z.string().trim().max(60).optional(),
+  trade_name: z
+    .string()
+    .trim()
+    .min(2, "Trade name must be at least 2 characters")
+    .max(100, "Trade name cannot exceed 100 characters"),
+  legal_name: z
+    .string()
+    .trim()
+    .min(2, "Legal name must be at least 2 characters")
+    .max(100, "Legal name cannot exceed 100 characters")
+    .optional(),
+  slug: businessSlugSchema.optional(),
+  description: z.string().trim().max(500, "Description cannot exceed 500 characters").optional(),
+  primary_location: z.object({
+    name: z
+      .string()
+      .trim()
+      .min(2, "Location name must be at least 2 characters")
+      .max(100, "Location name cannot exceed 100 characters")
+      .default("Main Store"),
+    address_line1: z
+      .string()
+      .trim()
+      .min(3, "Address line 1 must be at least 3 characters")
+      .max(150, "Address line 1 cannot exceed 150 characters"),
+    address_line2: z
+      .string()
+      .trim()
+      .max(150, "Address line 2 cannot exceed 150 characters")
+      .nullable()
+      .optional(),
+    city: z
+      .string()
+      .trim()
+      .min(2, "City must be at least 2 characters")
+      .max(60, "City cannot exceed 60 characters"),
+    state: z
+      .string()
+      .trim()
+      .min(2, "State must be at least 2 characters")
+      .max(60, "State cannot exceed 60 characters"),
+    postal_code: postalCodeSchema,
+  }),
+  contact: z
+    .object({
+      primary_phone: z
+        .string()
+        .trim()
+        .regex(/^(\+?[0-9]{10,15})$/, "Primary phone must be a valid 10-15 digit phone number")
+        .nullable()
+        .optional(),
+      whatsapp_number: z
+        .string()
+        .trim()
+        .regex(/^(\+?[0-9]{10,15})$/, "WhatsApp number must be a valid 10-15 digit phone number")
+        .nullable()
+        .optional(),
+      email: z.string().trim().email("Invalid email address").nullable().optional(),
+    })
+    .optional(),
+  gst_number: gstinSchema.nullable().optional(),
+  pan_number: panSchema.nullable().optional(),
+  tax_scheme: businessTaxSchemeSchema.optional(),
+  logo_media_id: z.string().uuid("Invalid media ID").nullable().optional(),
+  showcase_media_ids: z.array(z.string().uuid("Invalid media ID")).default([]).optional(),
+  onboarding_answers: z.record(z.string(), z.unknown()).default({}),
+  proposal_confirmed: z.boolean().default(true),
+});
+
+export type CreateBusinessWithSetupInput = z.input<typeof createBusinessWithSetupSchema>;
+export type CreateBusinessWithSetupOutput = z.infer<typeof createBusinessWithSetupSchema>;

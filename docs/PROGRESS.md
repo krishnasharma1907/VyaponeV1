@@ -1,10 +1,10 @@
 # VyapOne Build Progress
 
 **Current phase:** P3 — Niche registry, presets and business onboarding (`IN_PROGRESS`)  
-**Completed tasks:** VO-000, VO-001, VO-002, VO-003, VO-004, VO-005, VO-006, VO-010, VO-011, VO-012, VO-013, VO-014, VO-015, VO-016, VO-017, VO-018, VO-019, VO-020, VO-021, VO-022, VO-023, VO-024, VO-025, VO-026, VO-027, VO-028, VO-030, VO-031, VO-032  
-**Latest task:** VO-032 — Implement secure media upload pipeline  
-**Next task:** VO-033 — Build mobile-first create-business flow (P3)  
-**Project status:** SECURE MEDIA UPLOAD PIPELINE IMPLEMENTED / PHASE P3 IN PROGRESS  
+**Completed tasks:** VO-000, VO-001, VO-002, VO-003, VO-004, VO-005, VO-006, VO-010, VO-011, VO-012, VO-013, VO-014, VO-015, VO-016, VO-017, VO-018, VO-019, VO-020, VO-021, VO-022, VO-023, VO-024, VO-025, VO-026, VO-027, VO-028, VO-030, VO-031, VO-032, VO-033  
+**Latest task:** VO-033 — Build mobile-first create-business flow  
+**Next task:** VO-034 — Build business import and confirmation review (P3)  
+**Project status:** MOBILE-FIRST CREATE-BUSINESS FLOW IMPLEMENTED / PHASE P3 IN PROGRESS  
 
 ## Phase status
 
@@ -13,7 +13,35 @@
 | P0 — Project audit, decisions and architecture | COMPLETE | All tasks VO-000 to VO-006 verified and done; Phase P0 gate passed |
 | P1 — Repository, design system and application shell | COMPLETE | All tasks VO-010 to VO-019 verified and done; Phase P1 gate passed |
 | P2 — Platform identity, authentication and multi-tenancy | COMPLETE | All tasks VO-020 to VO-028 verified and done; Phase P2 gate passed |
-| P3 — Niche registry, presets and business onboarding | IN_PROGRESS | VO-030, VO-031, VO-032 complete; VO-033 is next |
+| P3 — Niche registry, presets and business onboarding | IN_PROGRESS | VO-030, VO-031, VO-032, VO-033 complete; VO-034 is next |
+
+## Task Report: VO-033 — Build Mobile-First Create-Business Flow
+
+- **Target:** VO-033 — Build mobile-first create-business flow
+- **Phase:** P3 — Niche registry, presets and business onboarding
+- **Status:** COMPLETED & VERIFIED
+- **Key Deliverables Implemented:**
+  1. **Mobile-First 390 px Multi-Step Wizard (`CreateBusinessWizard`):**
+     - Step 1 (Niche Selection): Group tabs (Food & Hospitality, Retail & Commerce, Health & Wellness, Services & Professional), responsive search filter, availability badges (`Ready to Launch`, `Website & Enquiries`, `Coming Soon`), and keyboard-accessible selection radiogroup.
+     - Step 2 (Store Facts): Trade Name (required), Legal Name, Primary Location with Indian street address and PIN code validation (6-digit format), Phone & WhatsApp numbers, collapsible statutory GSTIN/PAN fields.
+     - Step 3 (Media Uploads): Private quarantine logo and storefront banner upload with live verification badges and privacy explanations via VO-032 storage pipeline.
+     - Step 4 (Category Questions): Dynamic niche manifest question rendering with conditional visibility rules, required validation, type-specific inputs (boolean switches, number inputs, single/multi selects), and field helpers.
+     - Step 5 (Proposal Review): Comprehensive preview card displaying pages to generate, operational modules enabled, color palette tokens (Warm White / Emerald / Marigold), supplied facts summary, missing details checklist, and "Looks good, build it" primary CTA.
+  2. **Client-Side Draft Storage & Resume:**
+     - Scoped `localStorage` draft saving on step changes and input updates with expiry handling (`draft-storage.ts`).
+     - Persistent resume prompt allows resellers on mobile to restore unfinished onboarding flows seamlessly without data loss.
+  3. **Backend Service & Actions:**
+     - `createBusinessWithSetup()`: Server-side validation, workspace RBAC check (`workspace:manage_businesses` with `workspace_owner`, `workspace_admin`, or `reseller_admin` roles), plan capacity enforcement on `draft_websites` (`assertCapacityAvailable`), initial `businesses` record creation (`status = 'onboarding'`), primary `locations` record, initial owner `business_members` record, private media linking, onboarding answers evaluation and storage in `business_onboarding_answers`, default module seeding in `business_modules`, and structured audit logging (`business.created_with_setup`).
+     - `getBusinessSetupDraft()`: Secure draft state retrieval for authorized workspace managers and sovereign owners.
+     - Server Actions `createBusinessWithSetupAction` and `getBusinessSetupDraftAction` with error mapping and path revalidations.
+  4. **Routing & Navigation:**
+     - Created `/workspace/clients/new` page within the Reseller Workspace route group.
+     - Linked "Add New Client" and "Provision Client Business" buttons in `/workspace/clients` and `/workspace`.
+  5. **Verification & Quality Gates:**
+     - 10 unit tests for service, action, capacity limits, and permissions in `tests/unit/businesses/create-business-flow.test.ts`.
+     - 5 component tests verifying mobile navigation, conditional questions, draft resume, and submission in `tests/unit/components/create-business-wizard.test.tsx`.
+     - All 80 test files passed (888 tests passed).
+     - ESLint, TypeScript typecheck (`tsc --noEmit`), Prettier (`format:check`), and Next.js production build (`next build`) all passed cleanly.
 
 ## Corrective Pass Report: VO-032 Final Public Upload Isolation and Quarantine
 

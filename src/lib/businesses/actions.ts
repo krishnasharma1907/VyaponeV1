@@ -12,10 +12,13 @@ import type {
   BusinessSummary,
   BusinessWithLocations,
   CreateBusinessInvitationResult,
+  CreateBusinessWithSetupResult,
   LocationRow,
 } from "./types";
 import {
   createBusiness,
+  createBusinessWithSetup,
+  getBusinessSetupDraft,
   getBusiness,
   getUserBusinesses,
   updateBusinessProfile,
@@ -36,6 +39,7 @@ import {
 import { TenantAccessError } from "@/lib/auth/tenant-access";
 import {
   createBusinessSchema,
+  createBusinessWithSetupSchema,
   updateBusinessProfileSchema,
   confirmBusinessFactSchema,
   createLocationSchema,
@@ -46,6 +50,7 @@ import {
   acceptBusinessInvitationSchema,
   revokeBusinessInvitationSchema,
   type CreateBusinessInput,
+  type CreateBusinessWithSetupInput,
   type UpdateBusinessProfileInput,
   type ConfirmBusinessFactInput,
   type CreateLocationInput,
@@ -122,6 +127,83 @@ export async function createBusinessAction(
     const result = await createBusiness(supabase, user.id, parseResult.data);
     revalidatePath("/dashboard");
     revalidatePath("/workspace");
+    return { success: true, data: result };
+  } catch (error) {
+    const sanitized = sanitizeError(error);
+    return { success: false, ...sanitized };
+  }
+}
+
+/**
+ * Creates a new business with full mobile-first setup [VO-033]:
+ * niche selection, trade facts, primary location, media quarantine link, and category onboarding.
+ */
+export async function createBusinessWithSetupAction(
+  rawInput: CreateBusinessWithSetupInput,
+): Promise<BusinessActionResult<CreateBusinessWithSetupResult>> {
+  try {
+    const supabase = await createServerSupabaseClient();
+    const {
+      data: { user },
+      error: authError,
+    } = await supabase.auth.getUser();
+
+    if (authError || !user) {
+      return { success: false, error: "Authentication required", code: "UNAUTHENTICATED" };
+    }
+
+    const parseResult = createBusinessWithSetupSchema.safeParse(rawInput);
+    if (!parseResult.success) {
+      const fieldErrors: Record<string, string[]> = {};
+      for (const issue of parseResult.error.issues) {
+        const path = issue.path.join(".");
+        if (!fieldErrors[path]) fieldErrors[path] = [];
+        fieldErrors[path].push(issue.message);
+      }
+      return {
+        success: false,
+        error: "Validation failed: please review the required fields",
+        code: "VALIDATION_FAILED",
+        validationErrors: fieldErrors,
+      };
+    }
+
+    const result = await createBusinessWithSetup(supabase, user.id, parseResult.data);
+    revalidatePath("/workspace");
+    revalidatePath("/workspace/clients");
+    revalidatePath("/dashboard");
+    return { success: true, data: result };
+  } catch (error) {
+    const sanitized = sanitizeError(error);
+    return { success: false, ...sanitized };
+  }
+}
+
+/**
+ * Retrieves a persisted setup draft for a business [VO-033].
+ */
+export async function getBusinessSetupDraftAction(businessId: string): Promise<
+  BusinessActionResult<{
+    business: BusinessRow;
+    primaryLocation: LocationRow | null;
+    onboardingAnswers: Record<string, unknown>;
+    isComplete: boolean;
+    missingFields: string[];
+    mediaItems: Array<{ id: string; category: string; original_filename: string }>;
+  } | null>
+> {
+  try {
+    const supabase = await createServerSupabaseClient();
+    const {
+      data: { user },
+      error: authError,
+    } = await supabase.auth.getUser();
+
+    if (authError || !user) {
+      return { success: false, error: "Authentication required", code: "UNAUTHENTICATED" };
+    }
+
+    const result = await getBusinessSetupDraft(supabase, businessId, user.id);
     return { success: true, data: result };
   } catch (error) {
     const sanitized = sanitizeError(error);

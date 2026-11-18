@@ -1,5 +1,6 @@
 import React from "react";
 import type { Metadata } from "next";
+import Link from "next/link";
 import { Card, CardContent, Button, EmptyState } from "@/components/ui";
 
 export const metadata: Metadata = {
@@ -33,9 +34,9 @@ export default function ResellerClientsPage() {
             Manage merchant stores, access delegated administration, and configure plans.
           </p>
         </div>
-        <Button variant="primary" disabled>
-          Add New Client (VO-110)
-        </Button>
+        <Link href="/workspace/clients/new" style={{ textDecoration: "none" }}>
+          <Button variant="primary">Add New Client</Button>
+        </Link>
       </header>
 
       <Card variant="default">
@@ -44,9 +45,9 @@ export default function ResellerClientsPage() {
             title="Managed Client Directory"
             description="Client business roster with delegated access switches and status indicators will be listed here."
             action={
-              <Button size="sm" disabled>
-                Provisioning Offline (VO-110)
-              </Button>
+              <Link href="/workspace/clients/new" style={{ textDecoration: "none" }}>
+                <Button size="sm">Provision Client Business</Button>
+              </Link>
             }
           />
         </CardContent>

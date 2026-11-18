@@ -4,6 +4,26 @@ Record implementation changes by task ID. Do not record planned work as complete
 
 ## Unreleased
 
+### [VO-033] — Build mobile-first create-business flow (2026-11-18)
+- Built complete 5-step mobile-first (390 px) business creation flow for reseller workspaces:
+  - **Multi-Step Wizard (`CreateBusinessWizard`):**
+    - Built responsive wizard with stepper, progress bar, back/next navigation, step validation, and duplicate submission prevention at `/workspace/clients/new`.
+    - **Step 1 (Niche Selection):** Category group tabs (Food & Hospitality, Retail & Commerce, Health & Wellness, Services & Professional), search filter, availability badges (`Ready to Launch`, `Website & Enquiries`, `Coming Soon`), and keyboard-accessible card selection.
+    - **Step 2 (Basic Facts):** Trade Name, Legal Name, Primary Location with 6-digit Indian PIN code validation, Phone & WhatsApp contacts, and collapsible statutory GSTIN/PAN fields.
+    - **Step 3 (Media Uploads):** Private quarantine logo and storefront banner upload via VO-032 media pipeline with privacy notices and upload status badges.
+    - **Step 4 (Category Questions):** Schema-driven dynamic question renderer evaluating niche manifest questions with conditional visibility (`isQuestionVisible`), required checks, and type-specific controls.
+    - **Step 5 (Proposal Review):** Structured proposal card showing pages to generate, active operational modules, brand color palette (Warm White / Emerald / Marigold), supplied facts summary, missing details checklist, and "Looks good, build it" primary action.
+  - **Draft Resilience (`draft-storage.ts`):**
+    - LocalStorage persistence scoped to reseller workspace with automatic state restoration and prompt to resume unfinished sessions.
+  - **Service & Server Action Layer (`src/lib/businesses/`):**
+    - Implemented `createBusinessWithSetup` and `createBusinessWithSetupAction`: verifies workspace RBAC (`workspace_owner`, `workspace_admin`, `reseller_admin`), evaluates `draft_websites` plan capacity via `assertCapacityAvailable`, provisions `businesses` (`status = 'onboarding'`), primary `locations`, initial owner `business_members`, links private quarantined media, persists evaluated answers into `business_onboarding_answers`, seeds default modules in `business_modules`, and records audit event `business.created_with_setup`.
+    - Implemented `getBusinessSetupDraft` and `getBusinessSetupDraftAction` for authorized draft state retrieval.
+  - **Navigation Integration:**
+    - Linked "Add New Client" in `/workspace/clients` and "Provision Client Business" quick action in `/workspace` to `/workspace/clients/new`.
+  - **Testing & Quality Assurance:**
+    - Added unit test suite `tests/unit/businesses/create-business-flow.test.ts` (10 tests) covering service authorization, capacity limits, slug conflict resolution, and server actions.
+    - Added component test suite `tests/unit/components/create-business-wizard.test.tsx` (5 tests) verifying mobile navigation, conditional validation, draft resume, and submission.
+
 ### [VO-032 Upload Isolation & Quarantine] — Private Quarantine and Publication Separation (2026-11-18)
 - Hardened upload lifecycle to prevent unverified or draft files from becoming publicly accessible:
   - **Private Quarantine for All New Uploads:**

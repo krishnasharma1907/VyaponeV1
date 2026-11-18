@@ -10,6 +10,7 @@ import type {
   BusinessSummary,
   BusinessWithLocations,
   CreateBusinessInvitationResult,
+  CreateBusinessWithSetupResult,
   LocationRow,
 } from "./types";
 import { canAssignBusinessRole, canManageBusinessRole, hasBusinessPermission } from "./permissions";
@@ -20,9 +21,15 @@ import {
 } from "@/lib/workspaces/tokens";
 import { recordAuditEvent } from "@/lib/audit/service";
 import { createNotification } from "@/lib/notifications/service";
+import { assertWorkspaceAccess } from "@/lib/auth/tenant-access";
+import { assertCapacityAvailable } from "@/lib/plans/service";
+import { CapacityExceededError } from "@/lib/plans/types";
+import { getNiche, evaluateOnboardingAnswers } from "@/lib/niches/service";
+import { DEFAULT_NICHE_MANIFESTS } from "@/lib/niches/constants";
 import type {
   AddBusinessMemberInput,
   CreateBusinessOutput,
+  CreateBusinessWithSetupOutput,
   CreateLocationInput,
   InviteBusinessMemberInput,
   UpdateBusinessMemberRoleInput,
@@ -261,6 +268,315 @@ export async function createBusiness(
     locations: [primaryLocation],
     currentUserRole: "owner",
     isSovereignOwner: true,
+  };
+}
+
+/**
+ * Creates a business with comprehensive mobile-first setup [VO-033]:
+ * 1. Verifies caller workspace access with workspace:manage_businesses permission.
+ * 2. Enforces plan capacity limit checks (draft_websites).
+ * 3. Resolves category and niche manifest.
+ * 4. Atomically/sequentially creates business, primary location, and initial owner membership.
+ * 5. Links uploaded logo/showcase media in quarantine.
+ * 6. Evaluates and persists niche onboarding answers.
+ * 7. Seeds default modules enabled by the niche.
+ * 8. Records append-only audit log.
+ */
+export async function createBusinessWithSetup(
+  supabase: SupabaseClient<Database>,
+  callerUserId: string,
+  input: CreateBusinessWithSetupOutput,
+): Promise<CreateBusinessWithSetupResult> {
+  // 1. Authorize workspace access
+  const wsAccess = await assertWorkspaceAccess(supabase, input.workspace_id, {
+    requiredPermission: "workspace:manage_businesses",
+  });
+
+  if (!["workspace_owner", "workspace_admin", "reseller_admin"].includes(wsAccess.role)) {
+    throw new BusinessError(
+      "You do not have management permissions in the specified workspace",
+      "WORKSPACE_PERMISSION_DENIED",
+      403,
+    );
+  }
+
+  // 2. Enforce plan capacity limits for new client businesses
+  try {
+    await assertCapacityAvailable(supabase, input.workspace_id, "draft_websites", 1);
+  } catch (capErr: unknown) {
+    if (capErr instanceof CapacityExceededError) {
+      throw new BusinessError(
+        capErr.message || "Capacity limit reached for draft websites. Please upgrade your plan.",
+        "CAPACITY_EXCEEDED",
+        403,
+      );
+    }
+    if (capErr instanceof Error && capErr.message.includes("ATOMIC_RPC_UNAVAILABLE")) {
+      throw capErr;
+    }
+  }
+
+  // 3. Resolve niche and manifest
+  let niche = null;
+  try {
+    niche = await getNiche(supabase, input.niche_slug);
+  } catch {
+    // fallback
+  }
+
+  const manifest =
+    niche?.manifest ??
+    DEFAULT_NICHE_MANIFESTS[input.niche_slug] ??
+    DEFAULT_NICHE_MANIFESTS["other_business"];
+
+  const category =
+    niche?.nicheGroupSlug ?? manifest?.nicheGroupSlug ?? input.niche_group_slug ?? "other_business";
+  const isRealUuid = Boolean(
+    niche?.id && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(niche.id),
+  );
+  const nicheId = isRealUuid && niche ? niche.id : null;
+
+  // 4. Generate unique slug
+  const baseSlug = input.slug ? slugify(input.slug) : slugify(input.trade_name);
+  let slug = baseSlug;
+
+  const { data: existingSlug } = await supabase
+    .from("businesses")
+    .select("id")
+    .eq("slug", slug)
+    .maybeSingle();
+
+  if (existingSlug) {
+    slug = `${baseSlug}-${Math.random().toString(36).substring(2, 6)}`;
+  }
+
+  // 5. Insert business record with sovereign_owner_id = callerUserId
+  const { data: business, error: bizError } = await supabase
+    .from("businesses")
+    .insert({
+      workspace_id: input.workspace_id,
+      legal_name: input.legal_name || input.trade_name,
+      trade_name: input.trade_name,
+      slug,
+      category,
+      niche_id: nicheId,
+      description: input.description ?? null,
+      gst_number: input.gst_number ?? null,
+      pan_number: input.pan_number ?? null,
+      tax_scheme: input.tax_scheme ?? "unregistered",
+      contact_configuration: (input.contact ?? {}) as Json,
+      address_configuration: {
+        address_line1: input.primary_location.address_line1,
+        address_line2: input.primary_location.address_line2 ?? null,
+        city: input.primary_location.city,
+        state: input.primary_location.state,
+        postal_code: input.primary_location.postal_code,
+        country: "India",
+      } as Json,
+      status: "onboarding",
+      currency_code: "INR",
+      sovereign_owner_id: callerUserId,
+    })
+    .select("*")
+    .single();
+
+  if (bizError || !business) {
+    if (bizError?.code === "23505") {
+      throw new BusinessError("A business with this slug already exists", "SLUG_CONFLICT", 409);
+    }
+    throw new BusinessError(
+      bizError?.message ?? "Failed to create business",
+      "BUSINESS_CREATE_FAILED",
+      500,
+    );
+  }
+
+  // 6. Insert Primary Location
+  const { data: primaryLocation, error: locError } = await supabase
+    .from("locations")
+    .insert({
+      business_id: business.id,
+      name: input.primary_location.name || "Main Store",
+      slug: "main",
+      address_line1: input.primary_location.address_line1,
+      address_line2: input.primary_location.address_line2 ?? null,
+      city: input.primary_location.city,
+      state: input.primary_location.state,
+      postal_code: input.primary_location.postal_code,
+      is_primary: true,
+    })
+    .select("*")
+    .single();
+
+  if (locError || !primaryLocation) {
+    throw new BusinessError(
+      locError?.message ?? "Failed to create primary location",
+      "PRIMARY_LOCATION_CREATE_FAILED",
+      500,
+    );
+  }
+
+  // 7. Insert Initial Owner Membership
+  const { error: memberError } = await supabase.from("business_members").insert({
+    business_id: business.id,
+    user_id: callerUserId,
+    role: "owner",
+    location_id: primaryLocation.id,
+    permissions: {
+      can_bill: true,
+      can_manage_catalogue: true,
+      can_view_reports: true,
+      can_edit_settings: true,
+    },
+    status: "active",
+  });
+
+  if (memberError) {
+    throw new BusinessError(memberError.message, "BUSINESS_MEMBER_INIT_FAILED", 500);
+  }
+
+  // 8. Link uploaded media (logo & showcase images)
+  if (input.logo_media_id) {
+    await supabase
+      .from("media_items")
+      .update({
+        business_id: business.id,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", input.logo_media_id);
+  }
+
+  if (input.showcase_media_ids && input.showcase_media_ids.length > 0) {
+    await supabase
+      .from("media_items")
+      .update({
+        business_id: business.id,
+        updated_at: new Date().toISOString(),
+      })
+      .in("id", input.showcase_media_ids);
+  }
+
+  // 9. Evaluate & save onboarding answers
+  const evaluation = evaluateOnboardingAnswers(manifest, input.onboarding_answers || {});
+
+  await supabase.from("business_onboarding_answers").upsert(
+    {
+      business_id: business.id,
+      niche_slug: input.niche_slug,
+      manifest_version: manifest.version,
+      answers: evaluation.sanitizedAnswers as Json,
+      is_complete: evaluation.isComplete,
+      missing_fields: evaluation.missingRequiredFields as unknown as Json,
+      updated_at: new Date().toISOString(),
+    },
+    { onConflict: "business_id" },
+  );
+
+  // 10. Seed default modules from niche manifest
+  const defaultModules = manifest.modules.defaultEnabled || ["website_engine"];
+  if (defaultModules.length > 0) {
+    const moduleRows = defaultModules.map((mKey) => ({
+      business_id: business.id,
+      module_key: mKey,
+      is_enabled: true,
+      custom_config: {} as Json,
+      enabled_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    }));
+
+    await supabase.from("business_modules").upsert(moduleRows, {
+      onConflict: "business_id,module_key",
+    });
+  }
+
+  // 11. Record append-only audit log
+  await recordAuditEvent(supabase, {
+    businessId: business.id,
+    workspaceId: business.workspace_id,
+    actorUserId: callerUserId,
+    action: "business.created_with_setup",
+    resource: "businesses",
+    metadata: {
+      trade_name: business.trade_name,
+      slug: business.slug,
+      niche_slug: input.niche_slug,
+      category,
+      manifest_version: manifest.version,
+      is_onboarding_complete: evaluation.isComplete,
+      missing_fields_count: evaluation.missingRequiredFields.length,
+      default_modules_count: defaultModules.length,
+      has_logo: Boolean(input.logo_media_id),
+    },
+  });
+
+  return {
+    business,
+    primaryLocation,
+    nicheSlug: input.niche_slug,
+    isComplete: evaluation.isComplete,
+    missingFields: evaluation.missingRequiredFields.map((f) => f.label || f.key),
+  };
+}
+
+/**
+ * Retrieves a persisted setup draft for a business.
+ */
+export async function getBusinessSetupDraft(
+  supabase: SupabaseClient<Database>,
+  businessId: string,
+  callerUserId: string,
+): Promise<{
+  business: BusinessRow;
+  primaryLocation: LocationRow | null;
+  onboardingAnswers: Record<string, unknown>;
+  isComplete: boolean;
+  missingFields: string[];
+  mediaItems: Array<{ id: string; category: string; original_filename: string }>;
+} | null> {
+  const access = await getCallerBusinessAccess(supabase, businessId, callerUserId);
+  if (!access.role && !access.isWorkspaceManager && !access.isSovereignOwner) {
+    throw new BusinessError("Access denied to business draft", "FORBIDDEN", 403);
+  }
+
+  const { data: business } = await supabase
+    .from("businesses")
+    .select("*")
+    .eq("id", businessId)
+    .maybeSingle();
+
+  if (!business) return null;
+
+  const { data: primaryLocation } = await supabase
+    .from("locations")
+    .select("*")
+    .eq("business_id", businessId)
+    .eq("is_primary", true)
+    .maybeSingle();
+
+  const { data: onboarding } = await supabase
+    .from("business_onboarding_answers")
+    .select("*")
+    .eq("business_id", businessId)
+    .maybeSingle();
+
+  const { data: media } = await supabase
+    .from("media_items")
+    .select("id, category, original_filename")
+    .eq("business_id", businessId);
+
+  const missingFieldsList = Array.isArray(onboarding?.missing_fields)
+    ? (onboarding?.missing_fields as Array<{ key?: string; label?: string }>).map(
+        (m) => m.label || m.key || String(m),
+      )
+    : [];
+
+  return {
+    business,
+    primaryLocation,
+    onboardingAnswers: (onboarding?.answers as Record<string, unknown>) ?? {},
+    isComplete: onboarding?.is_complete ?? false,
+    missingFields: missingFieldsList,
+    mediaItems: media ?? [],
   };
 }
 

@@ -252,13 +252,13 @@
 
 **Status:** `DONE` (Security audit and quarantine isolation completed; forward-only migrations 20261118000004 & 20261118000005, private quarantine for all new uploads, finalization separated from publication, publication copies validated objects to public storage, hardened chk_media_items_bucket_visibility, two-phase safe deletion, fail-closed storage, ADR-026 registered)
 
-### [ ] VO-033 — Build mobile-first create-business flow
+### [x] VO-033 — Build mobile-first create-business flow
 
 **Scope:** Implement niche selection, basic facts, uploads, questions, draft save/resume and proposal-ready state.
 
 **Acceptance:** A reseller can create/resume a business setup from 390 px; progress is preserved.
 
-**Status:** `NOT_STARTED`
+**Status:** `DONE` (Implemented 5-step mobile-first 390 px wizard at `/workspace/clients/new` with niche discovery and category filtering, basic facts with Indian address and PIN code validation, private quarantine logo/photo uploads via VO-032 pipeline, schema-driven category questions with conditional logic, client-side localStorage draft save/resume, proposal review card showing pages, modules, color palette, facts, missing details checklist, and atomic server action `createBusinessWithSetupAction` enforcing workspace RBAC, draft_websites plan capacity limits, sovereign owner membership, default module provisioning, and audit trail logging)
 
 ### [ ] VO-034 — Build business import and confirmation review
 
