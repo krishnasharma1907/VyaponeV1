@@ -5,21 +5,45 @@ VyapOne implements a secure, direct-to-storage media pipeline with strict tenant
 
 ---
 
-## 1. Bucket Architecture
+## 1. Bucket Architecture & Private Quarantine
 
 VyapOne partitions storage objects into two distinct buckets:
 
 | Bucket Name | Public Access | File Size Limit | Permitted Categories | Description |
 |---|---|---|---|---|
-| `vyapone-public-media` | **Public** (Direct CDN Read) | 5 MB | `business_logo`, `catalogue_image`, `website_asset` | Public branding, catalogue items, and approved website assets. |
-| `vyapone-private-media` | **Private** (Signed URLs only) | 10 MB | `document_attachment`, `onboarding_upload` | Invoices, PAN cards, statutory records, raw onboarding photos. |
+| `vyapone-private-media` | **Private** (Signed URLs only) | 10 MB | **All categories initially** (`business_logo`, `catalogue_image`, `website_asset`, `document_attachment`, `onboarding_upload`) | **Private Quarantine Location**: ALL new uploads enter here first. Permanent home for statutory documents, PAN cards, invoices, and draft assets. |
+| `vyapone-public-media` | **Public** (Direct CDN Read) | 5 MB | `business_logo`, `catalogue_image`, `website_asset` (when published) | Public branding, catalogue items, and approved published website assets. |
 
-### Critical Invariant: Bucket & Database Visibility Alignment
-To prevent accidental public exposure of private assets, PostgreSQL enforces the constraint:
+### Critical Invariant: Private Quarantine for All New Uploads
+All newly uploaded files enter private storage (`vyapone-private-media`) regardless of their eventual media category. Direct-to-public-bucket upload URLs are never issued for unverified files.
+
+### Finalization vs. Public Publication Separation
+1. **Upload Request**: Authenticated caller requests upload authorization. Server inserts record with `bucket = 'vyapone-private-media'`, `is_public = false`, `status = 'pending_upload'`.
+2. **Quarantine Upload**: Client uploads directly to `vyapone-private-media` via presigned URL.
+3. **Server Finalization**: Server downloads bytes from `vyapone-private-media`, validates magic bytes, decodes headers/dimensions, applies SVG anti-XSS scanning, and updates record to `status = 'ready'`, `verified_at = now()`. The asset **remains private** (`is_public = false`, `bucket = 'vyapone-private-media'`). Draft website assets and unpublished catalogue photos are not accessible publicly.
+4. **Distinct Authorized Publication**: When a resource (e.g. site, product, or store profile) is published, `publishMediaItem()` copies the validated object from private quarantine to `vyapone-public-media`, verifies the public copy, and updates database metadata (`bucket = 'vyapone-public-media'`, `is_public = true`, `published_at = now()`).
+5. **Unpublish**: `unpublishMediaItem()` removes the public storage object and restores `is_public = false`, `published_at = null`, keeping the asset safely in private storage.
+
+### Hardened Database Constraint: Bucket & Publication Alignment
+PostgreSQL enforces strict database-level defense-in-depth:
 ```sql
 CONSTRAINT chk_media_items_bucket_visibility CHECK (
-    (bucket = 'vyapone-public-media' AND is_public = true) OR
-    (bucket = 'vyapone-private-media' AND is_public = false)
+    -- Case 1: Published public asset
+    (
+        bucket = 'vyapone-public-media'
+        AND is_public = true
+        AND status = 'ready'
+        AND verified_at IS NOT NULL
+        AND published_at IS NOT NULL
+        AND category IN ('business_logo', 'catalogue_image', 'website_asset')
+    )
+    OR
+    -- Case 2: Private quarantine / private asset
+    (
+        bucket = 'vyapone-private-media'
+        AND is_public = false
+        AND published_at IS NULL
+    )
 );
 ```
 

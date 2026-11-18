@@ -16,10 +16,20 @@ export type MediaCategory =
   | "document_attachment"
   | "onboarding_upload";
 
+export const QUARANTINE_BUCKET = "vyapone-private-media";
+export const PUBLIC_MEDIA_BUCKET = "vyapone-public-media";
+export const PUBLISHABLE_CATEGORIES: readonly MediaCategory[] = [
+  "business_logo",
+  "catalogue_image",
+  "website_asset",
+] as const;
+
 export interface CategoryConstraints {
   category: MediaCategory;
-  bucket: "vyapone-public-media" | "vyapone-private-media";
-  isPublic: boolean;
+  bucket: "vyapone-private-media";
+  isPublic: false;
+  isPublishable: boolean;
+  targetPublicBucket: "vyapone-public-media" | null;
   maxSizeBytes: number;
   allowedMimeTypes: readonly string[];
   maxDimensions?: {
@@ -32,8 +42,10 @@ export interface CategoryConstraints {
 export const CATEGORY_CONSTRAINTS: Record<MediaCategory, CategoryConstraints> = {
   business_logo: {
     category: "business_logo",
-    bucket: "vyapone-public-media",
-    isPublic: true,
+    bucket: "vyapone-private-media",
+    isPublic: false,
+    isPublishable: true,
+    targetPublicBucket: "vyapone-public-media",
     maxSizeBytes: 2 * 1024 * 1024, // 2 MB
     allowedMimeTypes: ["image/png", "image/jpeg", "image/webp", "image/svg+xml"],
     maxDimensions: { maxWidth: 2048, maxHeight: 2048 },
@@ -41,8 +53,10 @@ export const CATEGORY_CONSTRAINTS: Record<MediaCategory, CategoryConstraints> = 
   },
   catalogue_image: {
     category: "catalogue_image",
-    bucket: "vyapone-public-media",
-    isPublic: true,
+    bucket: "vyapone-private-media",
+    isPublic: false,
+    isPublishable: true,
+    targetPublicBucket: "vyapone-public-media",
     maxSizeBytes: 5 * 1024 * 1024, // 5 MB
     allowedMimeTypes: ["image/png", "image/jpeg", "image/webp"],
     maxDimensions: { maxWidth: 4096, maxHeight: 4096 },
@@ -50,8 +64,10 @@ export const CATEGORY_CONSTRAINTS: Record<MediaCategory, CategoryConstraints> = 
   },
   website_asset: {
     category: "website_asset",
-    bucket: "vyapone-public-media",
-    isPublic: true,
+    bucket: "vyapone-private-media",
+    isPublic: false,
+    isPublishable: true,
+    targetPublicBucket: "vyapone-public-media",
     maxSizeBytes: 5 * 1024 * 1024, // 5 MB
     allowedMimeTypes: ["image/png", "image/jpeg", "image/webp", "image/svg+xml"],
     maxDimensions: { maxWidth: 4096, maxHeight: 4096 },
@@ -61,6 +77,8 @@ export const CATEGORY_CONSTRAINTS: Record<MediaCategory, CategoryConstraints> = 
     category: "document_attachment",
     bucket: "vyapone-private-media",
     isPublic: false,
+    isPublishable: false,
+    targetPublicBucket: null,
     maxSizeBytes: 10 * 1024 * 1024, // 10 MB
     allowedMimeTypes: [
       "application/pdf",
@@ -73,6 +91,8 @@ export const CATEGORY_CONSTRAINTS: Record<MediaCategory, CategoryConstraints> = 
     category: "onboarding_upload",
     bucket: "vyapone-private-media",
     isPublic: false,
+    isPublishable: false,
+    targetPublicBucket: null,
     maxSizeBytes: 10 * 1024 * 1024, // 10 MB
     allowedMimeTypes: ["image/png", "image/jpeg", "image/webp", "application/pdf"],
     maxDimensions: { maxWidth: 4096, maxHeight: 4096 },

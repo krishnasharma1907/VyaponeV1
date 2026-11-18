@@ -1393,6 +1393,7 @@ export interface Database {
           metadata: Json;
           expires_at: string | null;
           verified_at: string | null;
+          published_at: string | null;
           created_at: string;
           updated_at: string;
         };
@@ -1420,6 +1421,7 @@ export interface Database {
           metadata?: Json;
           expires_at?: string | null;
           verified_at?: string | null;
+          published_at?: string | null;
           created_at?: string;
           updated_at?: string;
         };
@@ -1447,6 +1449,7 @@ export interface Database {
           metadata?: Json;
           expires_at?: string | null;
           verified_at?: string | null;
+          published_at?: string | null;
           created_at?: string;
           updated_at?: string;
         };

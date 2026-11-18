@@ -26,6 +26,14 @@ export interface CreateSignedReadUrlParams {
   expiresInSeconds: number;
 }
 
+export interface CopyObjectParams {
+  fromBucket: string;
+  fromKey: string;
+  toBucket: string;
+  toKey: string;
+  contentType?: string;
+}
+
 export interface ObjectMetadata {
   size: number;
   contentType?: string;
@@ -72,6 +80,12 @@ export interface IStorageProvider {
     data: Uint8Array | ArrayBuffer | Buffer;
     contentType: string;
   }): Promise<void>;
+
+  /**
+   * Copies an object from one bucket/key to another bucket/key.
+   * Used for trusted publication from private quarantine to public storage.
+   */
+  copyObject(params: CopyObjectParams): Promise<void>;
 
   /**
    * Deletes an object from storage. Returns true if deleted or not found.

@@ -250,7 +250,7 @@
 
 **Acceptance:** Files cannot be accessed across tenants; rejected files produce actionable errors.
 
-**Status:** `DONE` (Security audit completed; write privileges revoked from authenticated, service-role exclusive writes enforced, two-phase deletion with `deletion_pending` state, corrupt image/SVG anti-XSS hardening, fail-closed production storage provider, ADR-026 registered)
+**Status:** `DONE` (Security audit and quarantine isolation completed; forward-only migrations 20261118000004 & 20261118000005, private quarantine for all new uploads, finalization separated from publication, publication copies validated objects to public storage, hardened chk_media_items_bucket_visibility, two-phase safe deletion, fail-closed storage, ADR-026 registered)
 
 ### [ ] VO-033 — Build mobile-first create-business flow
 

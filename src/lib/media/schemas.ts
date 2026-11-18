@@ -26,6 +26,25 @@ export const finalizeUploadSchema = z.object({
   mediaId: z.string().uuid("Invalid media UUID"),
 });
 
+export const publishMediaSchema = z.object({
+  businessId: z.string().uuid("Invalid business UUID"),
+  mediaId: z.string().uuid("Invalid media UUID"),
+  resourceType: z
+    .enum(["website", "catalogue", "logo", "standalone"])
+    .optional()
+    .default("standalone"),
+  resourceId: z.string().max(128).optional(),
+});
+
+export const unpublishMediaSchema = z.object({
+  businessId: z.string().uuid("Invalid business UUID"),
+  mediaId: z.string().uuid("Invalid media UUID"),
+});
+
+export const reconcileExpiredUploadsSchema = z.object({
+  businessId: z.string().uuid("Invalid business UUID").optional(),
+});
+
 export const deleteMediaSchema = z.object({
   businessId: z.string().uuid("Invalid business UUID"),
   mediaId: z.string().uuid("Invalid media UUID"),

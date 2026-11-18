@@ -1,7 +1,11 @@
 "use client";
 
 import React, { useCallback, useRef, useState } from "react";
-import { finalizeMediaUploadAction, requestUploadAuthorizationAction } from "@/lib/media/actions";
+import {
+  finalizeMediaUploadAction,
+  publishMediaItemAction,
+  requestUploadAuthorizationAction,
+} from "@/lib/media/actions";
 import type { MediaItem } from "@/lib/media/types";
 import { CATEGORY_CONSTRAINTS, type MediaCategory } from "@/lib/media/validation";
 
@@ -11,12 +15,14 @@ export interface MediaUploaderProps {
   label?: string;
   hint?: string;
   initialMediaUrl?: string;
+  autoPublish?: boolean;
   onUploadSuccess?: (item: MediaItem) => void;
   onUploadError?: (error: string) => void;
   className?: string;
 }
 
-export type UploadState = "idle" | "authorizing" | "uploading" | "finalizing" | "success" | "error";
+export type UploadState =
+  "idle" | "authorizing" | "uploading" | "verifying" | "ready_private" | "published" | "error";
 
 export function MediaUploader({
   businessId,
@@ -24,6 +30,7 @@ export function MediaUploader({
   label,
   hint,
   initialMediaUrl,
+  autoPublish = false,
   onUploadSuccess,
   onUploadError,
   className = "",
@@ -37,6 +44,7 @@ export function MediaUploader({
   const [uploadedItem, setUploadedItem] = useState<MediaItem | null>(null);
   const [isDragOver, setIsDragOver] = useState<boolean>(false);
   const [progressPercent, setProgressPercent] = useState<number>(0);
+  const [isPublishing, setIsPublishing] = useState<boolean>(false);
 
   const inputId = `media-uploader-input-${category}`;
   const hintId = `media-uploader-hint-${category}`;
@@ -96,7 +104,7 @@ export function MediaUploader({
       }
 
       try {
-        // Phase 1: Authorize upload
+        // Phase 1: Authorize upload to private quarantine
         setState("authorizing");
         setProgressPercent(15);
 
@@ -114,7 +122,7 @@ export function MediaUploader({
 
         const { uploadUrl, mediaId, headers } = authResult.data;
 
-        // Phase 2: Direct-to-storage upload
+        // Phase 2: Direct-to-storage upload (strictly to private quarantine)
         setState("uploading");
         setProgressPercent(45);
 
@@ -136,7 +144,7 @@ export function MediaUploader({
         }
 
         // Phase 3: Finalize and verify uploaded bytes on server
-        setState("finalizing");
+        setState("verifying");
         setProgressPercent(80);
 
         const finalizeResult = await finalizeMediaUploadAction({
@@ -148,13 +156,33 @@ export function MediaUploader({
           throw new Error(finalizeResult.error ?? "File verification failed on server");
         }
 
-        const item = finalizeResult.data;
+        let item = finalizeResult.data;
         setUploadedItem(item);
         if (item.url) {
           setPreviewUrl(item.url);
         }
+
+        // Phase 4: Optional auto-publish if requested and category is publishable
+        if (autoPublish && constraints.isPublishable) {
+          const pubResult = await publishMediaItemAction({
+            businessId,
+            mediaId: item.id,
+          });
+          if (pubResult.success && pubResult.data) {
+            item = pubResult.data;
+            setUploadedItem(item);
+            if (item.url) {
+              setPreviewUrl(item.url);
+            }
+            setProgressPercent(100);
+            setState("published");
+            onUploadSuccess?.(item);
+            return;
+          }
+        }
+
         setProgressPercent(100);
-        setState("success");
+        setState("ready_private");
         onUploadSuccess?.(item);
       } catch (err) {
         const msg = err instanceof Error ? err.message : "An unexpected upload error occurred.";
@@ -163,7 +191,39 @@ export function MediaUploader({
         onUploadError?.(msg);
       }
     },
-    [businessId, category, constraints, onUploadError, onUploadSuccess],
+    [autoPublish, businessId, category, constraints, onUploadError, onUploadSuccess],
+  );
+
+  const handlePublish = useCallback(
+    async (e: React.MouseEvent) => {
+      e.stopPropagation();
+      if (!uploadedItem || !constraints.isPublishable) return;
+      setIsPublishing(true);
+      try {
+        const pubResult = await publishMediaItemAction({
+          businessId,
+          mediaId: uploadedItem.id,
+        });
+        if (!pubResult.success || !pubResult.data) {
+          throw new Error(pubResult.error ?? "Failed to publish media item.");
+        }
+        const item = pubResult.data;
+        setUploadedItem(item);
+        if (item.url) {
+          setPreviewUrl(item.url);
+        }
+        setState("published");
+        onUploadSuccess?.(item);
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : "Publication failed.";
+        setErrorMessage(msg);
+        setState("error");
+        onUploadError?.(msg);
+      } finally {
+        setIsPublishing(false);
+      }
+    },
+    [businessId, constraints.isPublishable, onUploadError, onUploadSuccess, uploadedItem],
   );
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -196,7 +256,12 @@ export function MediaUploader({
     if (e?.target === fileInputRef.current) {
       return;
     }
-    if (state !== "authorizing" && state !== "uploading" && state !== "finalizing") {
+    if (
+      state !== "authorizing" &&
+      state !== "uploading" &&
+      state !== "verifying" &&
+      !isPublishing
+    ) {
       fileInputRef.current?.click();
     }
   };
@@ -211,7 +276,10 @@ export function MediaUploader({
     }
   };
 
-  const isBusy = state === "authorizing" || state === "uploading" || state === "finalizing";
+  const isBusy =
+    state === "authorizing" || state === "uploading" || state === "verifying" || isPublishing;
+
+  const isCompleted = state === "ready_private" || state === "published";
 
   return (
     <div className={`vyapone-media-uploader flex flex-col gap-2 ${className}`}>
@@ -266,7 +334,7 @@ export function MediaUploader({
           </div>
         )}
 
-        {!isBusy && state !== "success" && (
+        {!isBusy && !isCompleted && (
           <div className="space-y-1">
             <p className="text-sm font-medium text-gray-800 dark:text-gray-200">
               Drag and drop your file here, or{" "}
@@ -287,7 +355,8 @@ export function MediaUploader({
             <p className="text-sm font-medium text-indigo-600 dark:text-indigo-400">
               {state === "authorizing" && "Authorizing secure upload..."}
               {state === "uploading" && `Uploading to storage (${progressPercent}%)...`}
-              {state === "finalizing" && "Verifying content and dimensions..."}
+              {state === "verifying" && "Verifying content and dimensions..."}
+              {isPublishing && "Publishing asset to web..."}
             </p>
             <div
               role="progressbar"
@@ -304,27 +373,71 @@ export function MediaUploader({
           </div>
         )}
 
-        {state === "success" && (
+        {state === "ready_private" && (
           <div className="space-y-1">
             <p className="text-sm font-semibold text-emerald-600 dark:text-emerald-400">
               Upload verified and ready!
             </p>
+            <span className="inline-flex items-center rounded-full bg-gray-100 px-2.5 py-0.5 text-xs font-medium text-gray-800 dark:bg-gray-700 dark:text-gray-300">
+              Private (Quarantine)
+            </span>
             {uploadedItem && (
               <p className="text-xs text-gray-500">
                 {uploadedItem.originalFilename} ({(uploadedItem.fileSizeBytes / 1024).toFixed(1)}{" "}
                 KB)
               </p>
             )}
-            <button
-              type="button"
-              onClick={(e) => {
-                e.stopPropagation();
-                resetState();
-              }}
-              className="mt-2 inline-flex items-center rounded border border-gray-300 bg-white px-2.5 py-1.5 text-xs font-medium text-gray-700 shadow-sm hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-indigo-500 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700"
-            >
-              Replace File
-            </button>
+            <div className="mt-2 flex flex-wrap items-center justify-center gap-2">
+              {constraints.isPublishable && (
+                <button
+                  type="button"
+                  onClick={handlePublish}
+                  disabled={isPublishing}
+                  className="inline-flex items-center rounded bg-emerald-600 px-2.5 py-1.5 text-xs font-medium text-white shadow-sm hover:bg-emerald-700 focus:outline-none focus:ring-2 focus:ring-emerald-500 disabled:opacity-50"
+                >
+                  Publish Asset
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  resetState();
+                }}
+                className="inline-flex items-center rounded border border-gray-300 bg-white px-2.5 py-1.5 text-xs font-medium text-gray-700 shadow-sm hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-indigo-500 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700"
+              >
+                Replace File
+              </button>
+            </div>
+          </div>
+        )}
+
+        {state === "published" && (
+          <div className="space-y-1">
+            <p className="text-sm font-semibold text-emerald-600 dark:text-emerald-400">
+              Published and publicly accessible!
+            </p>
+            <span className="inline-flex items-center rounded-full bg-emerald-100 px-2.5 py-0.5 text-xs font-medium text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300">
+              Public
+            </span>
+            {uploadedItem && (
+              <p className="text-xs text-gray-500">
+                {uploadedItem.originalFilename} ({(uploadedItem.fileSizeBytes / 1024).toFixed(1)}{" "}
+                KB)
+              </p>
+            )}
+            <div className="mt-2 flex items-center justify-center gap-2">
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  resetState();
+                }}
+                className="inline-flex items-center rounded border border-gray-300 bg-white px-2.5 py-1.5 text-xs font-medium text-gray-700 shadow-sm hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-indigo-500 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700"
+              >
+                Replace File
+              </button>
+            </div>
           </div>
         )}
       </div>

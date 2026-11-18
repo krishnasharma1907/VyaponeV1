@@ -4,6 +4,25 @@ Record implementation changes by task ID. Do not record planned work as complete
 
 ## Unreleased
 
+### [VO-032 Upload Isolation & Quarantine] — Private Quarantine and Publication Separation (2026-11-18)
+- Hardened upload lifecycle to prevent unverified or draft files from becoming publicly accessible:
+  - **Private Quarantine for All New Uploads:**
+    - Every newly requested upload strictly enters private storage (`vyapone-private-media`) with `is_public = false`, regardless of category.
+    - Direct-to-public presigned upload URLs are permanently eliminated.
+  - **Finalization vs. Publication Separation:**
+    - File validation and finalization verifies stored bytes in private quarantine and marks `status = 'ready'`, but the asset remains strictly private (`is_public = false`, `bucket = 'vyapone-private-media'`). Draft website assets and unpublished catalogue items remain non-public.
+    - Implemented distinct server-governed `publishMediaItem()` and `publishMediaItemAction()`: verifies caller permissions and readiness, copies the validated object from private quarantine to `vyapone-public-media`, verifies the public copy, updates metadata (`bucket = 'vyapone-public-media'`, `is_public = true`, `published_at = now()`), and logs `media.published`.
+    - Implemented `unpublishMediaItem()` and `unpublishMediaItemAction()`: removes the public copy, restores private status, and logs `media.unpublished`.
+  - **Database Migration (`supabase/migrations/20261118000005_media_quarantine_and_publication.sql`):**
+    - Added `published_at TIMESTAMPTZ` column.
+    - Replaced `chk_media_items_bucket_visibility` with strict multi-condition check: public assets MUST have `status = 'ready'`, `verified_at IS NOT NULL`, `published_at IS NOT NULL`, and belong to a publishable category (`business_logo`, `catalogue_image`, `website_asset`). Private assets MUST have `is_public = false` and `published_at IS NULL`.
+    - Added partial index `idx_media_items_published` on `(business_id, category)` WHERE `is_public = true`.
+  - **Expired Upload Reconciliation:**
+    - Added `reconcileExpiredUploads()` and `reconcileExpiredUploadsAction()` to clean up unfinalized quarantine storage bytes and mark expired records `failed`.
+  - **UI State Machine (`MediaUploader`):**
+    - Distinct states: `idle`, `authorizing`, `uploading` (to quarantine), `verifying`, `ready_private` (Upload verified and ready (Private)), `published` (Published and publicly accessible), and `error`.
+    - Public URLs are never surfaced before explicit publication authorization succeeds.
+
 ### [VO-032 Security Audit] — Storage Security and Data Integrity Hardening (2026-11-18)
 - Performed comprehensive storage security and data integrity audit on VO-032 media pipeline:
   - **Database Migration (`supabase/migrations/20261118000004_harden_media_items_security.sql`):**

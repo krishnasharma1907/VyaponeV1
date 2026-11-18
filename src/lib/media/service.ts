@@ -20,21 +20,32 @@ import {
   deleteMediaSchema,
   finalizeUploadSchema,
   getMediaUrlSchema,
+  publishMediaSchema,
+  reconcileExpiredUploadsSchema,
   requestUploadAuthSchema,
+  unpublishMediaSchema,
 } from "./schemas";
 import type {
   DeleteMediaInput,
   FinalizeUploadInput,
   GetMediaUrlInput,
   MediaItem,
+  PublishMediaInput,
+  ReconcileExpiredUploadsInput,
+  ReconcileExpiredUploadsResult,
   RequestUploadAuthInput,
   RequestUploadAuthResult,
+  UnpublishMediaInput,
 } from "./types";
 import {
   CATEGORY_CONSTRAINTS,
   generateTenantObjectKey,
+  MediaCategory,
   MediaValidationError,
   MIME_TO_EXTENSION,
+  PUBLISHABLE_CATEGORIES,
+  PUBLIC_MEDIA_BUCKET,
+  QUARANTINE_BUCKET,
   sanitizeFilename,
   validateUploadDeclaration,
   validateUploadedBytes,
@@ -63,6 +74,7 @@ function mapMediaRow(
     metadata: (row.metadata as Record<string, unknown>) ?? {},
     expiresAt: row.expires_at,
     verifiedAt: row.verified_at,
+    publishedAt: row.published_at ?? null,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
     url,
@@ -131,18 +143,20 @@ export class MediaService {
     const expiresAt = new Date(Date.now() + ttlSeconds * 1000).toISOString();
 
     // 1. Insert pending record into database using administrative client
+    // Critical: ALL new uploads initially enter private quarantine storage, regardless of category.
     const { error: insertErr } = await this.adminClient.from("media_items").insert({
       id: mediaId,
       business_id: validated.businessId,
       workspace_id: businessContext.business.workspace_id,
       uploaded_by: businessContext.callerUserId,
       category: validated.category,
-      bucket: constraints.bucket,
+      bucket: QUARANTINE_BUCKET,
       object_key: objectKey,
       original_filename: sanitizedName,
       declared_content_type: validated.contentType.toLowerCase(),
       file_size_bytes: validated.fileSizeBytes,
-      is_public: constraints.isPublic,
+      is_public: false,
+      published_at: null,
       status: "pending_upload",
       metadata: (validated.metadata ?? {}) as import("@/lib/supabase/types").Json,
       expires_at: expiresAt,
@@ -152,9 +166,9 @@ export class MediaService {
       throw new Error(`Failed to initialize media record: ${insertErr.message}`);
     }
 
-    // 2. Generate signed upload URL from storage provider
+    // 2. Generate signed upload URL from storage provider (strictly to private quarantine bucket)
     const signedUpload = await this.storageProvider.createSignedUploadUrl({
-      bucket: constraints.bucket,
+      bucket: QUARANTINE_BUCKET,
       key: objectKey,
       expiresInSeconds: ttlSeconds,
       contentType: validated.contentType,
@@ -171,6 +185,7 @@ export class MediaService {
       metadata: {
         mediaId,
         category: validated.category,
+        bucket: QUARANTINE_BUCKET,
         filename: sanitizedName,
         fileSizeBytes: validated.fileSizeBytes,
         contentType: validated.contentType,
@@ -182,7 +197,7 @@ export class MediaService {
       businessId: validated.businessId,
       category: validated.category,
       objectKey,
-      bucket: constraints.bucket,
+      bucket: QUARANTINE_BUCKET,
       uploadUrl: signedUpload.uploadUrl,
       token: signedUpload.token,
       headers: signedUpload.headers,
@@ -342,6 +357,278 @@ export class MediaService {
   }
 
   /**
+   * Publishes a verified media item from private quarantine to public storage.
+   *
+   * 1. Asserts caller authorization on target business.
+   * 2. Verifies media is already 'ready' and has verified_at.
+   * 3. Verifies category is eligible for public publication (business_logo, catalogue_image, website_asset).
+   * 4. Copies object from private quarantine to public storage using server-side provider.
+   * 5. Verifies copied object in public storage.
+   * 6. Updates database metadata (bucket = vyapone-public-media, is_public = true, published_at = now).
+   * 7. Records audit event 'media.published'.
+   * 8. Safely cleans up partial public copy if anything fails.
+   */
+  async publishMediaItem(input: PublishMediaInput): Promise<MediaItem> {
+    const validated = publishMediaSchema.parse(input);
+    const businessContext = await assertBusinessAccess(this.supabase, validated.businessId);
+
+    const { data: row, error: fetchErr } = await this.adminClient
+      .from("media_items")
+      .select("*")
+      .eq("id", validated.mediaId)
+      .eq("business_id", validated.businessId)
+      .maybeSingle();
+
+    if (fetchErr || !row) {
+      throw new TenantAccessError("Media item not found", "NOT_FOUND", 404);
+    }
+
+    if (row.status !== "ready") {
+      throw new MediaValidationError(
+        `Cannot publish media item in status "${row.status}". Only verified, ready items can be published.`,
+        "UNSUPPORTED_TYPE",
+      );
+    }
+
+    if (!row.verified_at) {
+      throw new MediaValidationError("Cannot publish unverified media item.", "UNSUPPORTED_TYPE");
+    }
+
+    if (!PUBLISHABLE_CATEGORIES.includes(row.category as MediaCategory)) {
+      throw new MediaValidationError(
+        `Category "${row.category}" is strictly private and cannot be published to public storage.`,
+        "UNSUPPORTED_TYPE",
+      );
+    }
+
+    // Idempotency check: already published to public bucket
+    if (row.bucket === PUBLIC_MEDIA_BUCKET && row.is_public && row.published_at) {
+      const publicUrl = this.storageProvider.getPublicUrl({
+        bucket: PUBLIC_MEDIA_BUCKET,
+        key: row.object_key,
+      });
+      return mapMediaRow(row, publicUrl);
+    }
+
+    // Copy validated object from private quarantine to public bucket
+    try {
+      await this.storageProvider.copyObject({
+        fromBucket: row.bucket,
+        fromKey: row.object_key,
+        toBucket: PUBLIC_MEDIA_BUCKET,
+        toKey: row.object_key,
+        contentType: row.detected_content_type ?? row.declared_content_type,
+      });
+    } catch (copyErr) {
+      throw new Error(
+        `Failed to copy media item to public storage: ${copyErr instanceof Error ? copyErr.message : "unknown copy error"}`,
+      );
+    }
+
+    // Verify copied object in public storage
+    const publicMeta = await this.storageProvider.getObjectMetadata({
+      bucket: PUBLIC_MEDIA_BUCKET,
+      key: row.object_key,
+    });
+
+    if (!publicMeta || publicMeta.size === 0) {
+      // Safe cleanup of partial public copy
+      await this.storageProvider
+        .deleteObject({
+          bucket: PUBLIC_MEDIA_BUCKET,
+          key: row.object_key,
+        })
+        .catch(() => {});
+
+      throw new Error("Failed to verify copied object in public storage.");
+    }
+
+    // Update database metadata atomically
+    const now = new Date().toISOString();
+    const { data: updatedRow, error: updateErr } = await this.adminClient
+      .from("media_items")
+      .update({
+        bucket: PUBLIC_MEDIA_BUCKET,
+        is_public: true,
+        published_at: now,
+        updated_at: now,
+        metadata: {
+          ...(row.metadata as Record<string, unknown>),
+          publishedResourceType: validated.resourceType ?? "standalone",
+          publishedResourceId: validated.resourceId ?? null,
+        },
+      })
+      .eq("id", row.id)
+      .select()
+      .single();
+
+    if (updateErr || !updatedRow) {
+      // Safe cleanup of partial copy
+      await this.storageProvider
+        .deleteObject({
+          bucket: PUBLIC_MEDIA_BUCKET,
+          key: row.object_key,
+        })
+        .catch(() => {});
+
+      throw new Error(`Failed to update media publication status: ${updateErr?.message}`);
+    }
+
+    await recordAuditEvent(this.supabase, {
+      businessId: validated.businessId,
+      workspaceId: businessContext.business.workspace_id,
+      actorUserId: businessContext.callerUserId,
+      action: "media.published",
+      resource: "media_items",
+      metadata: {
+        mediaId: row.id,
+        category: row.category,
+        bucket: PUBLIC_MEDIA_BUCKET,
+        objectKey: row.object_key,
+        resourceType: validated.resourceType,
+        resourceId: validated.resourceId,
+      },
+    });
+
+    const publicUrl = this.storageProvider.getPublicUrl({
+      bucket: PUBLIC_MEDIA_BUCKET,
+      key: updatedRow.object_key,
+    });
+    return mapMediaRow(updatedRow, publicUrl);
+  }
+
+  /**
+   * Unpublishes a public media asset, returning it to private quarantine.
+   */
+  async unpublishMediaItem(input: UnpublishMediaInput): Promise<MediaItem> {
+    const validated = unpublishMediaSchema.parse(input);
+    const businessContext = await assertBusinessAccess(this.supabase, validated.businessId);
+
+    const { data: row, error: fetchErr } = await this.adminClient
+      .from("media_items")
+      .select("*")
+      .eq("id", validated.mediaId)
+      .eq("business_id", validated.businessId)
+      .maybeSingle();
+
+    if (fetchErr || !row) {
+      throw new TenantAccessError("Media item not found", "NOT_FOUND", 404);
+    }
+
+    // Idempotency: already private
+    if (row.bucket === QUARANTINE_BUCKET && !row.is_public && !row.published_at) {
+      const url = await this.resolveItemUrl(row);
+      return mapMediaRow(row, url);
+    }
+
+    // Ensure private copy exists in quarantine bucket
+    const privateMeta = await this.storageProvider.getObjectMetadata({
+      bucket: QUARANTINE_BUCKET,
+      key: row.object_key,
+    });
+
+    if (!privateMeta) {
+      await this.storageProvider.copyObject({
+        fromBucket: PUBLIC_MEDIA_BUCKET,
+        fromKey: row.object_key,
+        toBucket: QUARANTINE_BUCKET,
+        toKey: row.object_key,
+        contentType: row.detected_content_type ?? row.declared_content_type,
+      });
+    }
+
+    // Remove from public storage
+    await this.storageProvider.deleteObject({
+      bucket: PUBLIC_MEDIA_BUCKET,
+      key: row.object_key,
+    });
+
+    const now = new Date().toISOString();
+    const { data: updatedRow, error: updateErr } = await this.adminClient
+      .from("media_items")
+      .update({
+        bucket: QUARANTINE_BUCKET,
+        is_public: false,
+        published_at: null,
+        updated_at: now,
+      })
+      .eq("id", row.id)
+      .select()
+      .single();
+
+    if (updateErr || !updatedRow) {
+      throw new Error(`Failed to update media status during unpublish: ${updateErr?.message}`);
+    }
+
+    await recordAuditEvent(this.supabase, {
+      businessId: validated.businessId,
+      workspaceId: businessContext.business.workspace_id,
+      actorUserId: businessContext.callerUserId,
+      action: "media.unpublished",
+      resource: "media_items",
+      metadata: {
+        mediaId: row.id,
+        category: row.category,
+        objectKey: row.object_key,
+      },
+    });
+
+    const url = await this.resolveItemUrl(updatedRow);
+    return mapMediaRow(updatedRow, url);
+  }
+
+  /**
+   * Reconciles expired pending uploads, removing unfinalized storage objects
+   * and marking database rows as failed.
+   */
+  async reconcileExpiredUploads(
+    input?: ReconcileExpiredUploadsInput,
+  ): Promise<ReconcileExpiredUploadsResult> {
+    const validated = reconcileExpiredUploadsSchema.parse(input ?? {});
+
+    let query = this.adminClient.from("media_items").select("*").eq("status", "pending_upload");
+
+    if (validated.businessId) {
+      query = query.eq("business_id", validated.businessId);
+    }
+
+    const { data: expiredItems, error: queryErr } = await query.lt(
+      "expires_at",
+      new Date().toISOString(),
+    );
+    if (queryErr || !expiredItems) {
+      throw new Error(`Failed to query expired uploads: ${queryErr?.message}`);
+    }
+
+    const reconciledIds: string[] = [];
+
+    for (const item of expiredItems) {
+      // Clean up any uploaded storage bytes in quarantine
+      await this.storageProvider
+        .deleteObject({
+          bucket: item.bucket,
+          key: item.object_key,
+        })
+        .catch(() => {});
+
+      await this.adminClient
+        .from("media_items")
+        .update({
+          status: "failed",
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", item.id);
+
+      reconciledIds.push(item.id);
+    }
+
+    return {
+      reconciledCount: reconciledIds.length,
+      reconciledIds,
+    };
+  }
+
+  /**
    * Resolves a downloadable / viewable URL for a media item.
    * Public assets use permanent CDN URLs. Private assets use short-lived presigned URLs.
    */
@@ -359,14 +646,20 @@ export class MediaService {
       throw new TenantAccessError("Media item not found", "NOT_FOUND", 404);
     }
 
-    if (row.is_public && row.status === "ready") {
+    if (
+      row.is_public &&
+      row.bucket === PUBLIC_MEDIA_BUCKET &&
+      row.status === "ready" &&
+      row.verified_at &&
+      row.published_at
+    ) {
       return this.storageProvider.getPublicUrl({
         bucket: row.bucket,
         key: row.object_key,
       });
     }
 
-    // Private asset requires business authorization check
+    // Private / unverified / unpublished asset requires business authorization check
     await assertBusinessAccess(this.supabase, validated.businessId);
 
     return this.storageProvider.createSignedReadUrl({
@@ -419,6 +712,16 @@ export class MediaService {
         bucket: row.bucket,
         key: row.object_key,
       });
+
+      // Cleanup cross-bucket copy if exists to prevent orphaned files
+      const alternateBucket =
+        row.bucket === PUBLIC_MEDIA_BUCKET ? QUARANTINE_BUCKET : PUBLIC_MEDIA_BUCKET;
+      await this.storageProvider
+        .deleteObject({
+          bucket: alternateBucket,
+          key: row.object_key,
+        })
+        .catch(() => {});
     } catch (storageErr) {
       // Storage deletion failed: Record failure and leave in deletion_pending for reconciliation retry
       await recordAuditEvent(this.supabase, {
@@ -495,6 +798,15 @@ export class MediaService {
       key: row.object_key,
     });
 
+    const alternateBucket =
+      row.bucket === PUBLIC_MEDIA_BUCKET ? QUARANTINE_BUCKET : PUBLIC_MEDIA_BUCKET;
+    await this.storageProvider
+      .deleteObject({
+        bucket: alternateBucket,
+        key: row.object_key,
+      })
+      .catch(() => {});
+
     await this.adminClient
       .from("media_items")
       .update({
@@ -522,7 +834,13 @@ export class MediaService {
   private async resolveItemUrl(
     row: Database["public"]["Tables"]["media_items"]["Row"],
   ): Promise<string> {
-    if (row.is_public && row.status === "ready") {
+    if (
+      row.is_public &&
+      row.bucket === PUBLIC_MEDIA_BUCKET &&
+      row.status === "ready" &&
+      row.verified_at &&
+      row.published_at
+    ) {
       return this.storageProvider.getPublicUrl({
         bucket: row.bucket,
         key: row.object_key,

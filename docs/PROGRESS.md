@@ -15,6 +15,34 @@
 | P2 — Platform identity, authentication and multi-tenancy | COMPLETE | All tasks VO-020 to VO-028 verified and done; Phase P2 gate passed |
 | P3 — Niche registry, presets and business onboarding | IN_PROGRESS | VO-030, VO-031, VO-032 complete; VO-033 is next |
 
+## Corrective Pass Report: VO-032 Final Public Upload Isolation and Quarantine
+
+- **Target:** VO-032 — Implement secure media upload pipeline
+- **Base Commit:** `ba4901c`
+- **Corrective Commit:** `3498110`
+- **Status:** VERIFIED, QUARANTINED & ISOLATED
+- **Key Enhancements Implemented:**
+  1. **Private Quarantine Architecture:**
+     - All newly requested uploads strictly enter `vyapone-private-media` with `is_public = false`, regardless of media category.
+     - Direct-to-public-bucket upload URLs are permanently eliminated.
+  2. **Finalization vs. Public Publication Separation:**
+     - Validation and finalization verifies stored bytes in private quarantine and marks `status = 'ready'`, but the asset remains private (`is_public = false`, `bucket = 'vyapone-private-media'`). Draft website assets and unpublished catalogue items remain non-public.
+     - Implemented `publishMediaItem()` / `publishMediaItemAction()`: verifies readiness and permissions, copies validated object to `vyapone-public-media`, verifies the public copy, updates metadata (`bucket = 'vyapone-public-media'`, `is_public = true`, `published_at = now()`), and logs `media.published`.
+     - Implemented `unpublishMediaItem()` / `unpublishMediaItemAction()`: removes public copy, restores private status, and logs `media.unpublished`.
+  3. **Database Migration (`20261118000005_media_quarantine_and_publication.sql`):**
+     - Added `published_at TIMESTAMPTZ` column.
+     - Multi-condition check `chk_media_items_bucket_visibility`: public assets MUST have `status = 'ready'`, `verified_at IS NOT NULL`, `published_at IS NOT NULL`, and belong to an approved public category (`business_logo`, `catalogue_image`, `website_asset`). Private assets MUST have `is_public = false` and `published_at IS NULL`.
+     - Added partial index `idx_media_items_published`.
+  4. **Expired Upload Reconciliation:**
+     - Added `reconcileExpiredUploads()` to clean up unfinalized quarantine storage bytes and mark expired records `failed`.
+  5. **UI State Machine (`MediaUploader`):**
+     - Supports 5 distinct states: `Uploading`, `Verifying`, `Ready/private`, `Published`, and `Failed`.
+     - Public CDN URLs are only exposed after explicit publication authorization succeeds.
+  6. **Comprehensive Verification:**
+     - 13 dedicated quarantine/publication tests in `tests/unit/media/quarantine-publication.test.ts`.
+     - 6 migration tests in `tests/unit/database/media-quarantine-migration.test.ts`.
+     - All 64 media tests passing.
+
 ## Security Audit Report: VO-032 Final Storage Security and Data Integrity Audit
 
 - **Audit Target:** VO-032 — Implement secure media upload pipeline

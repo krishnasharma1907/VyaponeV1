@@ -6,6 +6,7 @@
  */
 
 import type {
+  CopyObjectParams,
   CreateSignedReadUrlParams,
   CreateSignedUploadUrlParams,
   IStorageProvider,
@@ -100,6 +101,24 @@ export class MemoryStorageProvider implements IStorageProvider {
     this.storage.set(compositeKey, {
       data: bytes,
       contentType: params.contentType,
+      etag: `"${Math.random().toString(36).substring(2)}"`,
+      lastModified: new Date().toISOString(),
+    });
+  }
+
+  async copyObject(params: CopyObjectParams): Promise<void> {
+    const fromCompositeKey = this.getCompositeKey(params.fromBucket, params.fromKey);
+    const source = this.storage.get(fromCompositeKey);
+    if (!source) {
+      throw new Error(
+        `Source object not found in memory storage: ${params.fromBucket}/${params.fromKey}`,
+      );
+    }
+
+    const toCompositeKey = this.getCompositeKey(params.toBucket, params.toKey);
+    this.storage.set(toCompositeKey, {
+      data: new Uint8Array(source.data),
+      contentType: params.contentType ?? source.contentType,
       etag: `"${Math.random().toString(36).substring(2)}"`,
       lastModified: new Date().toISOString(),
     });

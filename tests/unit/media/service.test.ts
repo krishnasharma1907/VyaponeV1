@@ -125,7 +125,7 @@ describe("VO-032 MediaService Lifecycle, Validation & Tenant Isolation", () => {
       expect(authResult.mediaId).toBeDefined();
       expect(authResult.businessId).toBe(businessId1);
       expect(authResult.category).toBe("business_logo");
-      expect(authResult.bucket).toBe("vyapone-public-media");
+      expect(authResult.bucket).toBe("vyapone-private-media"); // Strictly enters private quarantine
       expect(authResult.objectKey).toBe(
         `tenants/${businessId1}/business_logo/${authResult.mediaId}.png`,
       );
@@ -140,7 +140,7 @@ describe("VO-032 MediaService Lifecycle, Validation & Tenant Isolation", () => {
         }),
       );
 
-      // 2. Client uploads valid PNG bytes directly to storage
+      // 2. Client uploads valid PNG bytes directly to private quarantine storage
       // Construct 800x600 PNG header
       const pngBytes = new Uint8Array(32);
       pngBytes.set([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a], 0);
@@ -156,7 +156,7 @@ describe("VO-032 MediaService Lifecycle, Validation & Tenant Isolation", () => {
         contentType: "image/png",
       });
 
-      // 3. Finalize upload
+      // 3. Finalize upload: verifies bytes and marks ready, but retains private quarantine
       const finalized = await service.finalizeMediaUpload({
         businessId: businessId1,
         mediaId: authResult.mediaId,
@@ -166,8 +166,9 @@ describe("VO-032 MediaService Lifecycle, Validation & Tenant Isolation", () => {
       expect(finalized.detectedContentType).toBe("image/png");
       expect(finalized.width).toBe(800);
       expect(finalized.height).toBe(600);
-      expect(finalized.isPublic).toBe(true);
-      expect(finalized.url).toContain("https://cdn.vyapone.com/");
+      expect(finalized.isPublic).toBe(false); // Retains private visibility
+      expect(finalized.bucket).toBe("vyapone-private-media");
+      expect(finalized.url).toContain("storage.vyapone.local/read/vyapone-private-media/");
 
       expect(mockRecordAuditEvent).toHaveBeenCalledWith(
         mockSupabase,
@@ -177,23 +178,46 @@ describe("VO-032 MediaService Lifecycle, Validation & Tenant Isolation", () => {
         }),
       );
 
-      // 4. Resolve URL
-      const url = await service.getMediaUrl({
+      // 4. Resolve URL prior to publication: returns signed private read URL
+      const privateUrl = await service.getMediaUrl({
         businessId: businessId1,
         mediaId: authResult.mediaId,
       });
-      expect(url).toBe(`https://cdn.vyapone.com/vyapone-public-media/${authResult.objectKey}`);
+      expect(privateUrl).toContain("storage.vyapone.local/read/vyapone-private-media/");
 
-      // 5. Delete media item
+      // 5. Explicit publication to public storage
+      const published = await service.publishMediaItem({
+        businessId: businessId1,
+        mediaId: authResult.mediaId,
+        resourceType: "logo",
+      });
+
+      expect(published.isPublic).toBe(true);
+      expect(published.bucket).toBe("vyapone-public-media");
+      expect(published.publishedAt).toBeDefined();
+      expect(published.url).toBe(
+        `https://cdn.vyapone.com/vyapone-public-media/${authResult.objectKey}`,
+      );
+
+      // Resolve URL after publication: returns public CDN URL
+      const publicUrl = await service.getMediaUrl({
+        businessId: businessId1,
+        mediaId: authResult.mediaId,
+      });
+      expect(publicUrl).toBe(
+        `https://cdn.vyapone.com/vyapone-public-media/${authResult.objectKey}`,
+      );
+
+      // 6. Delete media item
       const deleted = await service.deleteMediaItem({
         businessId: businessId1,
         mediaId: authResult.mediaId,
       });
       expect(deleted).toBe(true);
 
-      // Storage object removed
+      // Storage object removed from both public and private storage
       const meta = await storageProvider.getObjectMetadata({
-        bucket: authResult.bucket,
+        bucket: "vyapone-public-media",
         key: authResult.objectKey,
       });
       expect(meta).toBeNull();

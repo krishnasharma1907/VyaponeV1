@@ -9,8 +9,12 @@ import type {
   FinalizeUploadInput,
   GetMediaUrlInput,
   MediaItem,
+  PublishMediaInput,
+  ReconcileExpiredUploadsInput,
+  ReconcileExpiredUploadsResult,
   RequestUploadAuthInput,
   RequestUploadAuthResult,
+  UnpublishMediaInput,
 } from "./types";
 import { MediaValidationError } from "./validation";
 
@@ -150,6 +154,63 @@ export async function retryPendingDeletionAction(input: {
     const supabase = await createServerSupabaseClient();
     const service = new MediaService(supabase);
     const result = await service.retryPendingDeletion(input);
+    return {
+      success: true,
+      data: result,
+    };
+  } catch (err) {
+    return handleMediaActionError(err);
+  }
+}
+
+/**
+ * Server Action: Publishes a verified media item to public storage.
+ */
+export async function publishMediaItemAction(
+  input: PublishMediaInput,
+): Promise<MediaActionResult<MediaItem>> {
+  try {
+    const supabase = await createServerSupabaseClient();
+    const service = new MediaService(supabase);
+    const result = await service.publishMediaItem(input);
+    return {
+      success: true,
+      data: result,
+    };
+  } catch (err) {
+    return handleMediaActionError(err);
+  }
+}
+
+/**
+ * Server Action: Unpublishes a public media asset, returning it to private storage.
+ */
+export async function unpublishMediaItemAction(
+  input: UnpublishMediaInput,
+): Promise<MediaActionResult<MediaItem>> {
+  try {
+    const supabase = await createServerSupabaseClient();
+    const service = new MediaService(supabase);
+    const result = await service.unpublishMediaItem(input);
+    return {
+      success: true,
+      data: result,
+    };
+  } catch (err) {
+    return handleMediaActionError(err);
+  }
+}
+
+/**
+ * Server Action: Reconciles expired pending uploads.
+ */
+export async function reconcileExpiredUploadsAction(
+  input?: ReconcileExpiredUploadsInput,
+): Promise<MediaActionResult<ReconcileExpiredUploadsResult>> {
+  try {
+    const supabase = await createServerSupabaseClient();
+    const service = new MediaService(supabase);
+    const result = await service.reconcileExpiredUploads(input);
     return {
       success: true,
       data: result,

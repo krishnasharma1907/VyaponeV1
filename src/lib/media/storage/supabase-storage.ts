@@ -11,6 +11,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { createAdminSupabaseClient } from "@/lib/supabase/admin";
 import type { Database } from "@/lib/supabase/types";
 import type {
+  CopyObjectParams,
   CreateSignedReadUrlParams,
   CreateSignedUploadUrlParams,
   IStorageProvider,
@@ -141,6 +142,40 @@ export class SupabaseStorageProvider implements IStorageProvider {
 
     if (error) {
       throw new Error(`Failed to upload object to Supabase storage: ${error.message}`);
+    }
+  }
+
+  async copyObject(params: CopyObjectParams): Promise<void> {
+    // Attempt native copy
+    const { error: nativeError } = await this.client.storage
+      .from(params.fromBucket)
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      .copy(params.fromKey, params.toKey, { destinationBucket: params.toBucket } as any);
+
+    if (nativeError) {
+      // Fallback: Read source object bytes and upload to destination bucket
+      const bytes = await this.getObjectBytes({
+        bucket: params.fromBucket,
+        key: params.fromKey,
+      });
+
+      if (!bytes) {
+        throw new Error(
+          `Failed to copy object: source object ${params.fromBucket}/${params.fromKey} not found in Supabase storage.`,
+        );
+      }
+
+      const meta = await this.getObjectMetadata({
+        bucket: params.fromBucket,
+        key: params.fromKey,
+      });
+
+      await this.uploadObject({
+        bucket: params.toBucket,
+        key: params.toKey,
+        data: bytes,
+        contentType: params.contentType ?? meta?.contentType ?? "application/octet-stream",
+      });
     }
   }
 

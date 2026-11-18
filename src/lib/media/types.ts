@@ -34,6 +34,7 @@ export interface MediaItem {
   metadata: Record<string, unknown>;
   expiresAt: string | null;
   verifiedAt: string | null;
+  publishedAt: string | null;
   createdAt: string;
   updatedAt: string;
   url?: string;
@@ -63,6 +64,27 @@ export interface RequestUploadAuthResult {
 export interface FinalizeUploadInput {
   businessId: string;
   mediaId: string;
+}
+
+export interface PublishMediaInput {
+  businessId: string;
+  mediaId: string;
+  resourceType?: "website" | "catalogue" | "logo" | "standalone";
+  resourceId?: string;
+}
+
+export interface UnpublishMediaInput {
+  businessId: string;
+  mediaId: string;
+}
+
+export interface ReconcileExpiredUploadsInput {
+  businessId?: string;
+}
+
+export interface ReconcileExpiredUploadsResult {
+  reconciledCount: number;
+  reconciledIds: string[];
 }
 
 export interface DeleteMediaInput {

@@ -100,4 +100,44 @@ describe("VO-032 MemoryStorageProvider", () => {
     });
     expect(check).toBeNull();
   });
+
+  it("copies object across buckets and preserves content", async () => {
+    const provider = new MemoryStorageProvider();
+    const sourceData = new Uint8Array([10, 20, 30, 40]);
+
+    await provider.uploadObject({
+      bucket: "vyapone-private-media",
+      key: "quarantine/test.png",
+      data: sourceData,
+      contentType: "image/png",
+    });
+
+    await provider.copyObject({
+      fromBucket: "vyapone-private-media",
+      fromKey: "quarantine/test.png",
+      toBucket: "vyapone-public-media",
+      toKey: "public/test.png",
+      contentType: "image/png",
+    });
+
+    const destMeta = await provider.getObjectMetadata({
+      bucket: "vyapone-public-media",
+      key: "public/test.png",
+    });
+    expect(destMeta).not.toBeNull();
+    expect(destMeta?.size).toBe(4);
+
+    const destBytes = await provider.getObjectBytes({
+      bucket: "vyapone-public-media",
+      key: "public/test.png",
+    });
+    expect(destBytes).toEqual(sourceData);
+
+    // Source object remains in private bucket
+    const srcMeta = await provider.getObjectMetadata({
+      bucket: "vyapone-private-media",
+      key: "quarantine/test.png",
+    });
+    expect(srcMeta).not.toBeNull();
+  });
 });
