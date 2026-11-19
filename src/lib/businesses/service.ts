@@ -331,191 +331,101 @@ export async function createBusinessWithSetup(
 
   const category =
     niche?.nicheGroupSlug ?? manifest?.nicheGroupSlug ?? input.niche_group_slug ?? "other_business";
-  const isRealUuid = Boolean(
-    niche?.id && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(niche.id),
-  );
-  const nicheId = isRealUuid && niche ? niche.id : null;
 
-  // 4. Generate unique slug
-  const baseSlug = input.slug ? slugify(input.slug) : slugify(input.trade_name);
-  let slug = baseSlug;
-
-  const { data: existingSlug } = await supabase
-    .from("businesses")
-    .select("id")
-    .eq("slug", slug)
-    .maybeSingle();
-
-  if (existingSlug) {
-    slug = `${baseSlug}-${Math.random().toString(36).substring(2, 6)}`;
-  }
-
-  // 5. Insert business record with sovereign_owner_id = callerUserId
-  const { data: business, error: bizError } = await supabase
-    .from("businesses")
-    .insert({
-      workspace_id: input.workspace_id,
-      legal_name: input.legal_name || input.trade_name,
-      trade_name: input.trade_name,
-      slug,
-      category,
-      niche_id: nicheId,
-      description: input.description ?? null,
-      gst_number: input.gst_number ?? null,
-      pan_number: input.pan_number ?? null,
-      tax_scheme: input.tax_scheme ?? "unregistered",
-      contact_configuration: (input.contact ?? {}) as Json,
-      address_configuration: {
-        address_line1: input.primary_location.address_line1,
-        address_line2: input.primary_location.address_line2 ?? null,
-        city: input.primary_location.city,
-        state: input.primary_location.state,
-        postal_code: input.primary_location.postal_code,
-        country: "India",
-      } as Json,
-      status: "onboarding",
-      currency_code: "INR",
-      sovereign_owner_id: callerUserId,
-    })
-    .select("*")
-    .single();
-
-  if (bizError || !business) {
-    if (bizError?.code === "23505") {
-      throw new BusinessError("A business with this slug already exists", "SLUG_CONFLICT", 409);
-    }
-    throw new BusinessError(
-      bizError?.message ?? "Failed to create business",
-      "BUSINESS_CREATE_FAILED",
-      500,
-    );
-  }
-
-  // 6. Insert Primary Location
-  const { data: primaryLocation, error: locError } = await supabase
-    .from("locations")
-    .insert({
-      business_id: business.id,
-      name: input.primary_location.name || "Main Store",
-      slug: "main",
-      address_line1: input.primary_location.address_line1,
-      address_line2: input.primary_location.address_line2 ?? null,
-      city: input.primary_location.city,
-      state: input.primary_location.state,
-      postal_code: input.primary_location.postal_code,
-      is_primary: true,
-    })
-    .select("*")
-    .single();
-
-  if (locError || !primaryLocation) {
-    throw new BusinessError(
-      locError?.message ?? "Failed to create primary location",
-      "PRIMARY_LOCATION_CREATE_FAILED",
-      500,
-    );
-  }
-
-  // 7. Insert Initial Owner Membership
-  const { error: memberError } = await supabase.from("business_members").insert({
-    business_id: business.id,
-    user_id: callerUserId,
-    role: "owner",
-    location_id: primaryLocation.id,
-    permissions: {
-      can_bill: true,
-      can_manage_catalogue: true,
-      can_view_reports: true,
-      can_edit_settings: true,
-    },
-    status: "active",
-  });
-
-  if (memberError) {
-    throw new BusinessError(memberError.message, "BUSINESS_MEMBER_INIT_FAILED", 500);
-  }
-
-  // 8. Link uploaded media (logo & showcase images)
-  if (input.logo_media_id) {
-    await supabase
-      .from("media_items")
-      .update({
-        business_id: business.id,
-        updated_at: new Date().toISOString(),
-      })
-      .eq("id", input.logo_media_id);
-  }
-
-  if (input.showcase_media_ids && input.showcase_media_ids.length > 0) {
-    await supabase
-      .from("media_items")
-      .update({
-        business_id: business.id,
-        updated_at: new Date().toISOString(),
-      })
-      .in("id", input.showcase_media_ids);
-  }
-
-  // 9. Evaluate & save onboarding answers
+  // 4. Evaluate onboarding answers & default modules
   const evaluation = evaluateOnboardingAnswers(manifest, input.onboarding_answers || {});
-
-  await supabase.from("business_onboarding_answers").upsert(
-    {
-      business_id: business.id,
-      niche_slug: input.niche_slug,
-      manifest_version: manifest.version,
-      answers: evaluation.sanitizedAnswers as Json,
-      is_complete: evaluation.isComplete,
-      missing_fields: evaluation.missingRequiredFields as unknown as Json,
-      updated_at: new Date().toISOString(),
-    },
-    { onConflict: "business_id" },
-  );
-
-  // 10. Seed default modules from niche manifest
   const defaultModules = manifest.modules.defaultEnabled || ["website_engine"];
-  if (defaultModules.length > 0) {
-    const moduleRows = defaultModules.map((mKey) => ({
-      business_id: business.id,
-      module_key: mKey,
-      is_enabled: true,
-      custom_config: {} as Json,
-      enabled_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
-    }));
 
-    await supabase.from("business_modules").upsert(moduleRows, {
-      onConflict: "business_id,module_key",
-    });
+  // 5. Concurrency-Safe Genuine Atomic Database Creation
+  if (typeof supabase.rpc === "function") {
+    const { data: rpcResult, error: rpcError } = await supabase.rpc(
+      "create_business_with_setup_atomic",
+      {
+        p_workspace_id: input.workspace_id,
+        p_caller_user_id: callerUserId,
+        p_trade_name: input.trade_name.trim(),
+        p_legal_name: (input.legal_name || input.trade_name).trim(),
+        p_slug: input.slug ? slugify(input.slug) : slugify(input.trade_name),
+        p_niche_slug: input.niche_slug,
+        p_category: category,
+        p_description: input.description ?? null,
+        p_gst_number: input.gst_number ?? null,
+        p_pan_number: input.pan_number ?? null,
+        p_tax_scheme: input.tax_scheme ?? "unregistered",
+        p_contact: (input.contact ?? {}) as unknown as Json,
+        p_location_name: input.primary_location.name || "Main Store",
+        p_address_line1: input.primary_location.address_line1.trim(),
+        p_address_line2: input.primary_location.address_line2 ?? null,
+        p_city: input.primary_location.city.trim(),
+        p_state: input.primary_location.state.trim(),
+        p_postal_code: input.primary_location.postal_code.trim(),
+        p_logo_media_id: input.logo_media_id ?? null,
+        p_showcase_media_ids: input.showcase_media_ids ?? [],
+        p_manifest_version: manifest.version,
+        p_sanitized_answers: evaluation.sanitizedAnswers as unknown as Json,
+        p_is_onboarding_complete: evaluation.isComplete,
+        p_missing_fields: evaluation.missingRequiredFields as unknown as Json,
+        p_default_modules: defaultModules,
+      },
+    );
+
+    if (rpcError) {
+      if (rpcError.code === "VY001") {
+        throw new BusinessError(
+          rpcError.message || "Workspace draft website limit reached. Please upgrade your plan.",
+          "CAPACITY_EXCEEDED",
+          403,
+        );
+      }
+      if (rpcError.code === "VY020" || rpcError.code === "VY021") {
+        throw new BusinessError(
+          rpcError.message || "You do not have management permissions in the specified workspace",
+          "WORKSPACE_PERMISSION_DENIED",
+          403,
+        );
+      }
+      if (rpcError.code === "VY030") {
+        throw new BusinessError(
+          rpcError.message || "Media item violates tenant quarantine invariants or unauthorized",
+          "MEDIA_ISOLATION_VIOLATION",
+          403,
+        );
+      }
+      if (rpcError.code === "23505" || (rpcError.message && rpcError.message.includes("slug"))) {
+        throw new BusinessError("A business with this slug already exists", "SLUG_CONFLICT", 409);
+      }
+      throw new BusinessError(
+        rpcError.message || "Failed to create business with setup",
+        "BUSINESS_CREATE_FAILED",
+        500,
+      );
+    }
+
+    if (rpcResult) {
+      const res = rpcResult as unknown as {
+        business: BusinessRow;
+        primary_location: LocationRow;
+        business_id: string;
+        location_id: string;
+        niche_slug: string;
+        is_complete: boolean;
+      };
+
+      return {
+        business: res.business,
+        primaryLocation: res.primary_location,
+        nicheSlug: input.niche_slug,
+        isComplete: evaluation.isComplete,
+        missingFields: evaluation.missingRequiredFields.map((f) => f.label || f.key),
+      };
+    }
   }
 
-  // 11. Record append-only audit log
-  await recordAuditEvent(supabase, {
-    businessId: business.id,
-    workspaceId: business.workspace_id,
-    actorUserId: callerUserId,
-    action: "business.created_with_setup",
-    resource: "businesses",
-    metadata: {
-      trade_name: business.trade_name,
-      slug: business.slug,
-      niche_slug: input.niche_slug,
-      category,
-      manifest_version: manifest.version,
-      is_onboarding_complete: evaluation.isComplete,
-      missing_fields_count: evaluation.missingRequiredFields.length,
-      default_modules_count: defaultModules.length,
-      has_logo: Boolean(input.logo_media_id),
-    },
-  });
-
-  return {
-    business,
-    primaryLocation,
-    nicheSlug: input.niche_slug,
-    isComplete: evaluation.isComplete,
-    missingFields: evaluation.missingRequiredFields.map((f) => f.label || f.key),
-  };
+  throw new BusinessError(
+    "Atomic stored procedure create_business_with_setup_atomic is required",
+    "ATOMIC_RPC_REQUIRED",
+    500,
+  );
 }
 
 /**

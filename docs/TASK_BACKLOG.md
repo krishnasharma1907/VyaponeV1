@@ -258,7 +258,7 @@
 
 **Acceptance:** A reseller can create/resume a business setup from 390 px; progress is preserved.
 
-**Status:** `DONE` (Implemented 5-step mobile-first 390 px wizard at `/workspace/clients/new` with niche discovery and category filtering, basic facts with Indian address and PIN code validation, private quarantine logo/photo uploads via VO-032 pipeline, schema-driven category questions with conditional logic, client-side localStorage draft save/resume, proposal review card showing pages, modules, color palette, facts, missing details checklist, and atomic server action `createBusinessWithSetupAction` enforcing workspace RBAC, draft_websites plan capacity limits, sovereign owner membership, default module provisioning, and audit trail logging)
+**Status:** `DONE` (Implemented 5-step mobile-first 390 px wizard at `/workspace/clients/new` with niche discovery and category filtering, basic facts with Indian address and PIN code validation, private quarantine logo/photo uploads via VO-032 pipeline, schema-driven category questions with conditional logic, client-side localStorage draft save/resume, proposal review card showing pages, modules, color palette, facts, missing details checklist, and atomic server action `createBusinessWithSetupAction`. Corrective pass applied: implemented genuinely atomic transactional PostgreSQL RPC `create_business_with_setup_atomic` in migration `20261119000001_atomic_business_creation.sql` with workspace row-locking capacity check, transactional audit logging, media quarantine verification, and strict user/workspace-scoped draft storage with statutory tax identifier [PAN, GSTIN] stripping and 24h TTL expiration).
 
 ### [ ] VO-034 — Build business import and confirmation review
 

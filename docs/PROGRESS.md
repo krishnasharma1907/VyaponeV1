@@ -43,6 +43,41 @@
      - All 80 test files passed (888 tests passed).
      - ESLint, TypeScript typecheck (`tsc --noEmit`), Prettier (`format:check`), and Next.js production build (`next build`) all passed cleanly.
 
+## Corrective Pass Report: VO-033 Atomic Business Creation and Secure Draft Storage
+
+- **Target:** VO-033 — Build mobile-first create-business flow
+- **Original Commit:** `9c79cd9`
+- **Status:** CORRECTED, HARDENED & VERIFIED
+- **Defects Addressed & Corrections Applied:**
+  1. **Atomic Transactional Database Provisioning (`20261119000001_atomic_business_creation.sql`):**
+     - Replaced 7 independent client-side REST calls with a genuinely atomic PostgreSQL stored procedure: `public.create_business_with_setup_atomic(...)`.
+     - Executed with `SECURITY DEFINER` and `SET search_path = ''` using fully qualified database objects (`public.*`, `pg_catalog.*`).
+     - Session caller verification: asserts `auth.uid() = p_caller_user_id` when invoked via PostgREST and confirms user exists in `public.users`.
+     - Workspace authorization: validates caller is workspace owner/admin via `public.is_workspace_admin_or_owner(p_workspace_id, p_caller_user_id)`.
+     - Concurrency-safe capacity enforcement: acquires row lock on `public.workspaces FOR UPDATE` via `public.assert_and_lock_workspace_capacity(p_workspace_id, 'draft_websites', 1)` directly inside the transaction boundary.
+     - Transactionally creates: (1) `public.businesses` (`status = 'onboarding'`), (2) `public.locations` (`is_primary = true`, `slug = 'main'`), (3) `public.business_members` (`role = 'owner'`), (4) associates quarantined media with strict validation (`vyapone-private-media`, `is_public = false`, caller/workspace ownership), (5) `public.business_onboarding_answers`, (6) default platform modules in `public.business_modules`, and (7) records transactional append-only audit log in `public.audit_logs` (`business.created_with_setup`).
+     - Excluded sensitive tax numbers (PAN, GSTIN) from audit log `metadata_json`.
+     - Revoked all execute privileges from `PUBLIC` and `anon`; granted only to `authenticated` and `service_role`.
+  2. **Client-Side Draft Storage Privacy & Integrity (`draft-storage.ts`):**
+     - Strict identity scoping: storage keys require both authenticated `userId` and `workspaceId` (`vyapone:create-business-draft:{userId}:{workspaceId}`). Missing identity fails closed (returns `null` / `false`).
+     - Statutory identifier stripping: statutory tax identifiers (`pan_number`, `gst_number`) are explicitly excluded from serialization via `SafeDraftFormData`.
+     - Deep answer sanitization: custom/dynamic answers are recursively inspected and any keys matching sensitive patterns (`/(pan|gst|tax_id|ssn|aadhaar|aadhar|password|secret|token)/i`) are stripped before writing to `localStorage`.
+     - Restoration guarantees: resuming a draft always reconstructs `pan_number: ""` and `gst_number: ""` forcing user re-entry in memory.
+     - Draft TTL and clock-skew enforcement: enforced 24-hour TTL (`DRAFT_TTL_MS = 86,400,000`) and 5-minute clock skew tolerance (`MAX_CLOCK_SKEW_MS = 300,000`). Expired or future-skewed drafts are automatically purged from `localStorage`.
+     - Lifecycle cleanup: successful submission explicitly calls `clearWizardDraft(userId, workspaceId)` preventing stale draft reappearance.
+  3. **Service Layer & Action Updates (`service.ts`, `actions.ts`):**
+     - Updated `createBusinessWithSetup` to delegate entirely to `supabase.rpc("create_business_with_setup_atomic", ...)` and map PostgreSQL error codes (`VY001` -> `CAPACITY_EXCEEDED`, `VY020`/`VY021` -> `WORKSPACE_PERMISSION_DENIED`, `VY030` -> `MEDIA_ISOLATION_VIOLATION`, `23505` -> `SLUG_CONFLICT`).
+     - Added TypeScript function definitions to `Database["public"]["Functions"]` in `src/lib/supabase/types.ts`.
+     - Updated `/workspace/clients/new/page.tsx` to pass `userId={user.id}` to `CreateBusinessWizard`.
+  4. **Quality Gates & Test Evidence:**
+     - `tests/unit/database/atomic-business-creation-migration.test.ts`: 9 tests passing (static migration SQL and RPC structure verification).
+     - `tests/unit/businesses/create-business-flow.test.ts`: 16 tests passing (mocked atomic RPC transaction, argument verification, error mappings, rollback simulation, and server actions).
+     - `tests/unit/components/create-business-wizard.test.tsx`: 5 tests passing (mobile 390 px steps, draft resume, submission).
+     - `tests/unit/components/draft-storage.test.ts` & `tests/unit/businesses/draft-storage.test.ts`: 16 tests passing (user/workspace scoping, statutory identifier exclusion, deep sanitization, TTL expiry, clock skew tolerance).
+     - Full test suite: 82 test files passed, 919 unit and integration tests passed.
+     - Format check (`pnpm format:check`), ESLint (`pnpm lint`), TypeScript (`pnpm typecheck`), and Next.js production build (`pnpm build`) passed with zero errors.
+     - Note on live DB: Local Docker/PostgreSQL is unavailable on host; real database rollback and concurrency verification remain pending live database staging.
+
 ## Corrective Pass Report: VO-032 Final Public Upload Isolation and Quarantine
 
 - **Target:** VO-032 — Implement secure media upload pipeline

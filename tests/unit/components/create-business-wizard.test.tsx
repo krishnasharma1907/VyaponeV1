@@ -81,6 +81,7 @@ const mockNiches: NicheSummary[] = [
 
 describe("VO-033 CreateBusinessWizard Component (Mobile-First 390px, Steps, Draft Resume)", () => {
   const workspaceId = "22222222-2222-4222-8222-222222222222";
+  const userId = "11111111-1111-4111-8111-111111111111";
 
   beforeEach(() => {
     vi.clearAllMocks();
@@ -94,6 +95,7 @@ describe("VO-033 CreateBusinessWizard Component (Mobile-First 390px, Steps, Draf
     render(
       <CreateBusinessWizard
         workspaceId={workspaceId}
+        userId={userId}
         nicheGroups={mockNicheGroups}
         niches={mockNiches}
       />,
@@ -117,6 +119,7 @@ describe("VO-033 CreateBusinessWizard Component (Mobile-First 390px, Steps, Draf
     render(
       <CreateBusinessWizard
         workspaceId={workspaceId}
+        userId={userId}
         nicheGroups={mockNicheGroups}
         niches={mockNiches}
       />,
@@ -133,6 +136,7 @@ describe("VO-033 CreateBusinessWizard Component (Mobile-First 390px, Steps, Draf
     render(
       <CreateBusinessWizard
         workspaceId={workspaceId}
+        userId={userId}
         nicheGroups={mockNicheGroups}
         niches={mockNiches}
       />,
@@ -236,14 +240,19 @@ describe("VO-033 CreateBusinessWizard Component (Mobile-First 390px, Steps, Draf
         onboarding_answers: {},
       },
       savedAt: new Date().toISOString(),
+      userId,
       workspaceId,
     };
 
-    window.localStorage.setItem(`vyapone_client_draft_${workspaceId}`, JSON.stringify(savedDraft));
+    window.localStorage.setItem(
+      `vyapone:create-business-draft:${userId}:${workspaceId}`,
+      JSON.stringify(savedDraft),
+    );
 
     render(
       <CreateBusinessWizard
         workspaceId={workspaceId}
+        userId={userId}
         nicheGroups={mockNicheGroups}
         niches={mockNiches}
       />,
@@ -291,6 +300,7 @@ describe("VO-033 CreateBusinessWizard Component (Mobile-First 390px, Steps, Draf
     render(
       <CreateBusinessWizard
         workspaceId={workspaceId}
+        userId={userId}
         nicheGroups={mockNicheGroups}
         niches={mockNiches}
         initialNicheSlug="cafe"

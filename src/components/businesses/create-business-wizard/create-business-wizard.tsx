@@ -51,6 +51,7 @@ const STEP_LABELS: Record<WizardStep, string> = {
 
 export function CreateBusinessWizard({
   workspaceId,
+  userId,
   nicheGroups,
   niches,
   initialNicheSlug,
@@ -82,9 +83,10 @@ export function CreateBusinessWizard({
   const [serverError, setServerError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
 
-  // Check for unsaved draft on mount
+  // Check for unsaved draft on mount (strictly scoped to authenticated user and workspace)
   useEffect(() => {
-    const existingDraft = loadWizardDraft(workspaceId);
+    if (!userId || !workspaceId) return;
+    const existingDraft = loadWizardDraft(userId, workspaceId);
     if (existingDraft && (existingDraft.data.trade_name || existingDraft.data.niche_slug)) {
       setDraftPrompt({
         savedAt: existingDraft.savedAt,
@@ -92,7 +94,7 @@ export function CreateBusinessWizard({
         data: existingDraft.data,
       });
     }
-  }, [workspaceId]);
+  }, [userId, workspaceId]);
 
   const handleResumeDraft = () => {
     if (draftPrompt) {
@@ -103,12 +105,12 @@ export function CreateBusinessWizard({
   };
 
   const handleDiscardDraft = () => {
-    clearWizardDraft(workspaceId);
+    clearWizardDraft(userId, workspaceId);
     setDraftPrompt(null);
   };
 
   const handleManualSaveDraft = () => {
-    const ok = saveWizardDraft(workspaceId, formData, currentStep);
+    const ok = saveWizardDraft(userId, workspaceId, formData, currentStep);
     if (ok) {
       setLastSavedNotice(new Date().toLocaleTimeString());
       setTimeout(() => setLastSavedNotice(null), 3000);
@@ -118,14 +120,14 @@ export function CreateBusinessWizard({
   const updateFormData = (updates: Partial<WizardFormData>) => {
     setFormData((prev) => {
       const next = { ...prev, ...updates };
-      saveWizardDraft(workspaceId, next, currentStep);
+      saveWizardDraft(userId, workspaceId, next, currentStep);
       return next;
     });
   };
 
   const goToStep = (step: WizardStep) => {
     setCurrentStep(step);
-    saveWizardDraft(workspaceId, formData, step);
+    saveWizardDraft(userId, workspaceId, formData, step);
     setServerError(null);
     if (typeof window !== "undefined") {
       window.scrollTo({ top: 0, behavior: "smooth" });
@@ -171,8 +173,8 @@ export function CreateBusinessWizard({
         return;
       }
 
-      // Success: clear client-side draft
-      clearWizardDraft(workspaceId);
+      // Success: clear client-side draft for authenticated user and workspace
+      clearWizardDraft(userId, workspaceId);
 
       if (onSuccess) {
         onSuccess({

@@ -89,6 +89,7 @@ export default async function NewClientBusinessPage() {
       {/* Wizard Container */}
       <CreateBusinessWizard
         workspaceId={membership.workspace_id}
+        userId={user.id}
         nicheGroups={nicheGroups}
         niches={niches}
       />

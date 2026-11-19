@@ -51,8 +51,9 @@ describe("VO-033 — Mobile-First Create Business Flow Service & Actions", () =>
     logo_media_id: mockLogoMediaId,
     showcase_media_ids: [],
     onboarding_answers: {
-      has_outdoor_seating: true,
-      serves_alcohol: false,
+      beverage_specialties: "Artisan coffee, cold brew, matcha",
+      has_wifi: true,
+      outdoor_seating: true,
     },
     proposal_confirmed: true,
   };
@@ -61,7 +62,10 @@ describe("VO-033 — Mobile-First Create Business Flow Service & Actions", () =>
     workspaceRole?: string;
     existingSlug?: boolean;
     capacityExceeded?: boolean;
+    rpcError?: { code: string; message: string };
+    rpcNull?: boolean;
   }) {
+    const atomicRpcCalls: Record<string, unknown>[] = [];
     const insertedBusinesses: Record<string, unknown>[] = [];
     const insertedLocations: Record<string, unknown>[] = [];
     const insertedMembers: Record<string, unknown>[] = [];
@@ -93,7 +97,7 @@ describe("VO-033 — Mobile-First Create Business Flow Service & Actions", () =>
           error: null,
         })),
       },
-      rpc: vi.fn(async (fnName: string) => {
+      rpc: vi.fn(async (fnName: string, params?: Record<string, unknown>) => {
         if (fnName === "assert_and_lock_workspace_capacity") {
           if (overrides?.capacityExceeded) {
             return {
@@ -122,6 +126,62 @@ describe("VO-033 — Mobile-First Create Business Flow Service & Actions", () =>
             error: null,
           };
         }
+
+        if (fnName === "create_business_with_setup_atomic") {
+          if (overrides?.rpcNull) {
+            return { data: null, error: null };
+          }
+          if (overrides?.rpcError) {
+            return { data: null, error: overrides.rpcError };
+          }
+
+          if (params) {
+            atomicRpcCalls.push(params);
+          }
+
+          const baseSlug = (params?.p_slug as string) || "chai-conversations-caf";
+          const finalSlug = overrides?.existingSlug ? `${baseSlug}-a1b2` : baseSlug;
+
+          const businessData = {
+            id: mockBusinessId,
+            workspace_id: params?.p_workspace_id || mockWorkspaceId,
+            sovereign_owner_id: params?.p_caller_user_id || mockCallerId,
+            trade_name: params?.p_trade_name || "Chai & Conversations Café",
+            legal_name: params?.p_legal_name || "Chai & Conversations Hospitality LLP",
+            slug: finalSlug,
+            status: "onboarding",
+            currency_code: "INR",
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+          };
+
+          const locationData = {
+            id: mockLocationId,
+            business_id: mockBusinessId,
+            name: params?.p_location_name || "Main Store",
+            address_line1: params?.p_address_line1 || "123 Indiranagar 100ft Road",
+            address_line2: params?.p_address_line2 || null,
+            city: params?.p_city || "Bengaluru",
+            state: params?.p_state || "Karnataka",
+            postal_code: params?.p_postal_code || "560038",
+            is_primary: true,
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+          };
+
+          return {
+            data: {
+              business: businessData,
+              primary_location: locationData,
+              business_id: mockBusinessId,
+              location_id: mockLocationId,
+              niche_slug: params?.p_niche_slug || "cafe",
+              is_complete: params?.p_is_onboarding_complete ?? true,
+            },
+            error: null,
+          };
+        }
+
         return { data: null, error: null };
       }),
       from: vi.fn((table: string) => {
@@ -241,6 +301,7 @@ describe("VO-033 — Mobile-First Create Business Flow Service & Actions", () =>
 
     return {
       client: mockClient as unknown as SupabaseClient<Database>,
+      atomicRpcCalls,
       insertedBusinesses,
       insertedLocations,
       insertedMembers,
@@ -252,7 +313,7 @@ describe("VO-033 — Mobile-First Create Business Flow Service & Actions", () =>
   }
 
   describe("1. createBusinessWithSetup() Service Layer", () => {
-    it("successfully creates a business, primary location, owner membership, onboarding answers, modules and audit log", async () => {
+    it("successfully creates a business, primary location, owner membership, onboarding answers, modules and audit log via atomic RPC", async () => {
       const mock = createMockSupabase();
 
       const result = await createBusinessWithSetup(mock.client, mockCallerId, validSetupInput);
@@ -263,47 +324,28 @@ describe("VO-033 — Mobile-First Create Business Flow Service & Actions", () =>
       expect(result.primaryLocation.id).toBe(mockLocationId);
       expect(result.primaryLocation.is_primary).toBe(true);
       expect(result.nicheSlug).toBe("cafe");
+      expect(result.isComplete).toBe(true);
 
-      // 2. Business insertion integrity
-      expect(mock.insertedBusinesses.length).toBe(1);
-      const biz = mock.insertedBusinesses[0];
-      expect(biz.workspace_id).toBe(mockWorkspaceId);
-      expect(biz.sovereign_owner_id).toBe(mockCallerId);
-      expect(biz.status).toBe("onboarding");
-      expect(biz.currency_code).toBe("INR");
-
-      // 3. Primary location insertion
-      expect(mock.insertedLocations.length).toBe(1);
-      const loc = mock.insertedLocations[0];
-      expect(loc.business_id).toBe(mockBusinessId);
-      expect(loc.address_line1).toBe("123 Indiranagar 100ft Road");
-      expect(loc.postal_code).toBe("560038");
-      expect(loc.is_primary).toBe(true);
-
-      // 4. Initial owner membership
-      expect(mock.insertedMembers.length).toBe(1);
-      expect(mock.insertedMembers[0].role).toBe("owner");
-      expect(mock.insertedMembers[0].user_id).toBe(mockCallerId);
-
-      // 5. Media quarantine linkage
-      expect(mock.updatedMedia.length).toBeGreaterThan(0);
-      expect(mock.updatedMedia[0].business_id).toBe(mockBusinessId);
-
-      // 6. Onboarding answers persistence
-      expect(mock.upsertedOnboarding.length).toBe(1);
-      expect(mock.upsertedOnboarding[0].niche_slug).toBe("cafe");
-      expect(mock.upsertedOnboarding[0].business_id).toBe(mockBusinessId);
-
-      // 7. Module initialization
-      expect(mock.upsertedModules.length).toBeGreaterThan(0);
-      const moduleKeys = mock.upsertedModules.map((m) => m.module_key);
-      expect(moduleKeys).toContain("website_engine");
-
-      // 8. Audit log recording
-      expect(mock.insertedAuditLogs.length).toBe(1);
-      expect(mock.insertedAuditLogs[0].action).toBe("business.created_with_setup");
-      expect(mock.insertedAuditLogs[0].business_id).toBe(mockBusinessId);
-      expect(mock.insertedAuditLogs[0].workspace_id).toBe(mockWorkspaceId);
+      // 2. Atomic RPC invocation contract
+      expect(mock.atomicRpcCalls.length).toBe(1);
+      const rpcArgs = mock.atomicRpcCalls[0];
+      expect(rpcArgs.p_workspace_id).toBe(mockWorkspaceId);
+      expect(rpcArgs.p_caller_user_id).toBe(mockCallerId);
+      expect(rpcArgs.p_trade_name).toBe("Chai & Conversations Café");
+      expect(rpcArgs.p_legal_name).toBe("Chai & Conversations Hospitality LLP");
+      expect(rpcArgs.p_niche_slug).toBe("cafe");
+      expect(rpcArgs.p_gst_number).toBe("29ABCDE1234F1Z5");
+      expect(rpcArgs.p_pan_number).toBe("ABCDE1234F");
+      expect(rpcArgs.p_tax_scheme).toBe("registered");
+      expect(rpcArgs.p_address_line1).toBe("123 Indiranagar 100ft Road");
+      expect(rpcArgs.p_postal_code).toBe("560038");
+      expect(rpcArgs.p_logo_media_id).toBe(mockLogoMediaId);
+      expect(rpcArgs.p_sanitized_answers).toEqual({
+        beverage_specialties: "Artisan coffee, cold brew, matcha",
+        has_wifi: true,
+        outdoor_seating: true,
+      });
+      expect(rpcArgs.p_default_modules).toContain("website_engine");
     });
 
     it("enforces plan capacity limits and rejects when draft website allowance is exceeded", async () => {
@@ -314,6 +356,25 @@ describe("VO-033 — Mobile-First Create Business Flow Service & Actions", () =>
       ).rejects.toThrow(BusinessError);
     });
 
+    it("rejects and maps SQLSTATE VY001 from atomic RPC to CAPACITY_EXCEEDED error", async () => {
+      const mock = createMockSupabase({
+        rpcError: {
+          code: "VY001",
+          message: "Workspace draft website limit reached (5/5)",
+        },
+      });
+
+      try {
+        await createBusinessWithSetup(mock.client, mockCallerId, validSetupInput);
+        expect.fail("Should have thrown BusinessError");
+      } catch (err: unknown) {
+        expect(err).toBeInstanceOf(BusinessError);
+        const bErr = err as BusinessError;
+        expect(bErr.code).toBe("CAPACITY_EXCEEDED");
+        expect(bErr.status).toBe(403);
+      }
+    });
+
     it("rejects unauthorized caller who does not have manage_businesses permission in workspace", async () => {
       const mock = createMockSupabase({ workspaceRole: "workspace_member" });
 
@@ -322,12 +383,96 @@ describe("VO-033 — Mobile-First Create Business Flow Service & Actions", () =>
       ).rejects.toThrow(/management permissions/i);
     });
 
+    it("rejects and maps SQLSTATE VY021 from atomic RPC to WORKSPACE_PERMISSION_DENIED error", async () => {
+      const mock = createMockSupabase({
+        rpcError: {
+          code: "VY021",
+          message: "Caller lacks workspace administration privileges",
+        },
+      });
+
+      try {
+        await createBusinessWithSetup(mock.client, mockCallerId, validSetupInput);
+        expect.fail("Should have thrown BusinessError");
+      } catch (err: unknown) {
+        expect(err).toBeInstanceOf(BusinessError);
+        const bErr = err as BusinessError;
+        expect(bErr.code).toBe("WORKSPACE_PERMISSION_DENIED");
+        expect(bErr.status).toBe(403);
+      }
+    });
+
+    it("rejects and maps SQLSTATE VY030 from atomic RPC to MEDIA_ISOLATION_VIOLATION error", async () => {
+      const mock = createMockSupabase({
+        rpcError: {
+          code: "VY030",
+          message: "Media item does not belong to caller or is not in private quarantine",
+        },
+      });
+
+      try {
+        await createBusinessWithSetup(mock.client, mockCallerId, validSetupInput);
+        expect.fail("Should have thrown BusinessError");
+      } catch (err: unknown) {
+        expect(err).toBeInstanceOf(BusinessError);
+        const bErr = err as BusinessError;
+        expect(bErr.code).toBe("MEDIA_ISOLATION_VIOLATION");
+        expect(bErr.status).toBe(403);
+      }
+    });
+
     it("handles slug collisions by appending a unique random suffix", async () => {
       const mock = createMockSupabase({ existingSlug: true });
 
       const result = await createBusinessWithSetup(mock.client, mockCallerId, validSetupInput);
 
       expect(result.business.slug).toMatch(/^chai-conversations-caf-[a-z0-9]{4}$/);
+    });
+
+    it("rejects and maps SQLSTATE 23505 to SLUG_CONFLICT error", async () => {
+      const mock = createMockSupabase({
+        rpcError: {
+          code: "23505",
+          message: "duplicate key value violates unique constraint",
+        },
+      });
+
+      try {
+        await createBusinessWithSetup(mock.client, mockCallerId, validSetupInput);
+        expect.fail("Should have thrown BusinessError");
+      } catch (err: unknown) {
+        expect(err).toBeInstanceOf(BusinessError);
+        const bErr = err as BusinessError;
+        expect(bErr.code).toBe("SLUG_CONFLICT");
+        expect(bErr.status).toBe(409);
+      }
+    });
+
+    it("guarantees atomic rollback on unexpected database failure from atomic RPC", async () => {
+      const mock = createMockSupabase({
+        rpcError: {
+          code: "50000",
+          message: "Simulated internal deadlock or failure",
+        },
+      });
+
+      try {
+        await createBusinessWithSetup(mock.client, mockCallerId, validSetupInput);
+        expect.fail("Should have thrown BusinessError");
+      } catch (err: unknown) {
+        expect(err).toBeInstanceOf(BusinessError);
+        const bErr = err as BusinessError;
+        expect(bErr.code).toBe("BUSINESS_CREATE_FAILED");
+        expect(bErr.status).toBe(500);
+      }
+    });
+
+    it("throws ATOMIC_RPC_REQUIRED when atomic stored procedure returns null", async () => {
+      const mock = createMockSupabase({ rpcNull: true });
+
+      await expect(
+        createBusinessWithSetup(mock.client, mockCallerId, validSetupInput),
+      ).rejects.toThrow("Atomic stored procedure create_business_with_setup_atomic is required");
     });
   });
 

@@ -1490,6 +1490,36 @@ export interface Database {
       };
     };
     Functions: {
+      create_business_with_setup_atomic: {
+        Args: {
+          p_workspace_id: string;
+          p_caller_user_id: string;
+          p_trade_name: string;
+          p_legal_name: string;
+          p_slug: string;
+          p_niche_slug: string;
+          p_category?: string | null;
+          p_description?: string | null;
+          p_gst_number?: string | null;
+          p_pan_number?: string | null;
+          p_tax_scheme?: string | null;
+          p_contact?: Json | null;
+          p_location_name?: string | null;
+          p_address_line1: string;
+          p_address_line2?: string | null;
+          p_city: string;
+          p_state: string;
+          p_postal_code: string;
+          p_logo_media_id?: string | null;
+          p_showcase_media_ids?: string[] | null;
+          p_manifest_version?: string | null;
+          p_sanitized_answers?: Json | null;
+          p_is_onboarding_complete?: boolean | null;
+          p_missing_fields?: Json | null;
+          p_default_modules?: string[] | null;
+        };
+        Returns: Json;
+      };
       create_business_with_primary_location: {
         Args: {
           p_legal_name: string;

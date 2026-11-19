@@ -45,16 +45,24 @@ export interface WizardFormData {
   businessId?: string | null;
 }
 
+export interface SafeDraftFormData extends Omit<WizardFormData, "pan_number" | "gst_number"> {
+  // pan_number and gst_number are explicitly excluded from browser persistence
+  pan_number?: never;
+  gst_number?: never;
+}
+
 export interface WizardDraft {
   version: "1.0";
   step: WizardStep;
-  data: WizardFormData;
+  data: SafeDraftFormData;
   savedAt: string;
-  workspaceId: string | null;
+  userId: string;
+  workspaceId: string;
 }
 
 export interface CreateBusinessWizardProps {
   workspaceId: string;
+  userId: string;
   nicheGroups: NicheGroupSummary[];
   niches: NicheSummary[];
   initialNicheSlug?: string;

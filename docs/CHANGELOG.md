@@ -4,6 +4,33 @@ Record implementation changes by task ID. Do not record planned work as complete
 
 ## Unreleased
 
+### [VO-033 Corrective Pass] — Atomic Business Creation and Secure Draft Storage (2026-11-19)
+- Corrected critical architectural and privacy defects discovered in VO-033 preflight:
+  - **Atomic Transactional Provisioning (`20261119000001_atomic_business_creation.sql`):**
+    - Replaced sequential client-side PostgREST writes with a genuinely atomic PostgreSQL stored procedure: `public.create_business_with_setup_atomic(...)`.
+    - Enforced `SECURITY DEFINER` and empty `search_path = ''` with fully qualified database objects (`public.*`, `pg_catalog.*`).
+    - Enforced caller verification (`auth.uid() = p_caller_user_id`) and workspace administration authorization via `public.is_workspace_admin_or_owner(p_workspace_id, p_caller_user_id)`.
+    - Enforced concurrency-safe plan capacity check and row locking on `public.workspaces FOR UPDATE` via `public.assert_and_lock_workspace_capacity(p_workspace_id, 'draft_websites', 1)` directly inside the transaction.
+    - Transactionally provisions: business record, primary location, initial owner membership, media quarantine association with ownership checks, evaluated onboarding answers, default modules, and transactional audit event in `public.audit_logs`.
+    - Strictly excluded sensitive statutory tax identifiers (PAN, GSTIN) from audit log metadata.
+    - Revoked all execution privileges from `PUBLIC` and `anon`; granted only to `authenticated` and `service_role`.
+  - **Secure Client-Side Draft Storage Privacy (`draft-storage.ts`):**
+    - Storage keys strictly scoped to authenticated `userId` and `workspaceId` (`vyapone:create-business-draft:{userId}:{workspaceId}`). Missing identity fails closed.
+    - Sensitive statutory tax identifiers (`pan_number`, `gst_number`) are explicitly excluded from serialization via `SafeDraftFormData`.
+    - Deep recursive answer sanitization strips any properties matching sensitive keywords (`/(pan|gst|tax_id|ssn|aadhaar|aadhar|password|secret|token)/i`).
+    - Draft resumption reconstructs `pan_number: ""` and `gst_number: ""` as empty strings, guaranteeing user re-entry in memory.
+    - Enforced 24-hour TTL (`DRAFT_TTL_MS = 86,400,000`) and 5-minute clock-skew tolerance; invalid, expired, or future-skewed drafts are automatically purged.
+    - Successful submission calls `clearWizardDraft(userId, workspaceId)` preventing stale draft reappearance.
+  - **Service & Type Hardening:**
+    - Updated `createBusinessWithSetup` to delegate to `create_business_with_setup_atomic` RPC and map error codes (`VY001` -> `CAPACITY_EXCEEDED`, `VY020`/`VY021` -> `WORKSPACE_PERMISSION_DENIED`, `VY030` -> `MEDIA_ISOLATION_VIOLATION`, `23505` -> `SLUG_CONFLICT`).
+    - Added TypeScript RPC function signature in `Database["public"]["Functions"]` in `src/lib/supabase/types.ts`.
+    - Updated `/workspace/clients/new/page.tsx` to pass `userId={user.id}` to `CreateBusinessWizard`.
+  - **Verification & Quality Gates:**
+    - Added `tests/unit/database/atomic-business-creation-migration.test.ts` (9 tests passing).
+    - Expanded `tests/unit/businesses/create-business-flow.test.ts` to 16 tests covering atomic RPC transactions, argument verification, and error mappings.
+    - Added `tests/unit/components/draft-storage.test.ts` and `tests/unit/businesses/draft-storage.test.ts` (16 tests passing).
+    - All 82 test files passed (919 tests). Prettier, ESLint, TypeScript typecheck, and Next.js production build passed with 0 errors.
+
 ### [VO-033] — Build mobile-first create-business flow (2026-11-18)
 - Built complete 5-step mobile-first (390 px) business creation flow for reseller workspaces:
   - **Multi-Step Wizard (`CreateBusinessWizard`):**
