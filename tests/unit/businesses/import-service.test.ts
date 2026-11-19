@@ -8,10 +8,8 @@ import {
   updateProposalField,
 } from "@/lib/businesses/import/service";
 import type { ImportReviewField } from "@/lib/businesses/import/types";
-import * as businessService from "@/lib/businesses/service";
 import * as tenantAccess from "@/lib/auth/tenant-access";
 import * as entitlementService from "@/lib/plans/service";
-import * as auditService from "@/lib/audit/service";
 
 describe("VO-034 Business Import Service Tests", () => {
   const workspaceId = "11111111-1111-4111-8111-111111111111";
@@ -234,8 +232,7 @@ describe("VO-034 Business Import Service Tests", () => {
       ).rejects.toThrow(/administrative permissions/);
     });
 
-    it("successfully provisions store, inserts catalogue items, and records audit log", async () => {
-      // Mock workspace access
+    it("successfully calls confirm_business_import_atomic RPC and provisions atomically", async () => {
       vi.spyOn(tenantAccess, "assertWorkspaceAccess").mockResolvedValue({
         workspace: {
           id: workspaceId,
@@ -252,7 +249,6 @@ describe("VO-034 Business Import Service Tests", () => {
         role: "workspace_owner",
       });
 
-      // Mock capacity check
       const capacitySpy = vi
         .spyOn(entitlementService, "assertCapacityAvailable")
         .mockResolvedValue({
@@ -266,69 +262,178 @@ describe("VO-034 Business Import Service Tests", () => {
           isExceeded: false,
         });
 
-      // Mock createBusinessWithSetup
       const mockBusiness = {
         id: "biz-1111",
         trade_name: "Verified Bakery",
         slug: "verified-bakery",
         workspace_id: workspaceId,
+        status: "onboarding",
+        created_at: new Date().toISOString(),
       };
       const mockLocation = {
         id: "loc-1111",
         business_id: "biz-1111",
         name: "Main Store",
+        slug: "main",
         city: "Indore",
+        state: "Madhya Pradesh",
+        postal_code: "452001",
+        is_primary: true,
       };
-      const createSetupSpy = vi
-        .spyOn(businessService, "createBusinessWithSetup")
-        .mockResolvedValue({
-          business: mockBusiness as unknown as Database["public"]["Tables"]["businesses"]["Row"],
-          primaryLocation:
-            mockLocation as unknown as Database["public"]["Tables"]["locations"]["Row"],
-          nicheSlug: "other_business",
-          isComplete: true,
-          missingFields: [],
-        });
 
-      // Mock audit log
-      const auditSpy = vi.spyOn(auditService, "recordAuditEvent").mockResolvedValue({
-        id: "audit-1",
-        businessId: "biz-1111",
-        workspaceId,
-        userId: callerUserId,
-        action: "business.import_confirmed",
-        resource: "businesses",
-        metadata: {},
-        ipAddress: null,
-        createdAt: new Date().toISOString(),
+      const mockRpc = vi.fn().mockResolvedValue({
+        data: {
+          business: mockBusiness,
+          primary_location: mockLocation,
+          business_id: "biz-1111",
+          location_id: "loc-1111",
+          catalogue_items_created: 1,
+          audit_log_action: "business.import_confirmed",
+        },
+        error: null,
       });
 
-      // Mock Supabase from("catalogue_items").insert(...)
-      const mockInsert = vi.fn().mockResolvedValue({ error: null });
-      const mockFrom = vi.fn().mockReturnValue({ insert: mockInsert });
       const mockSupabase = {
-        from: mockFrom,
+        rpc: mockRpc,
       } as unknown as SupabaseClient<Database>;
 
       const result = await executeConfirmedBusinessImport(mockSupabase, callerUserId, {
         workspaceId,
         proposalId: "prop-123",
         sourceFormat: "json",
+        sourceFileName: "bakery.json",
         fields: buildConfirmedFields(),
       });
 
       expect(capacitySpy).toHaveBeenCalledWith(expect.anything(), workspaceId, "draft_websites", 1);
-      expect(createSetupSpy).toHaveBeenCalled();
-      expect(mockInsert).toHaveBeenCalled();
-      expect(auditSpy).toHaveBeenCalledWith(
-        expect.anything(),
-        expect.objectContaining({
-          action: "business.import_confirmed",
-          businessId: "biz-1111",
-        }),
-      );
+      expect(mockRpc).toHaveBeenCalledWith("confirm_business_import_atomic", {
+        p_workspace_id: workspaceId,
+        p_caller_user_id: callerUserId,
+        p_trade_name: "Verified Bakery",
+        p_legal_name: "Verified Bakery",
+        p_slug: "verified-bakery",
+        p_niche_slug: "other_business",
+        p_category: "other_business",
+        p_description: null,
+        p_gst_number: null,
+        p_pan_number: null,
+        p_tax_scheme: "unregistered",
+        p_contact: {
+          primary_phone: "+919876543210",
+          whatsapp_number: "+919876543210",
+          email: null,
+        },
+        p_location_name: "Main Store",
+        p_address_line1: "100 MG Road",
+        p_address_line2: null,
+        p_city: "Indore",
+        p_state: "Madhya Pradesh",
+        p_postal_code: "452001",
+        p_timings_answers: {},
+        p_import_proposal_id: "prop-123",
+        p_source_format: "json",
+        p_source_file_name: "bakery.json",
+        p_default_modules: ["website_engine"],
+        p_catalogue_items: [
+          {
+            title: "Croissant",
+            price_minor: 5000,
+            currency_code: "INR",
+            description: null,
+            sku: null,
+          },
+        ],
+        p_reviewed_fields_count: 5,
+      });
+
       expect(result.business.id).toBe("biz-1111");
+      expect(result.primaryLocation.id).toBe("loc-1111");
       expect(result.catalogueItemsCreated).toBe(1);
+      expect(result.auditLogAction).toBe("business.import_confirmed");
+    });
+
+    it("maps VY001 capacity exceeded error from RPC", async () => {
+      vi.spyOn(tenantAccess, "assertWorkspaceAccess").mockResolvedValue({
+        workspace: {
+          id: workspaceId,
+        } as unknown as Database["public"]["Tables"]["workspaces"]["Row"],
+        callerUserId,
+        membership: {} as unknown as Database["public"]["Tables"]["workspace_members"]["Row"],
+        role: "workspace_owner",
+      });
+      vi.spyOn(entitlementService, "assertCapacityAvailable").mockResolvedValue({} as never);
+
+      const mockRpc = vi.fn().mockResolvedValue({
+        data: null,
+        error: { code: "VY001", message: "Workspace draft website limit reached (10/10)" },
+      });
+      const mockSupabase = { rpc: mockRpc } as unknown as SupabaseClient<Database>;
+
+      await expect(
+        executeConfirmedBusinessImport(mockSupabase, callerUserId, {
+          workspaceId,
+          proposalId: "prop-123",
+          sourceFormat: "json",
+          fields: buildConfirmedFields(),
+        }),
+      ).rejects.toThrow(/Workspace draft website limit reached/);
+    });
+
+    it("maps VY024 duplicate proposal error from RPC protecting idempotency", async () => {
+      vi.spyOn(tenantAccess, "assertWorkspaceAccess").mockResolvedValue({
+        workspace: {
+          id: workspaceId,
+        } as unknown as Database["public"]["Tables"]["workspaces"]["Row"],
+        callerUserId,
+        membership: {} as unknown as Database["public"]["Tables"]["workspace_members"]["Row"],
+        role: "workspace_owner",
+      });
+      vi.spyOn(entitlementService, "assertCapacityAvailable").mockResolvedValue({} as never);
+
+      const mockRpc = vi.fn().mockResolvedValue({
+        data: null,
+        error: { code: "VY024", message: "Import proposal prop-123 has already been confirmed" },
+      });
+      const mockSupabase = { rpc: mockRpc } as unknown as SupabaseClient<Database>;
+
+      await expect(
+        executeConfirmedBusinessImport(mockSupabase, callerUserId, {
+          workspaceId,
+          proposalId: "prop-123",
+          sourceFormat: "json",
+          fields: buildConfirmedFields(),
+        }),
+      ).rejects.toThrow(/already been confirmed/);
+    });
+
+    it("maps VY025 catalogue item error from RPC and ensures transaction rollback", async () => {
+      vi.spyOn(tenantAccess, "assertWorkspaceAccess").mockResolvedValue({
+        workspace: {
+          id: workspaceId,
+        } as unknown as Database["public"]["Tables"]["workspaces"]["Row"],
+        callerUserId,
+        membership: {} as unknown as Database["public"]["Tables"]["workspace_members"]["Row"],
+        role: "workspace_owner",
+      });
+      vi.spyOn(entitlementService, "assertCapacityAvailable").mockResolvedValue({} as never);
+
+      const mockRpc = vi.fn().mockResolvedValue({
+        data: null,
+        error: {
+          code: "VY025",
+          message: "Catalogue item price must be a non-negative integer minor unit",
+        },
+      });
+      const mockSupabase = { rpc: mockRpc } as unknown as SupabaseClient<Database>;
+
+      await expect(
+        executeConfirmedBusinessImport(mockSupabase, callerUserId, {
+          workspaceId,
+          proposalId: "prop-123",
+          sourceFormat: "json",
+          fields: buildConfirmedFields(),
+        }),
+      ).rejects.toThrow(/Catalogue item price must be a non-negative integer/);
     });
   });
 });

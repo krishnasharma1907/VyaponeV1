@@ -12,6 +12,8 @@ Record implementation changes by task ID. Do not record planned work as complete
     - Provisioning blocked until mandatory fields and material facts are confirmed.
   - **Formula Injection Defense & Sanitization (`src/lib/businesses/import/sanitizer.ts`):**
     - Neutralizes formula injection attack vectors (CWE-1236: leading `=`, `+`, `-`, `@`, `\t`, `\r`, `|`), while safely preserving legitimate phone numbers (`+91...`) and numeric values.
+    - Hardened against Unicode bypasses: strips Unicode BOM (`\uFEFF`), zero-width spaces (`\u200B-\u200D`, `\u2060`), and BiDi overrides (`\u202A-\u202E`, `\u2066-\u2069`).
+    - Added field-aware sanitization options (`SanitizeOptions: fieldCategory`) and `sanitizeSpreadsheetCell` export defender.
     - Strips executable HTML (`<script>`, `<iframe>`), dangerous URI schemes (`javascript:`, `vbscript:`, `data:`), null bytes (`\0`), and non-printable control characters.
   - **Multi-Source Parser & Extractor (`src/lib/businesses/import/parser.ts`):**
     - Parses structured JSON, tabular CSV/TSV, and unstructured text with confidence scores and source evidence snippets.
@@ -19,11 +21,13 @@ Record implementation changes by task ID. Do not record planned work as complete
     - Robust rupee parsing (`parseRupeesToPaise`) and minor units conversion (`formatPaiseToRupees`) supporting symbols (`₹`, `Rs.`, `INR`).
   - **Client-Safe Proposal Update Utilities (`src/lib/businesses/import/proposal.ts`):**
     - Pure in-memory update functions (`updateProposalField`, `confirmAllHighConfidenceFields`) decoupled from database models and server-only dependencies for safe client component usage.
-  - **Import Service & Transactional Provisioning (`src/lib/businesses/import/service.ts`, `actions.ts`):**
-    - Enforces workspace RBAC (`assertWorkspaceAccess`) and plan capacity check (`assertCapacityAvailable` on `draft_websites`).
-    - Provisions store and primary location atomically via `createBusinessWithSetup`.
-    - Batch inserts confirmed catalogue items into `public.catalogue_items` with integer minor units pricing (`price_minor`).
-    - Records structured audit log event `business.import_confirmed`.
+  - **Atomic Transactional Provisioning (`20261119000002_atomic_business_import.sql`):**
+    - Implemented `public.confirm_business_import_atomic(...)` stored procedure executing within a single PostgreSQL transaction boundary.
+    - Validates caller identity (`auth.uid() = p_caller_user_id`) and workspace administrative access (`is_workspace_admin_or_owner`).
+    - Enforces concurrency-safe plan capacity row locking on `public.workspaces` (`draft_websites`).
+    - Protects against duplicate proposal confirmation submissions (`VY024`).
+    - Atomically provisions store, location, owner member, onboarding answers, default modules, confirmed catalogue items in `public.catalogue_items` (`price_minor`), and append-only audit event (`business.import_confirmed`).
+    - All writes commit or roll back together.
   - **Mobile-First Accessible Review UI (`src/components/businesses/import-review/`):**
     - `ImportUploadStep`: Drag-and-drop file upload, format tabs (JSON, CSV, Text), and sample preset loaders.
     - `ImportStatsBanner`: Badges for Total, Confirmed, Unconfirmed, Material Unconfirmed, progress bar, and category filters.
@@ -36,8 +40,8 @@ Record implementation changes by task ID. Do not record planned work as complete
   - **VO-033 Hardening:**
     - `draft-storage.ts` enhanced with `sanitizeMediaPreviewUrl` / `sanitizeMediaPreviewUrls` to strip transient `blob:` URLs and sensitive query tokens from browser localStorage.
   - **Verification & Quality Gates:**
-    - 63 dedicated unit and component tests passing across sanitizer, parser, service, components, and draft storage.
-    - Full test suite: 87 test files passed, 986 unit and integration tests passed (0 failures).
+    - 66 dedicated unit and component tests passing across sanitizer, parser, service, components, and draft storage.
+    - Full test suite: 88 test files passed, 1009 unit and integration tests passed (0 failures).
     - Next.js production build (`next build`), ESLint (`lint`), TypeScript (`typecheck`), and Prettier (`format:check`) passed with 0 errors.
 
 ### [VO-033 Corrective Pass] — Atomic Business Creation and Secure Draft Storage (2026-11-19)

@@ -1490,6 +1490,36 @@ export interface Database {
       };
     };
     Functions: {
+      confirm_business_import_atomic: {
+        Args: {
+          p_workspace_id: string;
+          p_caller_user_id: string;
+          p_trade_name: string;
+          p_legal_name?: string | null;
+          p_slug?: string | null;
+          p_niche_slug?: string | null;
+          p_category?: string | null;
+          p_description?: string | null;
+          p_gst_number?: string | null;
+          p_pan_number?: string | null;
+          p_tax_scheme?: string | null;
+          p_contact?: Json | null;
+          p_location_name?: string | null;
+          p_address_line1: string;
+          p_address_line2?: string | null;
+          p_city: string;
+          p_state: string;
+          p_postal_code: string;
+          p_timings_answers?: Json | null;
+          p_import_proposal_id?: string | null;
+          p_source_format?: string | null;
+          p_source_file_name?: string | null;
+          p_default_modules?: string[] | null;
+          p_catalogue_items?: Json | null;
+          p_reviewed_fields_count?: number | null;
+        };
+        Returns: Json;
+      };
       create_business_with_setup_atomic: {
         Args: {
           p_workspace_id: string;

@@ -20,14 +20,16 @@
 
 - **Target:** VO-034 — Build business import and confirmation review
 - **Phase:** P3 — Niche registry, presets and business onboarding
-- **Status:** COMPLETED & VERIFIED
-- **Key Deliverables Implemented:**
+- **Status:** COMPLETED, AUDITED & VERIFIED
+- **Key Deliverables Implemented & Hardened:**
   1. **Strict Human Confirmation Invariant:**
      - Every extracted price, timing, address, tax identifier, and material fact strictly initializes in "unconfirmed" (`To Confirm`) state.
      - No business, primary location, or catalogue record is provisioned in the database without explicit human confirmation and review.
      - Confirmation readiness evaluation (`evaluateProposalReadiness`) enforces that mandatory fields and material facts must be confirmed/edited before provisioning is unlocked.
   2. **Formula Injection & Security Sanitization (`sanitizer.ts`):**
      - Neutralizes formula injection attack vectors (CWE-1236: leading `=`, `+`, `-`, `@`, `\t`, `\r`, `|`), while preserving legitimate phone numbers (e.g. `+91...`) and negative currency values.
+     - Hardened against Unicode variation: strips Unicode Byte Order Mark (`\uFEFF`), zero-width characters (`\u200B-\u200D`, `\u2060`), and BiDi overrides (`\u202A-\u202E`, `\u2066-\u2069`) to prevent formula trigger evasion.
+     - Added field-aware sanitization options (`SanitizeOptions: fieldCategory`) and `sanitizeSpreadsheetCell` export defender.
      - Strips dangerous HTML tags (`<script>`, `<iframe>`, `<style>`), protocols (`javascript:`, `vbscript:`, `data:`), null bytes (`\0`), and non-printable control characters.
   3. **Multi-Format Extraction Parser (`parser.ts`):**
      - **Structured JSON:** Maps store identity, address, phone numbers, GSTIN, PAN, operating timings, and structured catalogue items.
@@ -41,9 +43,14 @@
      - Server Actions `parseBusinessImportAction` and `confirmBusinessImportAction` with authenticated session resolution.
      - Enforces workspace RBAC (`workspace_owner`, `workspace_admin`, `reseller_admin`) via `assertWorkspaceAccess`.
      - Validates plan capacity on `draft_websites` via `assertCapacityAvailable`.
-     - Atomically provisions store and location via `createBusinessWithSetup`.
-     - Batch-inserts confirmed catalogue items into `public.catalogue_items` with minor unit integer pricing (`price_minor`).
-     - Emits structured audit log event (`business.import_confirmed`) with proposal statistics.
+     - **Genuine Atomic Database Transaction (`20261119000002_atomic_business_import.sql`):**
+       - Implemented `public.confirm_business_import_atomic(...)` executing with `SECURITY DEFINER` and empty `search_path = ''`.
+       - Session identity check (`auth.uid() = p_caller_user_id`) and user record verification in `public.users`.
+       - Workspace authorization check (`public.is_workspace_admin_or_owner`).
+       - Concurrency-safe capacity row lock (`public.assert_and_lock_workspace_capacity(p_workspace_id, 'draft_websites', 1)`).
+       - Idempotency protection against duplicate proposal submissions (`VY024`).
+       - Atomically provisions: (1) `public.businesses`, (2) `public.locations`, (3) `public.business_members`, (4) `public.business_onboarding_answers`, (5) `public.business_modules`, (6) confirmed catalogue items in `public.catalogue_items` with integer minor units (`price_minor`), and (7) append-only transactional audit log (`business.import_confirmed`).
+       - All writes commit or roll back together.
   6. **Accessible, Mobile-First UI Components (`src/components/businesses/import-review/`):**
      - `ImportUploadStep`: File dropzone / paste area with format selectors (JSON, CSV, Text) and sample data loaders.
      - `ImportStatsBanner`: Badges for Total, To Confirm, Confirmed, Material Unconfirmed, progress bar, and category filter tabs.
@@ -56,12 +63,13 @@
   8. **VO-033 Hardening Enhancements:**
      - `sanitizeMediaPreviewUrl` / `sanitizeMediaPreviewUrls` prevents transient `blob:` URLs and signed URLs with query tokens from leaking into browser local storage drafts.
   9. **Verification & Quality Gates:**
-     - `tests/unit/businesses/import-sanitizer.test.ts`: 14 tests passing.
+     - `tests/unit/database/atomic-business-import-migration.test.ts`: 11 tests passing.
+     - `tests/unit/businesses/import-sanitizer.test.ts`: 23 tests passing.
      - `tests/unit/businesses/import-parser.test.ts`: 15 tests passing.
-     - `tests/unit/businesses/import-service.test.ts`: 6 tests passing.
+     - `tests/unit/businesses/import-service.test.ts`: 9 tests passing.
      - `tests/unit/components/business-import-review.test.tsx`: 8 tests passing.
      - `tests/unit/components/draft-storage.test.ts`: 20 tests passing.
-     - Full test suite: 87 test files passed, 986 unit and integration tests passed (0 failures).
+     - Full test suite: 88 test files passed, 1009 unit and integration tests passed (0 failures).
      - Prettier (`format:check`), ESLint (`lint`), TypeScript (`typecheck`), and Next.js production build (`build`) all passed cleanly with 0 errors.
 
 ## Task Report: VO-033 — Build Mobile-First Create-Business Flow

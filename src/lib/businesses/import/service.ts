@@ -5,21 +5,20 @@
  * 1. Building and staging import proposals from JSON, CSV, or Text.
  * 2. Updating field review status (confirm, edit, reject).
  * 3. Bulk confirming high-confidence fields with human authorization.
- * 4. Executing confirmed business imports atomically, validating required fields,
- *    enforcing workspace RBAC and draft capacity, creating catalogue items, and
- *    recording structured audit logs.
+ * 4. Executing confirmed business imports atomically via `confirm_business_import_atomic` RPC,
+ *    guaranteeing all-or-nothing rollback across business provisioning, catalogue items,
+ *    and structured audit event recording.
  *
  * Invariant:
  * Every extracted price, timing, and material fact stays unconfirmed until a person accepts it.
  */
 
 import type { SupabaseClient } from "@supabase/supabase-js";
-import type { Database } from "@/lib/supabase/types";
+import type { Database, Json } from "@/lib/supabase/types";
 import { assertWorkspaceAccess } from "@/lib/auth/tenant-access";
-import { recordAuditEvent } from "@/lib/audit/service";
 import { assertCapacityAvailable } from "@/lib/plans/service";
-import { BusinessError, createBusinessWithSetup } from "../service";
-import { createBusinessWithSetupSchema, type CreateBusinessWithSetupInput } from "../schemas";
+import { CapacityExceededError } from "@/lib/plans/types";
+import { BusinessError } from "../service";
 import { evaluateProposalReadiness, parseBusinessImportContent } from "./parser";
 import {
   confirmBusinessImportSchema,
@@ -31,12 +30,20 @@ import type {
   BusinessImportProposal,
   ConfirmedImportResult,
   ExtractedCatalogueItem,
-  ImportReviewField,
 } from "./types";
 import { confirmAllHighConfidenceFields, updateProposalField } from "./proposal";
 
 export { confirmAllHighConfidenceFields, updateProposalField };
 export type { ConfirmedImportResult };
+
+function slugify(name: string): string {
+  const base = name
+    .toLowerCase()
+    .trim()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+  return base || "business";
+}
 
 /**
  * Parses raw input and builds an unconfirmed proposal.
@@ -54,68 +61,80 @@ export async function createImportProposal(
 }
 
 /**
- * Atomically executes a confirmed business import:
+ * Atomically executes a confirmed business import via transactional stored procedure:
  * 1. Validates proposal fields and readiness (no unconfirmed material facts allowed).
  * 2. Checks workspace role and capacity limits.
- * 3. Calls atomic business creation RPC.
- * 4. Inserts confirmed catalogue items.
- * 5. Records structured audit log.
+ * 3. Calls atomic import RPC `confirm_business_import_atomic`.
+ * 4. Rolls back entirely if any catalogue item or audit log fails.
  */
 export async function executeConfirmedBusinessImport(
   supabase: SupabaseClient<Database>,
   callerUserId: string,
   input: ConfirmBusinessImportInput,
 ): Promise<ConfirmedImportResult> {
-  // 1. Validate payload schema
   const validated = confirmBusinessImportSchema.parse(input);
 
-  // 2. Authorize caller in the target workspace
+  // 1. Authorize workspace management access
   const wsAccess = await assertWorkspaceAccess(supabase, validated.workspaceId, {
     requiredPermission: "workspace:manage_businesses",
   });
 
   if (!["workspace_owner", "workspace_admin", "reseller_admin"].includes(wsAccess.role)) {
     throw new BusinessError(
-      "You do not have administrative permissions in this workspace to import client stores.",
+      "You do not have administrative permissions in the specified workspace",
       "WORKSPACE_PERMISSION_DENIED",
       403,
     );
   }
 
-  // 3. Enforce draft capacity before doing any provisioning
-  await assertCapacityAvailable(supabase, validated.workspaceId, "draft_websites", 1);
-
-  // 4. Verify all fields readiness: reject if unconfirmed material facts exist
-  const readiness = evaluateProposalReadiness(validated.fields as ImportReviewField[]);
+  // 2. Validate proposal readiness on the server
+  const readiness = evaluateProposalReadiness(validated.fields);
   if (!readiness.isReady) {
     throw new BusinessError(
       `Cannot provision store: ${readiness.blockingReasons.join("; ")}`,
-      "IMPORT_PROPOSAL_NOT_CONFIRMED",
+      "IMPORT_NOT_READY",
       400,
     );
   }
 
-  // 5. Assemble verified facts
-  const getConfirmedField = <T>(fieldName: string): T | null => {
+  // 3. Enforce draft capacity before proceeding
+  try {
+    await assertCapacityAvailable(supabase, validated.workspaceId, "draft_websites", 1);
+  } catch (capErr: unknown) {
+    if (capErr instanceof CapacityExceededError) {
+      throw new BusinessError(
+        capErr.message || "Capacity limit reached for draft websites. Please upgrade your plan.",
+        "CAPACITY_EXCEEDED",
+        403,
+      );
+    }
+    if (capErr instanceof Error && capErr.message.includes("ATOMIC_RPC_UNAVAILABLE")) {
+      throw capErr;
+    }
+  }
+
+  // 4. Extract confirmed values
+  const getConfirmedField = <T = unknown>(fieldName: string): T | undefined => {
     const f = validated.fields.find(
       (field) =>
         field.fieldName === fieldName &&
         (field.status === "confirmed" || field.status === "edited"),
     );
-    if (!f) return null;
+    if (!f) return undefined;
     return (
       f.status === "edited" && f.editedValue !== undefined ? f.editedValue : f.extractedValue
     ) as T;
   };
 
+  // Identity
   const tradeName = getConfirmedField<string>("trade_name");
-  if (!tradeName) {
+  if (!tradeName || tradeName.trim().length === 0) {
     throw new BusinessError("Confirmed trade name is missing", "INVALID_IMPORT_DATA", 400);
   }
-
   const legalName = getConfirmedField<string>("legal_name") || tradeName;
+  const description = getConfirmedField<string>("description") || undefined;
   const nicheSlug = getConfirmedField<string>("niche_slug") || "other_business";
-  const description = getConfirmedField<string>("description") || "";
+  const category = getConfirmedField<string>("category") || "other_business";
 
   // Contact
   const primaryPhone = getConfirmedField<string>("primary_phone") || "+919999999999";
@@ -148,7 +167,13 @@ export async function executeConfirmedBusinessImport(
   }
 
   // Catalogue Items
-  const confirmedCatalogueItems: ExtractedCatalogueItem[] = [];
+  const confirmedCatalogueItems: Array<{
+    title: string;
+    price_minor: number;
+    currency_code: string;
+    description?: string | null;
+    sku?: string | null;
+  }> = [];
   const catalogueFields = validated.fields.filter(
     (f) => f.category === "catalogue" && (f.status === "confirmed" || f.status === "edited"),
   );
@@ -157,89 +182,135 @@ export async function executeConfirmedBusinessImport(
       cf.status === "edited" && cf.editedValue !== undefined ? cf.editedValue : cf.extractedValue
     ) as ExtractedCatalogueItem;
     if (item && item.title && typeof item.priceMinor === "number") {
-      confirmedCatalogueItems.push(item);
+      if (item.priceMinor < 0) {
+        throw new BusinessError(
+          `Catalogue item '${item.title}' has invalid negative price`,
+          "INVALID_CATALOGUE_ITEM",
+          400,
+        );
+      }
+      confirmedCatalogueItems.push({
+        title: item.title.trim(),
+        price_minor: item.priceMinor,
+        currency_code: item.currencyCode || "INR",
+        description: item.description || null,
+        sku: item.sku || null,
+      });
     }
   }
 
-  // 6. Call createBusinessWithSetup
-  const setupInput: CreateBusinessWithSetupInput = {
-    workspace_id: validated.workspaceId,
-    trade_name: tradeName,
-    legal_name: legalName,
-    niche_slug: nicheSlug,
-    description,
-    primary_location: {
-      name: "Main Store",
-      address_line1: addressLine1,
-      address_line2: addressLine2 || null,
-      city,
-      state,
-      postal_code: postalCode,
-    },
-    contact: {
-      primary_phone: primaryPhone,
-      whatsapp_number: whatsappNumber,
-      email: email || null,
-    },
-    gst_number: gstNumber,
-    pan_number: panNumber,
-    tax_scheme: taxScheme,
-    onboarding_answers: {
-      ...timingsAnswers,
-      import_source: validated.sourceFormat,
-      import_proposal_id: validated.proposalId,
-    },
-    proposal_confirmed: true,
-  };
+  // 5. Genuine All-or-Nothing Atomic Database Provisioning
+  if (typeof supabase.rpc !== "function") {
+    throw new BusinessError(
+      "Atomic stored procedure confirm_business_import_atomic is required",
+      "ATOMIC_RPC_REQUIRED",
+      500,
+    );
+  }
 
-  const setupResult = await createBusinessWithSetup(
-    supabase,
-    callerUserId,
-    createBusinessWithSetupSchema.parse(setupInput),
+  const { data: rpcResult, error: rpcError } = await supabase.rpc(
+    "confirm_business_import_atomic",
+    {
+      p_workspace_id: validated.workspaceId,
+      p_caller_user_id: callerUserId,
+      p_trade_name: tradeName.trim(),
+      p_legal_name: legalName.trim(),
+      p_slug: slugify(tradeName),
+      p_niche_slug: nicheSlug,
+      p_category: category,
+      p_description: description ?? null,
+      p_gst_number: gstNumber,
+      p_pan_number: panNumber,
+      p_tax_scheme: taxScheme,
+      p_contact: {
+        primary_phone: primaryPhone,
+        whatsapp_number: whatsappNumber,
+        email: email || null,
+      } as unknown as Json,
+      p_location_name: "Main Store",
+      p_address_line1: addressLine1.trim(),
+      p_address_line2: addressLine2 ?? null,
+      p_city: city.trim(),
+      p_state: state.trim(),
+      p_postal_code: postalCode.trim(),
+      p_timings_answers: timingsAnswers as unknown as Json,
+      p_import_proposal_id: validated.proposalId,
+      p_source_format: validated.sourceFormat,
+      p_source_file_name: validated.sourceFileName ?? null,
+      p_default_modules: ["website_engine"],
+      p_catalogue_items: confirmedCatalogueItems as unknown as Json,
+      p_reviewed_fields_count: validated.fields.length,
+    },
   );
 
-  // 7. Insert confirmed catalogue items into public.catalogue_items
-  let catalogueItemsCreated = 0;
-  if (confirmedCatalogueItems.length > 0) {
-    type CatalogueItemInsert = Database["public"]["Tables"]["catalogue_items"]["Insert"];
-    const itemsToInsert: CatalogueItemInsert[] = confirmedCatalogueItems.map((item) => ({
-      business_id: setupResult.business.id,
-      location_id: setupResult.primaryLocation.id,
-      title: item.title,
-      description: item.description || null,
-      price_minor: item.priceMinor,
-      currency_code: item.currencyCode || "INR",
-      sku: item.sku || null,
-      is_available: true,
-    }));
-
-    const { error: catError } = await supabase.from("catalogue_items").insert(itemsToInsert);
-    if (!catError) {
-      catalogueItemsCreated = itemsToInsert.length;
+  if (rpcError) {
+    if (rpcError.code === "VY001") {
+      throw new BusinessError(
+        rpcError.message || "Workspace draft website limit reached. Please upgrade your plan.",
+        "CAPACITY_EXCEEDED",
+        403,
+      );
     }
+    if (rpcError.code === "VY020" || rpcError.code === "VY021") {
+      throw new BusinessError(
+        rpcError.message || "You do not have management permissions in the specified workspace",
+        "WORKSPACE_PERMISSION_DENIED",
+        403,
+      );
+    }
+    if (rpcError.code === "VY023") {
+      throw new BusinessError(
+        rpcError.message || "Validation failed for required import fields",
+        "INVALID_IMPORT_DATA",
+        400,
+      );
+    }
+    if (rpcError.code === "VY024") {
+      throw new BusinessError(
+        rpcError.message ||
+          `Import proposal '${validated.proposalId}' has already been confirmed and provisioned`,
+        "DUPLICATE_IMPORT_PROPOSAL",
+        409,
+      );
+    }
+    if (rpcError.code === "VY025") {
+      throw new BusinessError(
+        rpcError.message || "Validation failed for confirmed catalogue items",
+        "INVALID_CATALOGUE_ITEM",
+        400,
+      );
+    }
+    if (rpcError.code === "23505" || (rpcError.message && rpcError.message.includes("slug"))) {
+      throw new BusinessError("A business with this slug already exists", "SLUG_CONFLICT", 409);
+    }
+    throw new BusinessError(
+      rpcError.message || "Failed to confirm business import",
+      "IMPORT_PROVISION_FAILED",
+      500,
+    );
   }
 
-  // 8. Log structured audit event
-  await recordAuditEvent(supabase, {
-    businessId: setupResult.business.id,
-    workspaceId: validated.workspaceId,
-    actorUserId: callerUserId,
-    action: "business.import_confirmed",
-    resource: "businesses",
-    metadata: {
-      proposal_id: validated.proposalId,
-      source_format: validated.sourceFormat,
-      source_file_name: validated.sourceFileName || null,
-      total_fields_reviewed: validated.fields.length,
-      confirmed_catalogue_items: catalogueItemsCreated,
-      provisioned_business_id: setupResult.business.id,
-    },
-  });
+  if (rpcResult) {
+    const res = rpcResult as unknown as {
+      business: Database["public"]["Tables"]["businesses"]["Row"];
+      primary_location: Database["public"]["Tables"]["locations"]["Row"];
+      business_id: string;
+      location_id: string;
+      catalogue_items_created: number;
+      audit_log_action: string;
+    };
 
-  return {
-    business: setupResult.business,
-    primaryLocation: setupResult.primaryLocation,
-    catalogueItemsCreated,
-    auditLogAction: "business.import_confirmed",
-  };
+    return {
+      business: res.business,
+      primaryLocation: res.primary_location,
+      catalogueItemsCreated: res.catalogue_items_created,
+      auditLogAction: res.audit_log_action,
+    };
+  }
+
+  throw new BusinessError(
+    "Import confirmation RPC returned empty response",
+    "EMPTY_RPC_RESPONSE",
+    500,
+  );
 }
