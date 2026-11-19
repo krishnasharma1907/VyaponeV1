@@ -4,7 +4,36 @@ Record implementation changes by task ID. Do not record planned work as complete
 
 ## Unreleased
 
-### [VO-034] — Build Business Import and Confirmation Review (2026-11-19)
+### [VO-040] — Define Website Configuration Schema (2026-11-19)
+- Defined versioned JSON schema and immutable database model for component-based websites (PRD FINAL v2 §6.14, §15.3, §16, §17):
+  - **Assembled Blocks Only (PRD FINAL v2 §15.3):**
+    - Established canonical library of 13 approved block types: `hero`, `about`, `menu`, `catalogue_grid`, `gallery`, `booking_form`, `pricing`, `reviews`, `offers`, `location_map`, `contact`, `faq`, `footer`.
+    - Strict server-side schema rejects unapproved blocks, script tags, and raw HTML injection vectors.
+  - **Dynamic Catalogue Data Bindings:**
+    - Guaranteed server-owned operational facts: prices are never hardcoded in the configuration JSON.
+    - `menu`, `catalogue_grid`, and `pricing` blocks dynamically bind to operational data via `source: "catalogue"`.
+    - `location_map` dynamically references `business.primary_location` source of truth.
+  - **Theme & Design Tokens:**
+    - Validated `#RRGGBB` 6-character hex colors, typography tokens (Inter, Plus Jakarta Sans), and border radii.
+    - Initialized canonical themes: `emerald-marigold` (default) and `warm-terracotta`.
+  - **Database Migration & Immutable Versioning (`20261119000003_website_configuration_schema.sql`):**
+    - Hardened preflight qualification: revoked `service_role` execute grants on `create_business_with_setup_atomic` and `confirm_business_import_atomic`, guaranteeing session authentication.
+    - Created `public.site_versions` table with unique constraint `(site_id, version_number)` and sequential numbering (`version_number > 0`).
+    - Added `current_draft_version_id` and foreign key constraint `fk_sites_published_version` on `public.sites`.
+    - PostgreSQL immutability trigger (`trg_prevent_site_version_modification`) prevents mutation or deletion of historical/published versions.
+    - Dual-layer tenant isolation: Row-Level Security enabled and forced on `public.site_versions`.
+  - **Media Isolation Invariant (VO-032):**
+    - Draft configurations safely reference private quarantine media assets.
+    - Tenant ownership is verified for all referenced media items (favicon, logo, ogImage, section images) before persisting versions.
+  - **Versioning & Migration Engine (`src/lib/websites/versioning.ts`):**
+    - Standardized on `v1` schema with deterministic version detection and validation.
+  - **Service Layer & Authenticated Server Actions (`src/lib/websites/service.ts`, `src/lib/websites/actions.ts`):**
+    - Implemented `getSiteByBusinessId`, `getSiteById`, `getSiteVersions`, `getSiteConfiguration`, `saveSiteDraftConfiguration`.
+    - Automatic `site.version_created` audit event logging.
+    - Server Actions with error sanitization and path revalidation (`/dashboard/website`, `/workspace/clients`).
+  - **Verification & Documentation:**
+    - Added `docs/WEBSITE_CONFIGURATION_SCHEMA.md`.
+    - 53 dedicated unit and migration tests passing across 5 test suites (migration, schemas, versioning, service, actions).
 - Implemented multi-format business import with human-in-the-loop review and confirmation:
   - **Strict Confirmation Invariant:**
     - Every extracted price, timing, address, tax identifier, and material fact strictly starts in "unconfirmed" (`To Confirm`) state.

@@ -272,13 +272,13 @@
 
 **Goal:** Create safe, versioned, component-based websites generated and edited from structured configuration.
 
-### [ ] VO-040 — Define website configuration schema
+### [x] VO-040 — Define website configuration schema
 
 **Scope:** Define versioned JSON schema for site metadata, theme tokens, pages, ordered sections, approved block types, properties, module bindings and publish version.
 
 **Acceptance:** Schema validates good configurations and rejects unknown/unsafe properties; migrations/versioning strategy documented.
 
-**Status:** `NOT_STARTED`
+**Status:** `DONE`
 
 ### [ ] VO-041 — Build approved block library foundation
 

@@ -201,6 +201,7 @@ export function createCanonicalDemoDataset(): DemoDataset {
     primary_domain: null,
     subdomain: "kaveri-silks",
     published_version_id: "ver_0001",
+    current_draft_version_id: null,
     status: "published",
     created_at: DEMO_TIMESTAMP,
     updated_at: DEMO_TIMESTAMP,

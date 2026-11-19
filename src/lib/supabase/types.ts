@@ -526,6 +526,7 @@ export interface Database {
           primary_domain: string | null;
           subdomain: string;
           published_version_id: string | null;
+          current_draft_version_id: string | null;
           status: "draft" | "published" | "suspended" | "archived";
           created_at: string;
           updated_at: string;
@@ -536,6 +537,7 @@ export interface Database {
           primary_domain?: string | null;
           subdomain: string;
           published_version_id?: string | null;
+          current_draft_version_id?: string | null;
           status?: "draft" | "published" | "suspended" | "archived";
           created_at?: string;
           updated_at?: string;
@@ -546,6 +548,7 @@ export interface Database {
           primary_domain?: string | null;
           subdomain?: string;
           published_version_id?: string | null;
+          current_draft_version_id?: string | null;
           status?: "draft" | "published" | "suspended" | "archived";
           created_at?: string;
           updated_at?: string;
@@ -555,6 +558,61 @@ export interface Database {
             foreignKeyName: "sites_business_id_fkey";
             columns: ["business_id"];
             isOneToOne: true;
+            referencedRelation: "businesses";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+
+      site_versions: {
+        Row: {
+          id: string;
+          site_id: string;
+          business_id: string;
+          version_number: number;
+          schema_version: string;
+          configuration: Json;
+          change_summary: string | null;
+          created_by: string | null;
+          created_at: string;
+          published_at: string | null;
+        };
+        Insert: {
+          id?: string;
+          site_id: string;
+          business_id: string;
+          version_number: number;
+          schema_version?: string;
+          configuration: Json;
+          change_summary?: string | null;
+          created_by?: string | null;
+          created_at?: string;
+          published_at?: string | null;
+        };
+        Update: {
+          id?: string;
+          site_id?: string;
+          business_id?: string;
+          version_number?: number;
+          schema_version?: string;
+          configuration?: Json;
+          change_summary?: string | null;
+          created_by?: string | null;
+          created_at?: string;
+          published_at?: string | null;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "site_versions_site_id_fkey";
+            columns: ["site_id"];
+            isOneToOne: false;
+            referencedRelation: "sites";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "site_versions_business_id_fkey";
+            columns: ["business_id"];
+            isOneToOne: false;
             referencedRelation: "businesses";
             referencedColumns: ["id"];
           },

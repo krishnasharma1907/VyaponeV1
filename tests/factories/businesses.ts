@@ -84,6 +84,7 @@ export function createTestSite(overrides: Partial<TableRow<"sites">> = {}): Tabl
     primary_domain: null,
     subdomain: `store-${id}`,
     published_version_id: null,
+    current_draft_version_id: null,
     status: "published",
     created_at: BASE_TEST_TIMESTAMP,
     updated_at: BASE_TEST_TIMESTAMP,

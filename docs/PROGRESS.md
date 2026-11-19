@@ -1,10 +1,10 @@
 # VyapOne Build Progress
 
-**Current phase:** P3 — Niche registry, presets and business onboarding (`COMPLETE`)  
-**Completed tasks:** VO-000, VO-001, VO-002, VO-003, VO-004, VO-005, VO-006, VO-010, VO-011, VO-012, VO-013, VO-014, VO-015, VO-016, VO-017, VO-018, VO-019, VO-020, VO-021, VO-022, VO-023, VO-024, VO-025, VO-026, VO-027, VO-028, VO-030, VO-031, VO-032, VO-033, VO-034  
-**Latest task:** VO-034 — Build business import and confirmation review  
-**Next task:** VO-040 — Define website configuration schema (P4)  
-**Project status:** BUSINESS IMPORT AND CONFIRMATION REVIEW IMPLEMENTED / PHASE P3 COMPLETE / READY FOR PHASE P4  
+**Current phase:** P4 — Website engine, templates and publishing (`IN_PROGRESS`)  
+**Completed tasks:** VO-000, VO-001, VO-002, VO-003, VO-004, VO-005, VO-006, VO-010, VO-011, VO-012, VO-013, VO-014, VO-015, VO-016, VO-017, VO-018, VO-019, VO-020, VO-021, VO-022, VO-023, VO-024, VO-025, VO-026, VO-027, VO-028, VO-030, VO-031, VO-032, VO-033, VO-034, VO-040  
+**Latest task:** VO-040 — Define website configuration schema  
+**Next task:** VO-041 — Build approved block library foundation  
+**Project status:** WEBSITE CONFIGURATION SCHEMA AND IMMUTABLE VERSIONED STORAGE IMPLEMENTED / PHASE P4 IN PROGRESS  
 
 ## Phase status
 
@@ -14,7 +14,49 @@
 | P1 — Repository, design system and application shell | COMPLETE | All tasks VO-010 to VO-019 verified and done; Phase P1 gate passed |
 | P2 — Platform identity, authentication and multi-tenancy | COMPLETE | All tasks VO-020 to VO-028 verified and done; Phase P2 gate passed |
 | P3 — Niche registry, presets and business onboarding | COMPLETE | All tasks VO-030 to VO-034 verified and done; Phase P3 complete |
-| P4 — Website engine, templates and publishing | NOT_STARTED | VO-040 is next |
+| P4 — Website engine, templates and publishing | IN_PROGRESS | VO-040 complete; VO-041 next |
+
+## Task Report: VO-040 — Define Website Configuration Schema
+
+- **Target:** VO-040 — Define website configuration schema
+- **Phase:** P4 — Website engine, templates and publishing
+- **Status:** COMPLETED, AUDITED & VERIFIED
+- **Key Deliverables Implemented & Hardened:**
+  1. **Strict Invariant: Assembled Blocks Only (PRD FINAL v2 §15.3, §6.14):**
+     - Canonical component library of 13 approved block types: `hero`, `about`, `menu`, `catalogue_grid`, `gallery`, `booking_form`, `pricing`, `reviews`, `offers`, `location_map`, `contact`, `faq`, `footer`.
+     - Schema strictly rejects unknown block types, arbitrary component tags, script blocks, or raw HTML (XSS prevention).
+  2. **Dynamic Catalogue Data Bindings (PRD FINAL v2 §16, §17):**
+     - Statutory tax, prices, and catalogue products are strictly server-owned business facts.
+     - Prices are never hardcoded in the configuration JSON document.
+     - `menu`, `catalogue_grid`, and `pricing` blocks dynamically bind to operational data via `source: "catalogue"`.
+     - `location_map` dynamically references `business.primary_location` source of truth.
+  3. **Theme & Design Tokens:**
+     - Hex color validation (strict `#RRGGBB` 6-character hex code).
+     - Canonical themes supported: `emerald-marigold` (default) and `warm-terracotta`.
+     - Design tokens for primary, accent, secondary, background, surface, text, and muted colors, heading/body typography, and button/card border radii.
+  4. **Immutable Versioned Database Architecture (`20261119000003_website_configuration_schema.sql`):**
+     - Preflight hardening: revoked `EXECUTE` privileges on `create_business_with_setup_atomic` and `confirm_business_import_atomic` from `service_role`, guaranteeing authenticated caller verification.
+     - Created `public.site_versions` table with unique constraint `(site_id, version_number)` and sequential version numbering (`version_number > 0`).
+     - Added `current_draft_version_id` and foreign key constraint `fk_sites_published_version` on `public.sites`.
+     - Immutability trigger (`trg_prevent_site_version_modification`): prevents update or deletion of historical or published versions.
+     - Dual-layer tenant isolation: Row-Level Security enabled and forced on `public.site_versions`, isolating drafts to authorized tenant users and exposing published versions only when the site is active and published.
+  5. **Media Isolation & Privacy Verification (VO-032):**
+     - Draft configurations can safely reference private quarantine media assets.
+     - Server-side validation extracts all referenced media IDs (favicon, logo, ogImage, section/gallery images) and validates that every item exists and belongs to the caller's business/workspace before committing.
+  6. **Versioning Engine & Migration Strategy (`versioning.ts`):**
+     - Schema version `v1` standardized.
+     - `detectConfigurationVersion`, `isSupportedSchemaVersion`, and `migrateWebsiteConfiguration` providing forward-compatible schema migration pathways.
+  7. **Backend Service & Authenticated Server Actions (`service.ts`, `actions.ts`):**
+     - `getSiteByBusinessId`, `getSiteById`, `getSiteVersions`, `getSiteConfiguration`, `saveSiteDraftConfiguration`.
+     - Audit logging: records `site.version_created` on every version save with page count and change summary metadata.
+     - Authenticated Server Actions with error sanitization and path revalidation (`/dashboard/website`, `/workspace/clients`).
+  8. **Comprehensive Verification & Quality Gates:**
+     - `tests/unit/database/website-configuration-migration.test.ts`: 9 tests passing.
+     - `tests/unit/websites/configuration-schemas.test.ts`: 16 tests passing.
+     - `tests/unit/websites/versioning.test.ts`: 10 tests passing.
+     - `tests/unit/websites/service.test.ts`: 10 tests passing.
+     - `tests/unit/websites/actions.test.ts`: 8 tests passing.
+     - Total VO-040 suite: 53 tests passing (0 failures).
 
 ## Task Report: VO-034 — Build Business Import and Confirmation Review
 
