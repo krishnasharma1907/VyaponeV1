@@ -79,9 +79,9 @@ Theme definitions conform to VyapOne brand guidelines with pre-calibrated palett
 
 ---
 
-## 4. Database Model & Migration (`20261119000003`)
+## 4. Database Model & Migrations (`20261119000003` & `20261119000004`)
 
-### `public.site_versions` Table
+### `public.site_versions` Table & Composite Integrity Constraints (Audit B)
 
 ```sql
 CREATE TABLE public.site_versions (
@@ -97,25 +97,59 @@ CREATE TABLE public.site_versions (
   published_at TIMESTAMPTZ,
   CONSTRAINT uq_site_versions_site_version UNIQUE (site_id, version_number)
 );
+
+-- Composite Relationship Integrity (Audit B):
+-- 1. Sites composite uniqueness
+ALTER TABLE public.sites ADD CONSTRAINT uq_sites_id_business_id UNIQUE (id, business_id);
+
+-- 2. Versions composite foreign key ensuring version business strictly matches site business
+ALTER TABLE public.site_versions ADD CONSTRAINT fk_site_versions_site_business
+  FOREIGN KEY (site_id, business_id) REFERENCES public.sites(id, business_id) ON DELETE CASCADE;
+
+-- 3. Version site composite uniqueness
+ALTER TABLE public.site_versions ADD CONSTRAINT uq_site_versions_site_id_id UNIQUE (site_id, id);
+
+-- 4. Sites pointer composite foreign keys guaranteeing pointers reference versions of the SAME site
+ALTER TABLE public.sites ADD CONSTRAINT fk_sites_current_draft_version
+  FOREIGN KEY (id, current_draft_version_id) REFERENCES public.site_versions(site_id, id) ON DELETE SET NULL;
+
+ALTER TABLE public.sites ADD CONSTRAINT fk_sites_published_version
+  FOREIGN KEY (id, published_version_id) REFERENCES public.site_versions(site_id, id) ON DELETE SET NULL;
 ```
 
-### Pointer Management on `public.sites`
+### Pointer Privilege Restrictions (Audit C)
 
-- `current_draft_version_id UUID REFERENCES public.site_versions(id)`
-- `published_version_id UUID REFERENCES public.site_versions(id)`
+Direct client column-level `UPDATE` and `INSERT` privileges on `current_draft_version_id` and `published_version_id` are revoked from `authenticated`, `anon`, and `PUBLIC`:
+```sql
+REVOKE UPDATE (current_draft_version_id, published_version_id) ON public.sites FROM authenticated, anon, PUBLIC;
+REVOKE INSERT (current_draft_version_id, published_version_id) ON public.sites FROM authenticated, anon, PUBLIC;
+```
+Version pointers can only be updated via authorized server-controlled transactions.
 
-### Immutability Trigger
+### Hardened Version Immutability & Lifecycle Trigger (Audit D)
 
-An explicit `BEFORE UPDATE OR DELETE` PostgreSQL trigger (`trg_prevent_site_version_modification`) halts any write mutation or deletion on historical or published versions.
+An explicit `BEFORE UPDATE OR DELETE` PostgreSQL trigger (`trg_prevent_site_version_modification` on `prevent_site_version_modification()`) enforces:
+1. Core configuration and metadata immutability: Rejects any update to `site_id`, `business_id`, `version_number`, `schema_version`, `configuration`, `created_at`, `created_by`, or `change_summary`.
+2. Lifecycle control: Only permits a one-way transition of `published_at` from `NULL` to non-null during publication.
+3. Deletion safeguards: Prohibits deleting published versions or versions actively referenced as `current_draft_version_id` or `published_version_id`.
 
 ---
 
-## 5. Security Preflight & Permissions
+## 5. Security & Transactional Architecture (Audit A, E, F, G)
 
-1. **RPC Service Role Revocation:**
-   In compliance with security preflight qualification, `REVOKE EXECUTE ... FROM service_role` was applied to `create_business_with_setup_atomic` and `confirm_business_import_atomic`, preventing service-role caller spoofing and ensuring all writes authenticate via verified sessions (`auth.uid()`).
+1. **RPC Service Role Revocation (Audit Preflight):**
+   `REVOKE EXECUTE ... FROM service_role` is enforced on `create_business_with_setup_atomic` and `confirm_business_import_atomic`, preventing service-role caller spoofing and ensuring all writes authenticate via verified sessions (`auth.uid()`).
 
-2. **Least Privilege Grants on `site_versions`:**
+2. **Atomic Draft Save Transaction (`save_site_draft_configuration_atomic`):**
+   Draft creation executes inside a genuine PostgreSQL transaction via `save_site_draft_configuration_atomic`:
+   - **Row Locking (`FOR UPDATE OF s`):** Row-locks `public.sites` to serialize concurrent draft saves for the same site and prevent version numbering race conditions.
+   - **Caller Identity Verification:** Validates `auth.uid() = p_caller_user_id` and confirms the caller user record exists in `public.users`.
+   - **Business Authorization:** Enforces `public.can_manage_business(p_business_id, p_caller_user_id)`.
+   - **Media Readiness & Category Verification (Audit E):** Verifies all referenced media items have `status = 'ready'`, `verified_at IS NOT NULL`, belong to the target tenant, and belong to approved website categories (`business_logo`, `catalogue_image`, `website_asset`, `onboarding_upload`). Unverified or quarantine documents are rejected.
+   - **Atomic Insertion & Pointer Update:** Atomically increments version number, inserts into `public.site_versions`, updates `sites.current_draft_version_id`, and writes an audit event to `public.audit_logs` (`site.version_created`).
+   - **Grants:** `SECURITY DEFINER`, `search_path = ''`, owned by `postgres`, revoked from `PUBLIC, anon, service_role`, granted to `authenticated`.
+
+3. **Least Privilege Grants on `site_versions`:**
    - `PUBLIC` and `anon`: Revoked all default privileges.
    - `anon`: `SELECT` permitted only on published versions of published sites.
    - `authenticated`: `SELECT`, `INSERT`, and `DELETE` (un-published drafts only) governed by RLS.

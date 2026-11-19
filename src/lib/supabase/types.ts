@@ -1749,6 +1749,18 @@ export interface Database {
         };
         Returns: string;
       };
+      save_site_draft_configuration_atomic: {
+        Args: {
+          p_site_id: string;
+          p_business_id: string;
+          p_caller_user_id: string;
+          p_schema_version: string;
+          p_configuration: Json;
+          p_change_summary?: string | null;
+          p_referenced_media_ids?: string[] | null;
+        };
+        Returns: Json;
+      };
     };
     Enums: {
       [_ in never]: never;

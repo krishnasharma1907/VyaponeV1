@@ -33,7 +33,13 @@ Record implementation changes by task ID. Do not record planned work as complete
     - Server Actions with error sanitization and path revalidation (`/dashboard/website`, `/workspace/clients`).
   - **Verification & Documentation:**
     - Added `docs/WEBSITE_CONFIGURATION_SCHEMA.md`.
-    - 53 dedicated unit and migration tests passing across 5 test suites (migration, schemas, versioning, service, actions).
+    - 61 dedicated unit and migration tests passing across 5 test suites (migration, schemas, versioning, service, actions).
+  - **Corrective Audit & Database Integrity Hardening (`20261119000004_website_version_integrity_and_atomic_draft.sql`):**
+    - **Atomic Transactional Draft RPC (`save_site_draft_configuration_atomic`):** Replaced non-transactional round-trips with a genuine single PostgreSQL transaction. Employs row locking (`FOR UPDATE OF s`) to serialize concurrent draft saves, eliminates version-number races, verifies session caller identity (`auth.uid() = p_caller_user_id`), enforces business RBAC (`can_manage_business`), validates media readiness, creates immutable version, updates site draft pointer, and logs `site.version_created` audit event.
+    - **Composite Relationship Integrity (Audit B):** Enforced that `site_versions(business_id)` strictly matches `sites(business_id)` via `fk_site_versions_site_business` and that version pointers (`current_draft_version_id`, `published_version_id`) strictly reference versions of the SAME site via composite foreign keys `(id, current_draft_version_id) -> site_versions(site_id, id)` and `(id, published_version_id) -> site_versions(site_id, id)`.
+    - **Restricted Pointer Privileges (Audit C):** Revoked direct column-level `UPDATE` and `INSERT` privileges on `current_draft_version_id` and `published_version_id` from `authenticated`, `anon`, and `PUBLIC`.
+    - **Hardened Version Immutability & Lifecycle Control (Audit D):** Prohibits tampering with historical version configuration and metadata, permits only one-way `published_at` transition from `NULL` to non-null upon publishing, and prevents deleting published versions or active pointer versions.
+    - **Media Readiness & Category Verification (Audit E):** Enforces media items have `status = 'ready'`, `verified_at IS NOT NULL`, belong to the target tenant, and belong to approved website categories (`business_logo`, `catalogue_image`, `website_asset`, `onboarding_upload`). Rejects unverified uploads and quarantine document attachments.
 - Implemented multi-format business import with human-in-the-loop review and confirmation:
   - **Strict Confirmation Invariant:**
     - Every extracted price, timing, address, tax identifier, and material fact strictly starts in "unconfirmed" (`To Confirm`) state.

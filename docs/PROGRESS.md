@@ -48,15 +48,21 @@
      - `detectConfigurationVersion`, `isSupportedSchemaVersion`, and `migrateWebsiteConfiguration` providing forward-compatible schema migration pathways.
   7. **Backend Service & Authenticated Server Actions (`service.ts`, `actions.ts`):**
      - `getSiteByBusinessId`, `getSiteById`, `getSiteVersions`, `getSiteConfiguration`, `saveSiteDraftConfiguration`.
-     - Audit logging: records `site.version_created` on every version save with page count and change summary metadata.
+     - Atomic transaction execution via RPC `save_site_draft_configuration_atomic` with database-level audit logging.
      - Authenticated Server Actions with error sanitization and path revalidation (`/dashboard/website`, `/workspace/clients`).
-  8. **Comprehensive Verification & Quality Gates:**
-     - `tests/unit/database/website-configuration-migration.test.ts`: 9 tests passing.
+  8. **Corrective Audit & Database Integrity Hardening (`20261119000004_website_version_integrity_and_atomic_draft.sql`):**
+     - **Atomic Transactional Draft RPC (`save_site_draft_configuration_atomic`):** Replaced non-transactional round-trips with genuine single PostgreSQL transaction. Employs row locking (`FOR UPDATE OF s`) to serialize concurrent draft saves, eliminates version-number races, verifies session caller identity (`auth.uid() = p_caller_user_id`), enforces business RBAC (`can_manage_business`), validates media readiness, creates immutable version, updates site draft pointer, and logs `site.version_created` audit event.
+     - **Composite Relationship Integrity (Audit B):** Enforced that `site_versions(business_id)` strictly matches `sites(business_id)` via `fk_site_versions_site_business` and that version pointers (`current_draft_version_id`, `published_version_id`) strictly reference versions of the SAME site via composite foreign keys `(id, current_draft_version_id) -> site_versions(site_id, id)` and `(id, published_version_id) -> site_versions(site_id, id)`.
+     - **Restricted Pointer Privileges (Audit C):** Revoked direct column-level `UPDATE` and `INSERT` privileges on `current_draft_version_id` and `published_version_id` from `authenticated`, `anon`, and `PUBLIC`.
+     - **Hardened Version Immutability & Lifecycle Control (Audit D):** Prohibits tampering with historical version configuration and metadata, permits only one-way `published_at` transition from `NULL` to non-null upon publishing, and prevents deleting published versions or active pointer versions.
+     - **Media Readiness & Category Verification (Audit E):** Enforces media items have `status = 'ready'`, `verified_at IS NOT NULL`, belong to the target tenant, and belong to approved website categories (`business_logo`, `catalogue_image`, `website_asset`, `onboarding_upload`). Rejects unverified uploads and quarantine document attachments.
+  9. **Comprehensive Verification & Quality Gates:**
+     - `tests/unit/database/website-configuration-migration.test.ts`: 11 tests passing.
      - `tests/unit/websites/configuration-schemas.test.ts`: 16 tests passing.
      - `tests/unit/websites/versioning.test.ts`: 10 tests passing.
-     - `tests/unit/websites/service.test.ts`: 10 tests passing.
+     - `tests/unit/websites/service.test.ts`: 16 tests passing.
      - `tests/unit/websites/actions.test.ts`: 8 tests passing.
-     - Total VO-040 suite: 53 tests passing (0 failures).
+     - Total VO-040 suite: 61 tests passing (0 failures).
 
 ## Task Report: VO-034 — Build Business Import and Confirmation Review
 

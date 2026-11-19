@@ -7,19 +7,13 @@ import {
   saveSiteDraftConfiguration,
 } from "@/lib/websites/service";
 import { assertBusinessAccess } from "@/lib/auth/tenant-access";
-import { recordAuditEvent } from "@/lib/audit/service";
 import { buildInitialWebsiteConfiguration } from "@/lib/websites/defaults";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/lib/supabase/types";
 import type { BusinessMemberRow, BusinessRow } from "@/lib/businesses/types";
-import type { SiteRow, SiteVersionRow } from "@/lib/websites/types";
 
 vi.mock("@/lib/auth/tenant-access", () => ({
   assertBusinessAccess: vi.fn(),
-}));
-
-vi.mock("@/lib/audit/service", () => ({
-  recordAuditEvent: vi.fn(),
 }));
 
 describe("VO-040 Website Service Layer", () => {
@@ -257,7 +251,7 @@ describe("VO-040 Website Service Layer", () => {
   });
 
   describe("saveSiteDraftConfiguration", () => {
-    it("creates a new sequential version, verifies media ownership, updates site pointer, and logs audit event", async () => {
+    it("creates a new sequential version atomically via RPC, verifying media and updating site pointer", async () => {
       const validMediaId = "00000000-0000-4000-8000-000000000099";
       const configWithMedia = {
         ...sampleConfig,
@@ -268,8 +262,36 @@ describe("VO-040 Website Service Layer", () => {
       };
 
       const newVersionId = "00000000-0000-4000-8000-000000000006";
-      let insertedVersion: SiteVersionRow | null = null;
-      let updatedSiteData: Partial<SiteRow> | null = null;
+      const mockRpcResponse = {
+        version: {
+          id: newVersionId,
+          site_id: mockSiteId,
+          business_id: mockBusinessId,
+          version_number: 3,
+          schema_version: "v1",
+          configuration: configWithMedia,
+          change_summary: "Updated header with official logo",
+          created_by: mockUserId,
+          created_at: "2026-11-19T10:05:00Z",
+          published_at: null,
+        },
+        site: {
+          ...sampleSite,
+          current_draft_version_id: newVersionId,
+          updated_at: "2026-11-19T10:05:00Z",
+        },
+      };
+
+      const mockRpc = vi.fn(async (funcName: string, args: Record<string, unknown>) => {
+        expect(funcName).toBe("save_site_draft_configuration_atomic");
+        expect(args.p_site_id).toBe(mockSiteId);
+        expect(args.p_business_id).toBe(mockBusinessId);
+        expect(args.p_caller_user_id).toBe(mockUserId);
+        expect(args.p_schema_version).toBe("v1");
+        expect(args.p_change_summary).toBe("Updated header with official logo");
+        expect(args.p_referenced_media_ids).toEqual([validMediaId]);
+        return { data: mockRpcResponse, error: null };
+      });
 
       const mockSupabase = {
         from: vi.fn((table: string) => {
@@ -280,19 +302,6 @@ describe("VO-040 Website Service Layer", () => {
                   maybeSingle: vi.fn(async () => ({ data: sampleSite, error: null })),
                 })),
               })),
-              update: vi.fn((payload: unknown) => {
-                updatedSiteData = payload as Partial<SiteRow>;
-                return {
-                  eq: vi.fn(() => ({
-                    select: vi.fn(() => ({
-                      single: vi.fn(async () => ({
-                        data: { ...sampleSite, ...(payload as object) },
-                        error: null,
-                      })),
-                    })),
-                  })),
-                };
-              }),
             };
           }
           if (table === "media_items") {
@@ -304,6 +313,9 @@ describe("VO-040 Website Service Layer", () => {
                       id: validMediaId,
                       business_id: mockBusinessId,
                       workspace_id: mockWorkspaceId,
+                      status: "ready",
+                      verified_at: "2026-11-19T10:00:00Z",
+                      category: "business_logo",
                     },
                   ],
                   error: null,
@@ -311,35 +323,9 @@ describe("VO-040 Website Service Layer", () => {
               })),
             };
           }
-          if (table === "site_versions") {
-            return {
-              select: vi.fn(() => ({
-                eq: vi.fn(() => ({
-                  order: vi.fn(() => ({
-                    limit: vi.fn(async () => ({
-                      data: [{ version_number: 2 }],
-                    })),
-                  })),
-                })),
-              })),
-              insert: vi.fn((payload: unknown) => {
-                insertedVersion = {
-                  id: newVersionId,
-                  ...(payload as object),
-                } as unknown as SiteVersionRow;
-                return {
-                  select: vi.fn(() => ({
-                    single: vi.fn(async () => ({
-                      data: insertedVersion,
-                      error: null,
-                    })),
-                  })),
-                };
-              }),
-            };
-          }
           return {} as unknown as ReturnType<SupabaseClient<Database>["from"]>;
         }),
+        rpc: mockRpc,
       } as unknown as SupabaseClient<Database>;
 
       const result = await saveSiteDraftConfiguration(mockSupabase, mockUserId, {
@@ -348,29 +334,11 @@ describe("VO-040 Website Service Layer", () => {
         changeSummary: "Updated header with official logo",
       });
 
-      expect(insertedVersion!.version_number).toBe(3); // 2 + 1
-      expect(insertedVersion!.site_id).toBe(mockSiteId);
-      expect(insertedVersion!.business_id).toBe(mockBusinessId);
-      expect(updatedSiteData!.current_draft_version_id).toBe(newVersionId);
-
-      expect(recordAuditEvent).toHaveBeenCalledWith(
-        mockSupabase,
-        expect.objectContaining({
-          businessId: mockBusinessId,
-          actorUserId: mockUserId,
-          action: "site.version_created",
-          resource: "site",
-          metadata: expect.objectContaining({
-            site_id: mockSiteId,
-            version_id: newVersionId,
-            version_number: 3,
-            change_summary: "Updated header with official logo",
-          }),
-        }),
-      );
-
+      expect(mockRpc).toHaveBeenCalledTimes(1);
       expect(result.version.id).toBe(newVersionId);
+      expect(result.version.version_number).toBe(3);
       expect(result.site.current_draft_version_id).toBe(newVersionId);
+      expect(result.configuration.siteId).toBe(mockSiteId);
     });
 
     it("rejects saving if siteId does not match configuration siteId", async () => {
@@ -382,6 +350,7 @@ describe("VO-040 Website Service Layer", () => {
             })),
           })),
         })),
+        rpc: vi.fn(),
       } as unknown as SupabaseClient<Database>;
 
       const mismatchedConfig = {
@@ -396,6 +365,81 @@ describe("VO-040 Website Service Layer", () => {
         }),
       ).rejects.toMatchObject({
         code: "SITE_ID_MISMATCH",
+        statusCode: 400,
+      });
+    });
+
+    it("rejects saving if businessId does not match site business owner", async () => {
+      const mockSupabase = {
+        from: vi.fn(() => ({
+          select: vi.fn(() => ({
+            eq: vi.fn(() => ({
+              maybeSingle: vi.fn(async () => ({ data: sampleSite, error: null })),
+            })),
+          })),
+        })),
+        rpc: vi.fn(),
+      } as unknown as SupabaseClient<Database>;
+
+      const mismatchedConfig = {
+        ...sampleConfig,
+        businessId: "00000000-0000-4000-8000-999999999999",
+      };
+
+      await expect(
+        saveSiteDraftConfiguration(mockSupabase, mockUserId, {
+          siteId: mockSiteId,
+          configuration: mismatchedConfig,
+        }),
+      ).rejects.toMatchObject({
+        code: "BUSINESS_ID_MISMATCH",
+        statusCode: 400,
+      });
+    });
+
+    it("rejects saving if referenced media item does not exist", async () => {
+      const nonExistentMediaId = "00000000-0000-4000-8000-777777777777";
+      const configWithMissingMedia = {
+        ...sampleConfig,
+        header: {
+          ...sampleConfig.header,
+          logoMediaId: nonExistentMediaId,
+        },
+      };
+
+      const mockSupabase = {
+        from: vi.fn((table: string) => {
+          if (table === "sites") {
+            return {
+              select: vi.fn(() => ({
+                eq: vi.fn(() => ({
+                  maybeSingle: vi.fn(async () => ({ data: sampleSite, error: null })),
+                })),
+              })),
+            };
+          }
+          if (table === "media_items") {
+            return {
+              select: vi.fn(() => ({
+                in: vi.fn(async () => ({
+                  data: [],
+                  error: null,
+                })),
+              })),
+            };
+          }
+          return {} as unknown as ReturnType<SupabaseClient<Database>["from"]>;
+        }),
+        rpc: vi.fn(),
+      } as unknown as SupabaseClient<Database>;
+
+      await expect(
+        saveSiteDraftConfiguration(mockSupabase, mockUserId, {
+          siteId: mockSiteId,
+          configuration: configWithMissingMedia,
+        }),
+      ).rejects.toMatchObject({
+        code: "MEDIA_NOT_FOUND",
         statusCode: 400,
       });
     });
@@ -430,6 +474,9 @@ describe("VO-040 Website Service Layer", () => {
                       id: foreignMediaId,
                       business_id: "other-foreign-business-id",
                       workspace_id: "other-foreign-workspace-id",
+                      status: "ready",
+                      verified_at: "2026-11-19T10:00:00Z",
+                      category: "business_logo",
                     },
                   ],
                   error: null,
@@ -439,6 +486,7 @@ describe("VO-040 Website Service Layer", () => {
           }
           return {} as unknown as ReturnType<SupabaseClient<Database>["from"]>;
         }),
+        rpc: vi.fn(),
       } as unknown as SupabaseClient<Database>;
 
       await expect(
@@ -449,6 +497,176 @@ describe("VO-040 Website Service Layer", () => {
       ).rejects.toMatchObject({
         code: "MEDIA_ISOLATION_VIOLATION",
         statusCode: 403,
+      });
+    });
+
+    it("rejects saving if referenced media item is unverified or not ready (Audit E)", async () => {
+      const unverifiedMediaId = "00000000-0000-4000-8000-666666666666";
+      const configWithUnverifiedMedia = {
+        ...sampleConfig,
+        header: {
+          ...sampleConfig.header,
+          logoMediaId: unverifiedMediaId,
+        },
+      };
+
+      const mockSupabase = {
+        from: vi.fn((table: string) => {
+          if (table === "sites") {
+            return {
+              select: vi.fn(() => ({
+                eq: vi.fn(() => ({
+                  maybeSingle: vi.fn(async () => ({ data: sampleSite, error: null })),
+                })),
+              })),
+            };
+          }
+          if (table === "media_items") {
+            return {
+              select: vi.fn(() => ({
+                in: vi.fn(async () => ({
+                  data: [
+                    {
+                      id: unverifiedMediaId,
+                      business_id: mockBusinessId,
+                      workspace_id: mockWorkspaceId,
+                      status: "pending_upload",
+                      verified_at: null,
+                      category: "business_logo",
+                    },
+                  ],
+                  error: null,
+                })),
+              })),
+            };
+          }
+          return {} as unknown as ReturnType<SupabaseClient<Database>["from"]>;
+        }),
+        rpc: vi.fn(),
+      } as unknown as SupabaseClient<Database>;
+
+      await expect(
+        saveSiteDraftConfiguration(mockSupabase, mockUserId, {
+          siteId: mockSiteId,
+          configuration: configWithUnverifiedMedia,
+        }),
+      ).rejects.toMatchObject({
+        code: "MEDIA_NOT_READY",
+        statusCode: 400,
+      });
+    });
+
+    it("rejects saving if referenced media has an unapproved category (Audit E)", async () => {
+      const docMediaId = "00000000-0000-4000-8000-555555555555";
+      const configWithDocMedia = {
+        ...sampleConfig,
+        header: {
+          ...sampleConfig.header,
+          logoMediaId: docMediaId,
+        },
+      };
+
+      const mockSupabase = {
+        from: vi.fn((table: string) => {
+          if (table === "sites") {
+            return {
+              select: vi.fn(() => ({
+                eq: vi.fn(() => ({
+                  maybeSingle: vi.fn(async () => ({ data: sampleSite, error: null })),
+                })),
+              })),
+            };
+          }
+          if (table === "media_items") {
+            return {
+              select: vi.fn(() => ({
+                in: vi.fn(async () => ({
+                  data: [
+                    {
+                      id: docMediaId,
+                      business_id: mockBusinessId,
+                      workspace_id: mockWorkspaceId,
+                      status: "ready",
+                      verified_at: "2026-11-19T10:00:00Z",
+                      category: "document_attachment",
+                    },
+                  ],
+                  error: null,
+                })),
+              })),
+            };
+          }
+          return {} as unknown as ReturnType<SupabaseClient<Database>["from"]>;
+        }),
+        rpc: vi.fn(),
+      } as unknown as SupabaseClient<Database>;
+
+      await expect(
+        saveSiteDraftConfiguration(mockSupabase, mockUserId, {
+          siteId: mockSiteId,
+          configuration: configWithDocMedia,
+        }),
+      ).rejects.toMatchObject({
+        code: "MEDIA_CATEGORY_NOT_ALLOWED",
+        statusCode: 400,
+      });
+    });
+
+    it("handles atomic RPC authorization and permission failures properly", async () => {
+      const mockSupabase = {
+        from: vi.fn(() => ({
+          select: vi.fn(() => ({
+            eq: vi.fn(() => ({
+              maybeSingle: vi.fn(async () => ({ data: sampleSite, error: null })),
+            })),
+          })),
+        })),
+        rpc: vi.fn(async () => ({
+          data: null,
+          error: {
+            message: "You do not have permission to modify websites for this business",
+            code: "VY021",
+          },
+        })),
+      } as unknown as SupabaseClient<Database>;
+
+      await expect(
+        saveSiteDraftConfiguration(mockSupabase, mockUserId, {
+          siteId: mockSiteId,
+          configuration: sampleConfig,
+        }),
+      ).rejects.toMatchObject({
+        code: "FORBIDDEN",
+        statusCode: 403,
+      });
+    });
+
+    it("handles atomic RPC media validation failures properly", async () => {
+      const mockSupabase = {
+        from: vi.fn(() => ({
+          select: vi.fn(() => ({
+            eq: vi.fn(() => ({
+              maybeSingle: vi.fn(async () => ({ data: sampleSite, error: null })),
+            })),
+          })),
+        })),
+        rpc: vi.fn(async () => ({
+          data: null,
+          error: {
+            message: "Referenced media item is not verified and ready for use",
+            code: "VY032",
+          },
+        })),
+      } as unknown as SupabaseClient<Database>;
+
+      await expect(
+        saveSiteDraftConfiguration(mockSupabase, mockUserId, {
+          siteId: mockSiteId,
+          configuration: sampleConfig,
+        }),
+      ).rejects.toMatchObject({
+        code: "MEDIA_VALIDATION_FAILED",
+        statusCode: 400,
       });
     });
   });

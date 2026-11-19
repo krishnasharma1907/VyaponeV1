@@ -12,7 +12,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database, Json } from "@/lib/supabase/types";
 import { assertBusinessAccess } from "@/lib/auth/tenant-access";
-import { recordAuditEvent } from "@/lib/audit/service";
 import { saveSiteDraftInputSchema, type SaveSiteDraftInput } from "./schemas";
 import type { SaveSiteDraftResult, SiteRow, SiteVersionRow, WebsiteConfiguration } from "./types";
 import { migrateWebsiteConfiguration } from "./versioning";
@@ -178,6 +177,14 @@ export async function getSiteConfiguration(
  * Increments the version number, guarantees immutability of historical versions,
  * verifies media isolation, updates the current draft pointer, and logs an audit event.
  */
+/**
+ * Saves a new draft configuration version for a site.
+ * Executes atomically via PostgreSQL RPC `save_site_draft_configuration_atomic`:
+ * - Locks the site row FOR UPDATE to serialize concurrent version saves.
+ * - Verifies caller session identity and business authorization.
+ * - Enforces media readiness (status = 'ready', verified_at) and approved website categories.
+ * - Increments version number, creates immutable version, updates draft pointer, and logs audit event.
+ */
 export async function saveSiteDraftConfiguration(
   supabase: SupabaseClient<Database>,
   callerUserId: string,
@@ -206,12 +213,12 @@ export async function saveSiteDraftConfiguration(
     );
   }
 
-  // 3. Verify media items referenced in configuration belong to this tenant (VO-032)
+  // 3. Pre-verify media items referenced in configuration (VO-032 / Audit E)
   const referencedMediaIds = extractReferencedMediaIds(validated.configuration);
   if (referencedMediaIds.length > 0) {
     const { data: mediaItems, error: mediaError } = await supabase
       .from("media_items")
-      .select("id, business_id, workspace_id")
+      .select("id, business_id, workspace_id, status, verified_at, category")
       .in("id", referencedMediaIds);
 
     if (mediaError) {
@@ -223,6 +230,13 @@ export async function saveSiteDraftConfiguration(
     }
 
     const foundMediaMap = new Map((mediaItems || []).map((m) => [m.id, m]));
+    const allowedCategories = [
+      "business_logo",
+      "catalogue_image",
+      "website_asset",
+      "onboarding_upload",
+    ];
+
     for (const mediaId of referencedMediaIds) {
       const media = foundMediaMap.get(mediaId);
       if (!media) {
@@ -245,81 +259,69 @@ export async function saveSiteDraftConfiguration(
           403,
         );
       }
+
+      // Check media readiness and verification status
+      if (media.status !== "ready" || !media.verified_at) {
+        throw new WebsiteError(
+          `Referenced media item '${mediaId}' is not verified and ready for use`,
+          "MEDIA_NOT_READY",
+          400,
+        );
+      }
+
+      // Check allowed category for website assets
+      if (!allowedCategories.includes(media.category)) {
+        throw new WebsiteError(
+          `Referenced media item '${mediaId}' has category '${media.category}' which is not permitted in websites`,
+          "MEDIA_CATEGORY_NOT_ALLOWED",
+          400,
+        );
+      }
     }
   }
 
-  // 4. Calculate next version number
-  const { data: latestVersions } = await supabase
-    .from("site_versions")
-    .select("version_number")
-    .eq("site_id", site.id)
-    .order("version_number", { ascending: false })
-    .limit(1);
-
-  const nextVersionNumber = (latestVersions?.[0]?.version_number || 0) + 1;
-
-  // 5. Insert new immutable version
-  const { data: newVersion, error: insertError } = await supabase
-    .from("site_versions")
-    .insert({
-      site_id: site.id,
-      business_id: business.id,
-      version_number: nextVersionNumber,
-      schema_version: "v1",
-      configuration: validated.configuration as unknown as Json,
-      change_summary: validated.changeSummary || null,
-      created_by: callerUserId,
-    })
-    .select()
-    .single();
-
-  if (insertError || !newVersion) {
-    throw new WebsiteError(
-      insertError?.message || "Failed to insert new site version",
-      "VERSION_CREATE_FAILED",
-      500,
-    );
-  }
-
-  // 6. Update current draft version pointer on public.sites
-  const { data: updatedSite, error: updateSiteError } = await supabase
-    .from("sites")
-    .update({
-      current_draft_version_id: newVersion.id,
-      updated_at: new Date().toISOString(),
-    })
-    .eq("id", site.id)
-    .select()
-    .single();
-
-  if (updateSiteError || !updatedSite) {
-    throw new WebsiteError(
-      updateSiteError?.message || "Failed to update site draft version pointer",
-      "SITE_UPDATE_FAILED",
-      500,
-    );
-  }
-
-  // 7. Log audit event
-  await recordAuditEvent(supabase, {
-    businessId: business.id,
-    workspaceId: business.workspace_id || undefined,
-    actorUserId: callerUserId,
-    action: "site.version_created",
-    resource: "site",
-    metadata: {
-      site_id: site.id,
-      version_id: newVersion.id,
-      version_number: nextVersionNumber,
-      schema_version: "v1",
-      page_count: validated.configuration.pages.length,
-      change_summary: validated.changeSummary || null,
+  // 4. Execute atomic transactional RPC for version creation, pointer update, and audit logging
+  const { data: rpcData, error: rpcError } = await supabase.rpc(
+    "save_site_draft_configuration_atomic",
+    {
+      p_site_id: site.id,
+      p_business_id: business.id,
+      p_caller_user_id: callerUserId,
+      p_schema_version: "v1",
+      p_configuration: validated.configuration as unknown as Json,
+      p_change_summary: validated.changeSummary || null,
+      p_referenced_media_ids: referencedMediaIds.length > 0 ? referencedMediaIds : null,
     },
-  });
+  );
+
+  if (rpcError || !rpcData) {
+    const errorMsg = rpcError?.message || "Failed to save draft configuration atomically";
+    if (
+      errorMsg.includes("caller does not match authenticated session") ||
+      rpcError?.code === "VY020"
+    ) {
+      throw new WebsiteError(errorMsg, "UNAUTHENTICATED", 401);
+    }
+    if (errorMsg.includes("permission") || rpcError?.code === "VY021") {
+      throw new WebsiteError(errorMsg, "FORBIDDEN", 403);
+    }
+    if (errorMsg.includes("Cross-tenant") || rpcError?.code === "VY024") {
+      throw new WebsiteError(errorMsg, "TENANT_MISMATCH", 403);
+    }
+    if (errorMsg.includes("media") || rpcError?.code === "VY032") {
+      throw new WebsiteError(errorMsg, "MEDIA_VALIDATION_FAILED", 400);
+    }
+    if (rpcError?.code === "VY040") {
+      throw new WebsiteError(errorMsg, "CONFIGURATION_INVALID", 400);
+    }
+    throw new WebsiteError(errorMsg, "DRAFT_SAVE_FAILED", 500);
+  }
+
+  const result = rpcData as unknown as { version: SiteVersionRow; site: SiteRow };
 
   return {
-    site: updatedSite,
-    version: newVersion,
+    site: result.site,
+    version: result.version,
     configuration: validated.configuration,
   };
 }
