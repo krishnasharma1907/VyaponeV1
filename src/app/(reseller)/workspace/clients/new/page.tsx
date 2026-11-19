@@ -68,8 +68,17 @@ export default async function NewClientBusinessPage() {
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-4)" }}>
-      {/* Breadcrumb / Back Navigation */}
-      <nav aria-label="Breadcrumb">
+      {/* Breadcrumb / Alternative Import Navigation */}
+      <nav
+        aria-label="Breadcrumb"
+        style={{
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "center",
+          flexWrap: "wrap",
+          gap: "var(--space-2)",
+        }}
+      >
         <Link
           href="/workspace/clients"
           style={{
@@ -83,6 +92,20 @@ export default async function NewClientBusinessPage() {
           }}
         >
           &larr; Back to Client Directory
+        </Link>
+        <Link
+          href="/workspace/clients/import"
+          style={{
+            display: "inline-flex",
+            alignItems: "center",
+            color: "var(--color-brand-primary)",
+            textDecoration: "none",
+            fontSize: "var(--font-size-sm)",
+            fontWeight: 500,
+            minHeight: "44px",
+          }}
+        >
+          Have existing data or menu? Import store &rarr;
         </Link>
       </nav>
 

@@ -260,13 +260,13 @@
 
 **Status:** `DONE` (Implemented 5-step mobile-first 390 px wizard at `/workspace/clients/new` with niche discovery and category filtering, basic facts with Indian address and PIN code validation, private quarantine logo/photo uploads via VO-032 pipeline, schema-driven category questions with conditional logic, client-side localStorage draft save/resume, proposal review card showing pages, modules, color palette, facts, missing details checklist, and atomic server action `createBusinessWithSetupAction`. Corrective pass applied: implemented genuinely atomic transactional PostgreSQL RPC `create_business_with_setup_atomic` in migration `20261119000001_atomic_business_creation.sql` with workspace row-locking capacity check, transactional audit logging, media quarantine verification, and strict user/workspace-scoped draft storage with statutory tax identifier [PAN, GSTIN] stripping and 24h TTL expiration).
 
-### [ ] VO-034 — Build business import and confirmation review
+### [x] VO-034 — Build business import and confirmation review
 
 **Scope:** Create import review UI for extracted fields, source evidence, confidence and To Confirm state. Do not silently accept guessed data.
 
-**Acceptance:** Every extracted price, timing and material fact stays unconfirmed until a person accepts it.
+**Acceptance:** Implemented multi-format business import (JSON, tabular CSV, unstructured notes) with strict human-in-the-loop confirmation review. Every extracted price, timing, address, tax identifier, and material fact strictly starts in "unconfirmed" (`To Confirm`) state. No business or catalogue record is created without explicit human confirmation. Built security sanitizer neutralizing formula injection (CWE-1236: `=`, `+`, `-`, `@`, `\t`, `\r`, `|`) while preserving legitimate phone numbers and currency amounts, stripping XSS tags (`<script>`, `<iframe>`), dangerous protocols (`javascript:`, `data:`), and control characters. Implemented comprehensive extraction parser with Indian entity patterns (phones `+91...`, GSTIN 15-char, PAN 10-char, PIN code 6-digit, timings, currency in minor units/paise). Enforced workspace RBAC (`workspace_owner`, `workspace_admin`, `reseller_admin`) and plan capacity check (`draft_websites`) via `createBusinessWithSetup`. Atomically provisions store, populates confirmed catalogue items in `public.catalogue_items`, and records `business.import_confirmed` audit log. Built accessible, mobile-first (390 px up to desktop, WCAG 2.2 AA) UI components (`ImportUploadStep`, `ImportStatsBanner`, `ImportFieldRow`, `ImportReviewContainer`) at `/workspace/clients/import`. Verified via 63 dedicated tests (sanitizer, parser, service, components, draft storage) and full test suite of 986 passing tests with zero failures.
 
-**Status:** `NOT_STARTED`
+**Status:** `DONE`
 
 ## P4 — Website engine, templates and publishing
 

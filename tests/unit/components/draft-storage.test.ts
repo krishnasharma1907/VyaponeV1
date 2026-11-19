@@ -9,6 +9,8 @@ import {
   restoreDraftFormData,
   sanitizeAnswersForStorage,
   sanitizeDraftForStorage,
+  sanitizeMediaPreviewUrl,
+  sanitizeMediaPreviewUrls,
   saveWizardDraft,
 } from "@/components/businesses/create-business-wizard/draft-storage";
 import type { WizardFormData } from "@/components/businesses/create-business-wizard/types";
@@ -127,6 +129,57 @@ describe("VO-033 Secure Draft Storage & Privacy Tests", () => {
       expect(restored.gst_number).toBe("");
       expect(restored.trade_name).toBe("Artisan Coffee Roasters");
       expect(restored.city).toBe("Bengaluru");
+    });
+  });
+
+  describe("2b. Media Preview URLs and Token Privacy (Gate B)", () => {
+    it("strips transient blob: URLs from persisted drafts", () => {
+      expect(sanitizeMediaPreviewUrl("blob:http://localhost:3000/1234-5678")).toBeNull();
+      expect(
+        sanitizeMediaPreviewUrls([
+          "blob:http://localhost:3000/1",
+          "https://example.com/valid.png",
+          "blob:http://localhost:3000/2",
+        ]),
+      ).toEqual(["https://example.com/valid.png"]);
+    });
+
+    it("strips signed URLs containing tokens, signatures, or secret query params", () => {
+      expect(
+        sanitizeMediaPreviewUrl(
+          "https://storage.supabase.co/object/sign/private/logo.png?token=eyJhbGciOi...",
+        ),
+      ).toBeNull();
+      expect(
+        sanitizeMediaPreviewUrl(
+          "https://storage.supabase.co/object/sign/private/logo.png?signature=abc",
+        ),
+      ).toBeNull();
+      expect(
+        sanitizeMediaPreviewUrl(
+          "https://storage.supabase.co/object/sign/private/logo.png?apikey=key123",
+        ),
+      ).toBeNull();
+    });
+
+    it("preserves clean token-free public URLs", () => {
+      expect(sanitizeMediaPreviewUrl("https://cdn.example.com/images/store-logo.jpg")).toBe(
+        "https://cdn.example.com/images/store-logo.jpg",
+      );
+    });
+
+    it("sanitizes media preview URLs during saveWizardDraft", () => {
+      const dataWithSensitiveUrls: WizardFormData = {
+        ...sampleFormData,
+        logo_preview_url: "blob:http://localhost:3000/local-blob",
+        showcase_preview_urls: [
+          "https://storage.supabase.co/sign/showcase.jpg?token=secret123",
+          "https://cdn.example.com/clean.jpg",
+        ],
+      };
+      const safe = sanitizeDraftForStorage(dataWithSensitiveUrls);
+      expect(safe.logo_preview_url).toBeNull();
+      expect(safe.showcase_preview_urls).toEqual(["https://cdn.example.com/clean.jpg"]);
     });
   });
 

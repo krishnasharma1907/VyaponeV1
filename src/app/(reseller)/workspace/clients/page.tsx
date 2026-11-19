@@ -34,9 +34,14 @@ export default function ResellerClientsPage() {
             Manage merchant stores, access delegated administration, and configure plans.
           </p>
         </div>
-        <Link href="/workspace/clients/new" style={{ textDecoration: "none" }}>
-          <Button variant="primary">Add New Client</Button>
-        </Link>
+        <div style={{ display: "flex", gap: "var(--space-2)", flexWrap: "wrap" }}>
+          <Link href="/workspace/clients/import" style={{ textDecoration: "none" }}>
+            <Button variant="secondary">Import Business</Button>
+          </Link>
+          <Link href="/workspace/clients/new" style={{ textDecoration: "none" }}>
+            <Button variant="primary">Add New Client</Button>
+          </Link>
+        </div>
       </header>
 
       <Card variant="default">

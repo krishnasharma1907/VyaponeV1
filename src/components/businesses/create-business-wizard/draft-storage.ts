@@ -39,6 +39,32 @@ export function getDraftStorageKey(
 const SENSITIVE_KEY_PATTERN = /(pan|gst|tax_id|ssn|aadhaar|aadhar|password|secret|token)/i;
 
 /**
+ * Sanitizes preview URLs before browser persistence.
+ * Invariants [Gate B & Privacy]:
+ * 1. Blob URLs (blob:...) are transient to memory and invalid across page reloads.
+ * 2. Signed URLs containing query tokens (token=, apikey=, signature=, auth=, secret=) must NEVER be persisted in localStorage.
+ * Only clean, token-free URLs are retained; all others evaluate to null.
+ */
+export function sanitizeMediaPreviewUrl(url: string | null | undefined): string | null {
+  if (!url) return null;
+  const trimmed = url.trim();
+  if (trimmed.length === 0) return null;
+  if (trimmed.startsWith("blob:")) return null;
+  if (/[?&](token|apikey|signature|sig|auth|secret)=/i.test(trimmed)) {
+    return null;
+  }
+  return trimmed;
+}
+
+/**
+ * Sanitizes an array of preview URLs, excluding blob URLs and signed URLs with tokens.
+ */
+export function sanitizeMediaPreviewUrls(urls: string[] | null | undefined): string[] {
+  if (!Array.isArray(urls)) return [];
+  return urls.map((u) => sanitizeMediaPreviewUrl(u)).filter((u): u is string => u !== null);
+}
+
+/**
  * Sanitizes arbitrary dynamic answer objects, recursively stripping any sensitive properties.
  */
 export function sanitizeAnswersForStorage(
@@ -90,11 +116,11 @@ export function sanitizeDraftForStorage(data: WizardFormData): SafeDraftFormData
     email: data.email || "",
     tax_scheme: data.tax_scheme || "unregistered",
 
-    // Step 3: Media
+    // Step 3: Media (quarantine IDs preserved; preview URLs stripped of blobs and signed tokens)
     logo_media_id: data.logo_media_id || null,
-    logo_preview_url: data.logo_preview_url || null,
+    logo_preview_url: sanitizeMediaPreviewUrl(data.logo_preview_url),
     showcase_media_ids: data.showcase_media_ids || [],
-    showcase_preview_urls: data.showcase_preview_urls || [],
+    showcase_preview_urls: sanitizeMediaPreviewUrls(data.showcase_preview_urls),
 
     // Step 4: Questions (sanitized)
     onboarding_answers: sanitizedAnswers,

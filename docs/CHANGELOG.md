@@ -4,6 +4,42 @@ Record implementation changes by task ID. Do not record planned work as complete
 
 ## Unreleased
 
+### [VO-034] — Build Business Import and Confirmation Review (2026-11-19)
+- Implemented multi-format business import with human-in-the-loop review and confirmation:
+  - **Strict Confirmation Invariant:**
+    - Every extracted price, timing, address, tax identifier, and material fact strictly starts in "unconfirmed" (`To Confirm`) state.
+    - No business, location, or catalogue record is created in the database without explicit human review and confirmation.
+    - Provisioning blocked until mandatory fields and material facts are confirmed.
+  - **Formula Injection Defense & Sanitization (`src/lib/businesses/import/sanitizer.ts`):**
+    - Neutralizes formula injection attack vectors (CWE-1236: leading `=`, `+`, `-`, `@`, `\t`, `\r`, `|`), while safely preserving legitimate phone numbers (`+91...`) and numeric values.
+    - Strips executable HTML (`<script>`, `<iframe>`), dangerous URI schemes (`javascript:`, `vbscript:`, `data:`), null bytes (`\0`), and non-printable control characters.
+  - **Multi-Source Parser & Extractor (`src/lib/businesses/import/parser.ts`):**
+    - Parses structured JSON, tabular CSV/TSV, and unstructured text with confidence scores and source evidence snippets.
+    - Extracts Indian entity patterns: 10-15 digit phone numbers, 15-character GSTIN, 10-character PAN, 6-digit postal PIN codes, timings, and currency minor units (paise).
+    - Robust rupee parsing (`parseRupeesToPaise`) and minor units conversion (`formatPaiseToRupees`) supporting symbols (`₹`, `Rs.`, `INR`).
+  - **Client-Safe Proposal Update Utilities (`src/lib/businesses/import/proposal.ts`):**
+    - Pure in-memory update functions (`updateProposalField`, `confirmAllHighConfidenceFields`) decoupled from database models and server-only dependencies for safe client component usage.
+  - **Import Service & Transactional Provisioning (`src/lib/businesses/import/service.ts`, `actions.ts`):**
+    - Enforces workspace RBAC (`assertWorkspaceAccess`) and plan capacity check (`assertCapacityAvailable` on `draft_websites`).
+    - Provisions store and primary location atomically via `createBusinessWithSetup`.
+    - Batch inserts confirmed catalogue items into `public.catalogue_items` with integer minor units pricing (`price_minor`).
+    - Records structured audit log event `business.import_confirmed`.
+  - **Mobile-First Accessible Review UI (`src/components/businesses/import-review/`):**
+    - `ImportUploadStep`: Drag-and-drop file upload, format tabs (JSON, CSV, Text), and sample preset loaders.
+    - `ImportStatsBanner`: Badges for Total, Confirmed, Unconfirmed, Material Unconfirmed, progress bar, and category filters.
+    - `ImportFieldRow`: Clear categorization, material fact badge, formatted value, source evidence quote, inline editing, reject button, and minimum 44 px touch confirm button.
+    - `ImportReviewContainer`: Multi-phase workflow managing upload, field review list with sticky confirmation bar, blocking notices, and completed summary view.
+    - Responsive 390 px mobile viewport up to desktop, satisfying WCAG 2.2 AA.
+  - **Route Shell Integration:**
+    - Created dedicated `/workspace/clients/import` page.
+    - Linked "Import Business" button on `/workspace/clients` and secondary navigation link on `/workspace/clients/new`.
+  - **VO-033 Hardening:**
+    - `draft-storage.ts` enhanced with `sanitizeMediaPreviewUrl` / `sanitizeMediaPreviewUrls` to strip transient `blob:` URLs and sensitive query tokens from browser localStorage.
+  - **Verification & Quality Gates:**
+    - 63 dedicated unit and component tests passing across sanitizer, parser, service, components, and draft storage.
+    - Full test suite: 87 test files passed, 986 unit and integration tests passed (0 failures).
+    - Next.js production build (`next build`), ESLint (`lint`), TypeScript (`typecheck`), and Prettier (`format:check`) passed with 0 errors.
+
 ### [VO-033 Corrective Pass] — Atomic Business Creation and Secure Draft Storage (2026-11-19)
 - Corrected critical architectural and privacy defects discovered in VO-033 preflight:
   - **Atomic Transactional Provisioning (`20261119000001_atomic_business_creation.sql`):**

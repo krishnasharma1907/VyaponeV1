@@ -1,10 +1,10 @@
 # VyapOne Build Progress
 
-**Current phase:** P3 — Niche registry, presets and business onboarding (`IN_PROGRESS`)  
-**Completed tasks:** VO-000, VO-001, VO-002, VO-003, VO-004, VO-005, VO-006, VO-010, VO-011, VO-012, VO-013, VO-014, VO-015, VO-016, VO-017, VO-018, VO-019, VO-020, VO-021, VO-022, VO-023, VO-024, VO-025, VO-026, VO-027, VO-028, VO-030, VO-031, VO-032, VO-033  
-**Latest task:** VO-033 — Build mobile-first create-business flow  
-**Next task:** VO-034 — Build business import and confirmation review (P3)  
-**Project status:** MOBILE-FIRST CREATE-BUSINESS FLOW IMPLEMENTED / PHASE P3 IN PROGRESS  
+**Current phase:** P3 — Niche registry, presets and business onboarding (`COMPLETE`)  
+**Completed tasks:** VO-000, VO-001, VO-002, VO-003, VO-004, VO-005, VO-006, VO-010, VO-011, VO-012, VO-013, VO-014, VO-015, VO-016, VO-017, VO-018, VO-019, VO-020, VO-021, VO-022, VO-023, VO-024, VO-025, VO-026, VO-027, VO-028, VO-030, VO-031, VO-032, VO-033, VO-034  
+**Latest task:** VO-034 — Build business import and confirmation review  
+**Next task:** VO-040 — Define website configuration schema (P4)  
+**Project status:** BUSINESS IMPORT AND CONFIRMATION REVIEW IMPLEMENTED / PHASE P3 COMPLETE / READY FOR PHASE P4  
 
 ## Phase status
 
@@ -13,7 +13,56 @@
 | P0 — Project audit, decisions and architecture | COMPLETE | All tasks VO-000 to VO-006 verified and done; Phase P0 gate passed |
 | P1 — Repository, design system and application shell | COMPLETE | All tasks VO-010 to VO-019 verified and done; Phase P1 gate passed |
 | P2 — Platform identity, authentication and multi-tenancy | COMPLETE | All tasks VO-020 to VO-028 verified and done; Phase P2 gate passed |
-| P3 — Niche registry, presets and business onboarding | IN_PROGRESS | VO-030, VO-031, VO-032, VO-033 complete; VO-034 is next |
+| P3 — Niche registry, presets and business onboarding | COMPLETE | All tasks VO-030 to VO-034 verified and done; Phase P3 complete |
+| P4 — Website engine, templates and publishing | NOT_STARTED | VO-040 is next |
+
+## Task Report: VO-034 — Build Business Import and Confirmation Review
+
+- **Target:** VO-034 — Build business import and confirmation review
+- **Phase:** P3 — Niche registry, presets and business onboarding
+- **Status:** COMPLETED & VERIFIED
+- **Key Deliverables Implemented:**
+  1. **Strict Human Confirmation Invariant:**
+     - Every extracted price, timing, address, tax identifier, and material fact strictly initializes in "unconfirmed" (`To Confirm`) state.
+     - No business, primary location, or catalogue record is provisioned in the database without explicit human confirmation and review.
+     - Confirmation readiness evaluation (`evaluateProposalReadiness`) enforces that mandatory fields and material facts must be confirmed/edited before provisioning is unlocked.
+  2. **Formula Injection & Security Sanitization (`sanitizer.ts`):**
+     - Neutralizes formula injection attack vectors (CWE-1236: leading `=`, `+`, `-`, `@`, `\t`, `\r`, `|`), while preserving legitimate phone numbers (e.g. `+91...`) and negative currency values.
+     - Strips dangerous HTML tags (`<script>`, `<iframe>`, `<style>`), protocols (`javascript:`, `vbscript:`, `data:`), null bytes (`\0`), and non-printable control characters.
+  3. **Multi-Format Extraction Parser (`parser.ts`):**
+     - **Structured JSON:** Maps store identity, address, phone numbers, GSTIN, PAN, operating timings, and structured catalogue items.
+     - **Tabular CSV / TSV:** RFC 4180 compliant parsing handling quotes, escaped commas, newlines, and formula injection prefixing; extracts catalogue rows with prices and categories.
+     - **Unstructured Text:** Regex extraction for Indian phone numbers (`+91...`), 15-character GSTIN, 10-character PAN, 6-digit postal PIN codes, emails, operating hours, and currency lines.
+     - **Indian Currency Minor Units:** Robust currency conversion (`parseRupeesToPaise`) and formatting (`formatPaiseToRupees`) handling currency symbols (`₹`, `Rs.`, `INR`) converting safely to integer minor units (paise).
+  4. **Client-Safe Proposal Manipulation (`proposal.ts`):**
+     - Pure in-memory update functions (`updateProposalField`, `confirmAllHighConfidenceFields`) separated from server-only database imports, ensuring clean client component bundling.
+     - Dynamic recalculation of completion progress, material unconfirmed count, and provisioning readiness.
+  5. **Import Service & Transactional Provisioning (`service.ts`, `actions.ts`):**
+     - Server Actions `parseBusinessImportAction` and `confirmBusinessImportAction` with authenticated session resolution.
+     - Enforces workspace RBAC (`workspace_owner`, `workspace_admin`, `reseller_admin`) via `assertWorkspaceAccess`.
+     - Validates plan capacity on `draft_websites` via `assertCapacityAvailable`.
+     - Atomically provisions store and location via `createBusinessWithSetup`.
+     - Batch-inserts confirmed catalogue items into `public.catalogue_items` with minor unit integer pricing (`price_minor`).
+     - Emits structured audit log event (`business.import_confirmed`) with proposal statistics.
+  6. **Accessible, Mobile-First UI Components (`src/components/businesses/import-review/`):**
+     - `ImportUploadStep`: File dropzone / paste area with format selectors (JSON, CSV, Text) and sample data loaders.
+     - `ImportStatsBanner`: Badges for Total, To Confirm, Confirmed, Material Unconfirmed, progress bar, and category filter tabs.
+     - `ImportFieldRow`: Displays category, label, material fact indicator, formatted value, source evidence snippet quote, inline edit form, reject button, and minimum 44 px touch confirm button.
+     - `ImportReviewContainer`: Multi-phase workflow managing upload, field review list with sticky confirmation bar, blocking notices, and completed summary view.
+     - Target 390 px mobile viewport up to desktop, satisfying WCAG 2.2 AA (readable contrast $\ge 4.5:1$, visible focus outlines, keyboard access).
+  7. **Route Shells & App Integration:**
+     - Dedicated page at `/workspace/clients/import` with server-side authentication.
+     - Linked "Import Business" button on `/workspace/clients` and secondary navigation on `/workspace/clients/new`.
+  8. **VO-033 Hardening Enhancements:**
+     - `sanitizeMediaPreviewUrl` / `sanitizeMediaPreviewUrls` prevents transient `blob:` URLs and signed URLs with query tokens from leaking into browser local storage drafts.
+  9. **Verification & Quality Gates:**
+     - `tests/unit/businesses/import-sanitizer.test.ts`: 14 tests passing.
+     - `tests/unit/businesses/import-parser.test.ts`: 15 tests passing.
+     - `tests/unit/businesses/import-service.test.ts`: 6 tests passing.
+     - `tests/unit/components/business-import-review.test.tsx`: 8 tests passing.
+     - `tests/unit/components/draft-storage.test.ts`: 20 tests passing.
+     - Full test suite: 87 test files passed, 986 unit and integration tests passed (0 failures).
+     - Prettier (`format:check`), ESLint (`lint`), TypeScript (`typecheck`), and Next.js production build (`build`) all passed cleanly with 0 errors.
 
 ## Task Report: VO-033 — Build Mobile-First Create-Business Flow
 
