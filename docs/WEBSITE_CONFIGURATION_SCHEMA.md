@@ -79,9 +79,9 @@ Theme definitions conform to VyapOne brand guidelines with pre-calibrated palett
 
 ---
 
-## 4. Database Model & Migrations (`20261119000003` & `20261119000004`)
+## 4. Database Model & Migrations (`20261119000003`, `20261119000004` & `20261120000001`)
 
-### `public.site_versions` Table & Composite Integrity Constraints (Audit B)
+### `public.site_versions` Table & Composite Integrity Constraints (Audit B & Targeted Audit)
 
 ```sql
 CREATE TABLE public.site_versions (
@@ -93,12 +93,12 @@ CREATE TABLE public.site_versions (
   configuration JSONB NOT NULL,
   change_summary TEXT,
   created_by UUID REFERENCES auth.users(id) ON DELETE SET NULL,
-  created_at TIMESTAMPTZ NOT NULL DEFAULT timezone('utc'::text, now()),
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   published_at TIMESTAMPTZ,
   CONSTRAINT uq_site_versions_site_version UNIQUE (site_id, version_number)
 );
 
--- Composite Relationship Integrity (Audit B):
+-- Composite Relationship Integrity:
 -- 1. Sites composite uniqueness
 ALTER TABLE public.sites ADD CONSTRAINT uq_sites_id_business_id UNIQUE (id, business_id);
 
@@ -109,22 +109,49 @@ ALTER TABLE public.site_versions ADD CONSTRAINT fk_site_versions_site_business
 -- 3. Version site composite uniqueness
 ALTER TABLE public.site_versions ADD CONSTRAINT uq_site_versions_site_id_id UNIQUE (site_id, id);
 
--- 4. Sites pointer composite foreign keys guaranteeing pointers reference versions of the SAME site
+-- 4. Sites pointer composite foreign keys guaranteeing pointers reference versions of the SAME site (ON DELETE RESTRICT)
 ALTER TABLE public.sites ADD CONSTRAINT fk_sites_current_draft_version
-  FOREIGN KEY (id, current_draft_version_id) REFERENCES public.site_versions(site_id, id) ON DELETE SET NULL;
+  FOREIGN KEY (id, current_draft_version_id) REFERENCES public.site_versions(site_id, id) ON DELETE RESTRICT;
 
 ALTER TABLE public.sites ADD CONSTRAINT fk_sites_published_version
-  FOREIGN KEY (id, published_version_id) REFERENCES public.site_versions(site_id, id) ON DELETE SET NULL;
+  FOREIGN KEY (id, published_version_id) REFERENCES public.site_versions(site_id, id) ON DELETE RESTRICT;
 ```
 
-### Pointer Privilege Restrictions (Audit C)
+> **Why `ON DELETE RESTRICT` for composite version pointers?**
+> In a composite foreign key `(id, current_draft_version_id) REFERENCES public.site_versions(site_id, id)`, `ON DELETE SET NULL` instructs PostgreSQL to set *all* referencing columns to `NULL`. Because `sites.id` is the primary key (`NOT NULL`), attempting to delete a referenced version would result in an unexpected constraint violation. `ON DELETE RESTRICT` guarantees that active versions cannot be deleted while referenced and prevents invalid primary key nullification.
 
-Direct client column-level `UPDATE` and `INSERT` privileges on `current_draft_version_id` and `published_version_id` are revoked from `authenticated`, `anon`, and `PUBLIC`:
+### Effective Privilege Lockdown (Audit C & Targeted Audit 1)
+
+PostgreSQL privileges are additive. In `20261120000001`, broad table-level privileges are stripped, and precise column-level permissions are granted:
 ```sql
-REVOKE UPDATE (current_draft_version_id, published_version_id) ON public.sites FROM authenticated, anon, PUBLIC;
-REVOKE INSERT (current_draft_version_id, published_version_id) ON public.sites FROM authenticated, anon, PUBLIC;
+-- 1. Strip all broad privileges
+REVOKE ALL ON public.sites FROM anon, authenticated, PUBLIC;
+REVOKE ALL ON public.site_versions FROM anon, authenticated, PUBLIC;
+
+-- 2. Legitimate Read Privileges (Governed by RLS)
+GRANT SELECT ON public.sites TO anon, authenticated;
+GRANT SELECT ON public.site_versions TO anon, authenticated;
+
+-- 3. Column-Level INSERT on public.sites (strictly omits status, current_draft_version_id, published_version_id)
+GRANT INSERT (id, business_id, subdomain, primary_domain, created_at, updated_at)
+ON public.sites TO authenticated;
+
+-- 4. Column-Level UPDATE on public.sites (strictly omits status, business_id, current_draft_version_id, published_version_id)
+GRANT UPDATE (subdomain, primary_domain, updated_at)
+ON public.sites TO authenticated;
+
+-- 5. Scoped DELETE on public.sites (Protected by RLS sites_delete_policy: sovereign owner only)
+GRANT DELETE ON public.sites TO authenticated;
+
+-- 6. Direct INSERT, UPDATE, DELETE on site_versions are completely REVOKED for authenticated and anon
+-- Version records can ONLY be created via save_site_draft_configuration_atomic().
 ```
-Version pointers can only be updated via authorized server-controlled transactions.
+
+Version pointers and site lifecycle status can only be updated via authorized, audited server RPCs (`save_site_draft_configuration_atomic`).
+
+### TIMESTAMPTZ Correctness (Targeted Audit 3)
+
+The column default on `site_versions.created_at` uses `DEFAULT now()`. The session-dependent anti-pattern `timezone('utc'::text, now())` (which converts `TIMESTAMPTZ` to `TIMESTAMP WITHOUT TIME ZONE`) has been eliminated. In `save_site_draft_configuration_atomic`, `v_now TIMESTAMPTZ := pg_catalog.now()` is used.
 
 ### Hardened Version Immutability & Lifecycle Trigger (Audit D)
 

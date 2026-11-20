@@ -16,10 +16,17 @@ describe("VO-040 Website Configuration Migration Verification", () => {
     "migrations",
     "20261119000004_website_version_integrity_and_atomic_draft.sql",
   );
+  const pointerAuditMigrationPath = path.join(
+    rootDir,
+    "supabase",
+    "migrations",
+    "20261120000001_website_pointer_and_foreign_key_audit.sql",
+  );
   const combinedPath = path.join(rootDir, "supabase", "combined_migrations.sql");
 
   const migrationSql = fs.readFileSync(migrationPath, "utf-8");
   const auditMigrationSql = fs.readFileSync(auditMigrationPath, "utf-8");
+  const pointerAuditSql = fs.readFileSync(pointerAuditMigrationPath, "utf-8");
   const combinedSql = fs.readFileSync(combinedPath, "utf-8");
 
   it("verifies migration files exist and are populated with deterministic timestamps", () => {
@@ -30,6 +37,10 @@ describe("VO-040 Website Configuration Migration Verification", () => {
     expect(fs.existsSync(auditMigrationPath)).toBe(true);
     expect(path.basename(auditMigrationPath)).toMatch(/^\d{14}_[a-z0-9_]+\.sql$/);
     expect(auditMigrationSql.length).toBeGreaterThan(1000);
+
+    expect(fs.existsSync(pointerAuditMigrationPath)).toBe(true);
+    expect(path.basename(pointerAuditMigrationPath)).toMatch(/^\d{14}_[a-z0-9_]+\.sql$/);
+    expect(pointerAuditSql.length).toBeGreaterThan(1000);
   });
 
   it("verifies preflight hardening revokes service_role on atomic business creation and import RPCs", () => {
@@ -88,21 +99,6 @@ describe("VO-040 Website Configuration Migration Verification", () => {
     expect(auditMigrationSql).toContain("FOREIGN KEY (id, published_version_id)");
   });
 
-  it("verifies direct client pointer modification privileges are revoked (Audit C)", () => {
-    expect(auditMigrationSql).toContain(
-      "REVOKE UPDATE (current_draft_version_id) ON public.sites FROM authenticated, anon, PUBLIC;",
-    );
-    expect(auditMigrationSql).toContain(
-      "REVOKE INSERT (current_draft_version_id) ON public.sites FROM authenticated, anon, PUBLIC;",
-    );
-    expect(auditMigrationSql).toContain(
-      "REVOKE UPDATE (published_version_id) ON public.sites FROM authenticated, anon, PUBLIC;",
-    );
-    expect(auditMigrationSql).toContain(
-      "REVOKE INSERT (published_version_id) ON public.sites FROM authenticated, anon, PUBLIC;",
-    );
-  });
-
   it("verifies hardened version immutability and lifecycle checks (Audit D)", () => {
     expect(auditMigrationSql).toContain("prevent_site_version_modification");
     expect(auditMigrationSql).toContain("Historical site versions are immutable");
@@ -154,11 +150,103 @@ describe("VO-040 Website Configuration Migration Verification", () => {
     );
   });
 
-  it("verifies both migrations are accurately appended to supabase/combined_migrations.sql", () => {
+  it("verifies effective privilege lockdown: table-level revokes and scoped column grants (Audit 1)", () => {
+    // Both tables have ALL privileges stripped from untrusted roles
+    expect(pointerAuditSql).toContain(
+      "REVOKE ALL ON public.sites FROM anon, authenticated, PUBLIC;",
+    );
+    expect(pointerAuditSql).toContain(
+      "REVOKE ALL ON public.site_versions FROM anon, authenticated, PUBLIC;",
+    );
+
+    // Legitimate read access is preserved
+    expect(pointerAuditSql).toContain("GRANT SELECT ON public.sites TO anon, authenticated;");
+    expect(pointerAuditSql).toContain(
+      "GRANT SELECT ON public.site_versions TO anon, authenticated;",
+    );
+
+    // Scoped column-level INSERT on sites strictly excludes status, current_draft_version_id, published_version_id
+    expect(pointerAuditSql).toContain(
+      "GRANT INSERT (id, business_id, subdomain, primary_domain, created_at, updated_at)",
+    );
+    expect(pointerAuditSql).not.toMatch(
+      /GRANT INSERT \([^)]*current_draft_version_id[^)]*\) ON public\.sites TO authenticated/i,
+    );
+    expect(pointerAuditSql).not.toMatch(
+      /GRANT INSERT \([^)]*published_version_id[^)]*\) ON public\.sites TO authenticated/i,
+    );
+    expect(pointerAuditSql).not.toMatch(
+      /GRANT INSERT \([^)]*status[^)]*\) ON public\.sites TO authenticated/i,
+    );
+
+    // Scoped column-level UPDATE on sites strictly excludes status, business_id, current_draft_version_id, published_version_id
+    expect(pointerAuditSql).toContain(
+      "GRANT UPDATE (subdomain, primary_domain, updated_at)\nON public.sites TO authenticated;",
+    );
+    expect(pointerAuditSql).not.toMatch(
+      /GRANT UPDATE \([^)]*current_draft_version_id[^)]*\) ON public\.sites TO authenticated/i,
+    );
+    expect(pointerAuditSql).not.toMatch(
+      /GRANT UPDATE \([^)]*published_version_id[^)]*\) ON public\.sites TO authenticated/i,
+    );
+
+    // public.site_versions: no direct write grants to authenticated or anon
+    expect(pointerAuditSql).not.toMatch(
+      /GRANT (INSERT|UPDATE|DELETE|ALL) ON public\.site_versions TO authenticated/i,
+    );
+    expect(pointerAuditSql).not.toMatch(
+      /GRANT (INSERT|UPDATE|DELETE|ALL) ON public\.site_versions TO anon/i,
+    );
+
+    // service_role administrative grants
+    expect(pointerAuditSql).toContain("GRANT ALL ON public.sites TO service_role;");
+    expect(pointerAuditSql).toContain("GRANT ALL ON public.site_versions TO service_role;");
+  });
+
+  it("verifies composite foreign-key deletion semantics are set to ON DELETE RESTRICT (Audit 2)", () => {
+    // Drops SET NULL composite foreign keys
+    expect(pointerAuditSql).toContain(
+      "ALTER TABLE public.sites DROP CONSTRAINT IF EXISTS fk_sites_current_draft_version;",
+    );
+    expect(pointerAuditSql).toContain(
+      "ALTER TABLE public.sites DROP CONSTRAINT IF EXISTS fk_sites_published_version;",
+    );
+
+    // Adds composite FKs with ON DELETE RESTRICT
+    expect(pointerAuditSql).toContain("ADD CONSTRAINT fk_sites_current_draft_version");
+    expect(pointerAuditSql).toContain("FOREIGN KEY (id, current_draft_version_id)");
+    expect(pointerAuditSql).toContain("REFERENCES public.site_versions(site_id, id)");
+    expect(pointerAuditSql).toContain("ON DELETE RESTRICT;");
+
+    expect(pointerAuditSql).toContain("ADD CONSTRAINT fk_sites_published_version");
+    expect(pointerAuditSql).toContain("FOREIGN KEY (id, published_version_id)");
+    expect(pointerAuditSql).toContain("REFERENCES public.site_versions(site_id, id)");
+
+    // Confirms ADD CONSTRAINT statements use ON DELETE RESTRICT and do not use SET NULL
+    const addConstraintBlocks = pointerAuditSql
+      .split("ADD CONSTRAINT")
+      .slice(1)
+      .join("ADD CONSTRAINT");
+    expect(addConstraintBlocks).not.toContain("ON DELETE SET NULL");
+  });
+
+  it("verifies TIMESTAMPTZ correctness: site_versions.created_at default set to now() (Audit 3)", () => {
+    expect(pointerAuditSql).toContain("ALTER TABLE public.site_versions");
+    expect(pointerAuditSql).toContain("ALTER COLUMN created_at SET DEFAULT now();");
+    // Verify save_site_draft_configuration_atomic uses now()
+    expect(pointerAuditSql).toContain("v_now TIMESTAMPTZ := pg_catalog.now();");
+  });
+
+  it("verifies all VO-040 migrations are accurately appended to supabase/combined_migrations.sql", () => {
     expect(combinedSql).toContain("CREATE TABLE public.site_versions");
     expect(combinedSql).toContain("uq_site_versions_site_version");
     expect(combinedSql).toContain("uq_sites_id_business_id");
     expect(combinedSql).toContain("fk_site_versions_site_business");
     expect(combinedSql).toContain("save_site_draft_configuration_atomic");
+    expect(combinedSql).toContain("fk_sites_current_draft_version");
+    expect(combinedSql).toContain("ON DELETE RESTRICT;");
+    expect(combinedSql).toContain(
+      "ALTER TABLE public.site_versions\n    ALTER COLUMN created_at SET DEFAULT now();",
+    );
   });
 });

@@ -56,13 +56,18 @@
      - **Restricted Pointer Privileges (Audit C):** Revoked direct column-level `UPDATE` and `INSERT` privileges on `current_draft_version_id` and `published_version_id` from `authenticated`, `anon`, and `PUBLIC`.
      - **Hardened Version Immutability & Lifecycle Control (Audit D):** Prohibits tampering with historical version configuration and metadata, permits only one-way `published_at` transition from `NULL` to non-null upon publishing, and prevents deleting published versions or active pointer versions.
      - **Media Readiness & Category Verification (Audit E):** Enforces media items have `status = 'ready'`, `verified_at IS NOT NULL`, belong to the target tenant, and belong to approved website categories (`business_logo`, `catalogue_image`, `website_asset`, `onboarding_upload`). Rejects unverified uploads and quarantine document attachments.
-  9. **Comprehensive Verification & Quality Gates:**
-     - `tests/unit/database/website-configuration-migration.test.ts`: 11 tests passing.
+  9. **Targeted Audit & Hardening — Effective Privileges, Composite FK Deletion & TIMESTAMPTZ (`20261120000001_website_pointer_and_foreign_key_audit.sql`):**
+     - **Effective Privilege Lockdown (Audit 1):** Stripped all broad table-level privileges from `anon`, `authenticated`, and `PUBLIC` on `public.sites` and `public.site_versions`. Granted column-level `INSERT` and `UPDATE` on `public.sites` strictly excluding `status`, `business_id`, `current_draft_version_id`, and `published_version_id`. Completely revoked direct `INSERT`, `UPDATE`, and `DELETE` on `public.site_versions` for untrusted roles, guaranteeing version creation only via `save_site_draft_configuration_atomic`. Preserved legitimate `SELECT` reads governed by RLS.
+     - **Composite Foreign-Key Deletion Semantics (Audit 2):** Replaced flawed `ON DELETE SET NULL` on composite FKs `fk_sites_current_draft_version` and `fk_sites_published_version` with `ON DELETE RESTRICT`. Prevents invalid PostgreSQL attempts to nullify primary key `sites.id` and guarantees that active referenced draft and published versions cannot be deleted while referenced.
+     - **TIMESTAMPTZ Correctness (Audit 3):** Set `site_versions.created_at` default to `now()`, eliminating the session-dependent `timezone('utc'::text, now())` anti-pattern. Standardized `save_site_draft_configuration_atomic` to use `pg_catalog.now()`.
+  10. **Comprehensive Verification & Quality Gates:**
+     - `tests/unit/database/website-pointer-privilege-audit.test.ts`: 14 tests passing.
+     - `tests/unit/database/website-configuration-migration.test.ts`: 13 tests passing.
      - `tests/unit/websites/configuration-schemas.test.ts`: 16 tests passing.
      - `tests/unit/websites/versioning.test.ts`: 10 tests passing.
      - `tests/unit/websites/service.test.ts`: 16 tests passing.
      - `tests/unit/websites/actions.test.ts`: 8 tests passing.
-     - Total VO-040 suite: 61 tests passing (0 failures).
+     - Total VO-040 suite: 77 tests passing across 6 test files (0 failures).
 
 ## Task Report: VO-034 — Build Business Import and Confirmation Review
 
