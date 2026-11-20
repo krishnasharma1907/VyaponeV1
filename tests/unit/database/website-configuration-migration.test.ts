@@ -22,11 +22,18 @@ describe("VO-040 Website Configuration Migration Verification", () => {
     "migrations",
     "20261120000001_website_pointer_and_foreign_key_audit.sql",
   );
+  const sitesRevokeMigrationPath = path.join(
+    rootDir,
+    "supabase",
+    "migrations",
+    "20261120000002_revoke_direct_sites_insert_delete.sql",
+  );
   const combinedPath = path.join(rootDir, "supabase", "combined_migrations.sql");
 
   const migrationSql = fs.readFileSync(migrationPath, "utf-8");
   const auditMigrationSql = fs.readFileSync(auditMigrationPath, "utf-8");
   const pointerAuditSql = fs.readFileSync(pointerAuditMigrationPath, "utf-8");
+  const sitesRevokeSql = fs.readFileSync(sitesRevokeMigrationPath, "utf-8");
   const combinedSql = fs.readFileSync(combinedPath, "utf-8");
 
   it("verifies migration files exist and are populated with deterministic timestamps", () => {
@@ -41,6 +48,10 @@ describe("VO-040 Website Configuration Migration Verification", () => {
     expect(fs.existsSync(pointerAuditMigrationPath)).toBe(true);
     expect(path.basename(pointerAuditMigrationPath)).toMatch(/^\d{14}_[a-z0-9_]+\.sql$/);
     expect(pointerAuditSql.length).toBeGreaterThan(1000);
+
+    expect(fs.existsSync(sitesRevokeMigrationPath)).toBe(true);
+    expect(path.basename(sitesRevokeMigrationPath)).toMatch(/^\d{14}_[a-z0-9_]+\.sql$/);
+    expect(sitesRevokeSql.length).toBeGreaterThan(500);
   });
 
   it("verifies preflight hardening revokes service_role on atomic business creation and import RPCs", () => {
@@ -237,6 +248,21 @@ describe("VO-040 Website Configuration Migration Verification", () => {
     expect(pointerAuditSql).toContain("v_now TIMESTAMPTZ := pg_catalog.now();");
   });
 
+  it("verifies direct sites INSERT and DELETE revocation (VO-040 Final Sites Authorization Audit)", () => {
+    expect(sitesRevokeSql).toContain(
+      "REVOKE INSERT, DELETE ON public.sites FROM anon, authenticated, PUBLIC;",
+    );
+    expect(sitesRevokeSql).toContain(
+      'DROP POLICY IF EXISTS "sites_insert_policy" ON public.sites;',
+    );
+    expect(sitesRevokeSql).toContain(
+      'DROP POLICY IF EXISTS "sites_delete_policy" ON public.sites;',
+    );
+    expect(sitesRevokeSql).toContain("WITH CHECK (false);");
+    expect(sitesRevokeSql).toContain("USING (false);");
+    expect(sitesRevokeSql).toContain("GRANT ALL ON public.sites TO service_role;");
+  });
+
   it("verifies all VO-040 migrations are accurately appended to supabase/combined_migrations.sql", () => {
     expect(combinedSql).toContain("CREATE TABLE public.site_versions");
     expect(combinedSql).toContain("uq_site_versions_site_version");
@@ -247,6 +273,9 @@ describe("VO-040 Website Configuration Migration Verification", () => {
     expect(combinedSql).toContain("ON DELETE RESTRICT;");
     expect(combinedSql).toContain(
       "ALTER TABLE public.site_versions\n    ALTER COLUMN created_at SET DEFAULT now();",
+    );
+    expect(combinedSql).toContain(
+      "REVOKE INSERT, DELETE ON public.sites FROM anon, authenticated, PUBLIC;",
     );
   });
 });

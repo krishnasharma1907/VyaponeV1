@@ -60,14 +60,20 @@
      - **Effective Privilege Lockdown (Audit 1):** Stripped all broad table-level privileges from `anon`, `authenticated`, and `PUBLIC` on `public.sites` and `public.site_versions`. Granted column-level `INSERT` and `UPDATE` on `public.sites` strictly excluding `status`, `business_id`, `current_draft_version_id`, and `published_version_id`. Completely revoked direct `INSERT`, `UPDATE`, and `DELETE` on `public.site_versions` for untrusted roles, guaranteeing version creation only via `save_site_draft_configuration_atomic`. Preserved legitimate `SELECT` reads governed by RLS.
      - **Composite Foreign-Key Deletion Semantics (Audit 2):** Replaced flawed `ON DELETE SET NULL` on composite FKs `fk_sites_current_draft_version` and `fk_sites_published_version` with `ON DELETE RESTRICT`. Prevents invalid PostgreSQL attempts to nullify primary key `sites.id` and guarantees that active referenced draft and published versions cannot be deleted while referenced.
      - **TIMESTAMPTZ Correctness (Audit 3):** Set `site_versions.created_at` default to `now()`, eliminating the session-dependent `timezone('utc'::text, now())` anti-pattern. Standardized `save_site_draft_configuration_atomic` to use `pg_catalog.now()`.
-  10. **Comprehensive Verification & Quality Gates:**
+  10. **Targeted Sites INSERT & DELETE Authorization Audit (`20261120000002_revoke_direct_sites_insert_delete.sql`):**
+     - **Direct INSERT Revocation & Capacity Protection:** Completely revoked direct `INSERT` on `public.sites` from `anon`, `authenticated`, and `PUBLIC`. Neutralized the vulnerability where authenticated business managers could create unlimited draft sites directly via PostgREST, bypassing workspace plan capacity limits (`assert_and_lock_workspace_capacity` on `draft_websites`) and bypassing append-only audit logging (PRD §17). All future site creation is enforced through trusted, audited server RPCs or `service_role`.
+     - **Direct DELETE Revocation & Lifecycle Protection:** Completely revoked direct `DELETE` on `public.sites` from untrusted roles. Enforces PRD §9.2 soft-lifecycle archival (`archived`), prevents un-audited destruction of business sites, eliminates orphaned media references in quarantine, and protects against foreign key RESTRICT conflicts with actively referenced site versions.
+     - **Defense-in-Depth RLS Hardening:** Dropped permissive insert/delete policies and installed explicit restrictive policies: `sites_insert_policy` (`WITH CHECK (false)`) and `sites_delete_policy` (`USING (false)`).
+     - **Preserved Authorized Workflows:** `SELECT` remains granted for storefront visitors and business dashboard operators. Scoped `UPDATE (subdomain, primary_domain, updated_at)` remains granted for legitimate tenant domain configuration. Full administrative permissions remain granted exclusively to `service_role`.
+  11. **Comprehensive Verification & Quality Gates:**
+     - `tests/unit/database/sites-authorization-audit.test.ts`: 17 tests passing.
      - `tests/unit/database/website-pointer-privilege-audit.test.ts`: 14 tests passing.
-     - `tests/unit/database/website-configuration-migration.test.ts`: 13 tests passing.
+     - `tests/unit/database/website-configuration-migration.test.ts`: 14 tests passing.
      - `tests/unit/websites/configuration-schemas.test.ts`: 16 tests passing.
      - `tests/unit/websites/versioning.test.ts`: 10 tests passing.
      - `tests/unit/websites/service.test.ts`: 16 tests passing.
      - `tests/unit/websites/actions.test.ts`: 8 tests passing.
-     - Total VO-040 suite: 77 tests passing across 6 test files (0 failures).
+     - Total VO-040 suite: 95 tests passing across 7 test files (0 failures).
 
 ## Task Report: VO-034 — Build Business Import and Confirmation Review
 

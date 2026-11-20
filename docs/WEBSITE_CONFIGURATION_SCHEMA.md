@@ -79,7 +79,7 @@ Theme definitions conform to VyapOne brand guidelines with pre-calibrated palett
 
 ---
 
-## 4. Database Model & Migrations (`20261119000003`, `20261119000004` & `20261120000001`)
+## 4. Database Model & Migrations (`20261119000003`, `20261119000004`, `20261120000001` & `20261120000002`)
 
 ### `public.site_versions` Table & Composite Integrity Constraints (Audit B & Targeted Audit)
 
@@ -120,34 +120,53 @@ ALTER TABLE public.sites ADD CONSTRAINT fk_sites_published_version
 > **Why `ON DELETE RESTRICT` for composite version pointers?**
 > In a composite foreign key `(id, current_draft_version_id) REFERENCES public.site_versions(site_id, id)`, `ON DELETE SET NULL` instructs PostgreSQL to set *all* referencing columns to `NULL`. Because `sites.id` is the primary key (`NOT NULL`), attempting to delete a referenced version would result in an unexpected constraint violation. `ON DELETE RESTRICT` guarantees that active versions cannot be deleted while referenced and prevents invalid primary key nullification.
 
-### Effective Privilege Lockdown (Audit C & Targeted Audit 1)
+### Effective Privilege Lockdown & Direct INSERT/DELETE Revocation (Audit C, Targeted Audits 1 & 2)
 
-PostgreSQL privileges are additive. In `20261120000001`, broad table-level privileges are stripped, and precise column-level permissions are granted:
+PostgreSQL privileges are additive. Across migrations `20261120000001` and `20261120000002`, direct `INSERT` and `DELETE` on `public.sites` are completely revoked from untrusted client roles (`anon`, `authenticated`, `PUBLIC`):
+
 ```sql
--- 1. Strip all broad privileges
+-- 1. Strip all broad privileges on sites and site_versions
 REVOKE ALL ON public.sites FROM anon, authenticated, PUBLIC;
 REVOKE ALL ON public.site_versions FROM anon, authenticated, PUBLIC;
 
--- 2. Legitimate Read Privileges (Governed by RLS)
+-- 2. Revoke Direct INSERT and DELETE on public.sites (20261120000002)
+-- Rationale:
+-- - Direct INSERT bypassed workspace capacity checks ('draft_websites') and append-only audit logging.
+-- - Direct DELETE bypassed PRD soft-lifecycle rules ('archived'), destroyed audit history, and conflicted with
+--   immutable published versions and RESTRICT foreign keys.
+-- All site creation and lifecycle operations must occur through trusted server-side procedures or service_role.
+REVOKE INSERT, DELETE ON public.sites FROM anon, authenticated, PUBLIC;
+
+-- 3. Restrictive RLS Policies for Defense-in-Depth (20261120000002)
+DROP POLICY IF EXISTS "sites_insert_policy" ON public.sites;
+DROP POLICY IF EXISTS "sites_delete_policy" ON public.sites;
+
+CREATE POLICY "sites_insert_policy" ON public.sites
+    FOR INSERT TO authenticated, anon
+    WITH CHECK (false);
+
+CREATE POLICY "sites_delete_policy" ON public.sites
+    FOR DELETE TO authenticated, anon
+    USING (false);
+
+-- 4. Legitimate Read Privileges (Governed by sites_select_policy)
 GRANT SELECT ON public.sites TO anon, authenticated;
 GRANT SELECT ON public.site_versions TO anon, authenticated;
 
--- 3. Column-Level INSERT on public.sites (strictly omits status, current_draft_version_id, published_version_id)
-GRANT INSERT (id, business_id, subdomain, primary_domain, created_at, updated_at)
-ON public.sites TO authenticated;
-
--- 4. Column-Level UPDATE on public.sites (strictly omits status, business_id, current_draft_version_id, published_version_id)
+-- 5. Column-Level UPDATE on public.sites (Governed by sites_update_policy: can_manage_business)
+-- Strictly excludes status, business_id, current_draft_version_id, published_version_id
 GRANT UPDATE (subdomain, primary_domain, updated_at)
 ON public.sites TO authenticated;
 
--- 5. Scoped DELETE on public.sites (Protected by RLS sites_delete_policy: sovereign owner only)
-GRANT DELETE ON public.sites TO authenticated;
-
 -- 6. Direct INSERT, UPDATE, DELETE on site_versions are completely REVOKED for authenticated and anon
 -- Version records can ONLY be created via save_site_draft_configuration_atomic().
+
+-- 7. Full Administrative Privileges for Trusted Server Infrastructure
+GRANT ALL ON public.sites TO service_role;
+GRANT ALL ON public.site_versions TO service_role;
 ```
 
-Version pointers and site lifecycle status can only be updated via authorized, audited server RPCs (`save_site_draft_configuration_atomic`).
+Version pointers and site lifecycle status can only be updated via authorized, audited server RPCs (`save_site_draft_configuration_atomic`, `transition_site_status_atomic`).
 
 ### TIMESTAMPTZ Correctness (Targeted Audit 3)
 
