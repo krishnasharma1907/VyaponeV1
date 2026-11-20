@@ -79,7 +79,7 @@ Theme definitions conform to VyapOne brand guidelines with pre-calibrated palett
 
 ---
 
-## 4. Database Model & Migrations (`20261119000003`, `20261119000004`, `20261120000001` & `20261120000002`)
+## 4. Database Model & Migrations (`20261119000003`, `20261119000004`, `20261120000001`, `20261120000002` & `20261120000003`)
 
 ### `public.site_versions` Table & Composite Integrity Constraints (Audit B & Targeted Audit)
 
@@ -137,31 +137,49 @@ REVOKE ALL ON public.site_versions FROM anon, authenticated, PUBLIC;
 -- All site creation and lifecycle operations must occur through trusted server-side procedures or service_role.
 REVOKE INSERT, DELETE ON public.sites FROM anon, authenticated, PUBLIC;
 
--- 3. Restrictive RLS Policies for Defense-in-Depth (20261120000002)
-DROP POLICY IF EXISTS "sites_insert_policy" ON public.sites;
-DROP POLICY IF EXISTS "sites_delete_policy" ON public.sites;
+-- 3. Dedicated Restrictive RLS Denial Policies for Defense-in-Depth (20261120000003)
+-- In PostgreSQL, permissive policies combine with OR; dedicated AS RESTRICTIVE policies
+-- combine with AND across all permissive policies, guaranteeing unconditional rejection.
+DROP POLICY IF EXISTS "sites_restrictive_insert_deny" ON public.sites;
+DROP POLICY IF EXISTS "sites_restrictive_delete_deny" ON public.sites;
 
-CREATE POLICY "sites_insert_policy" ON public.sites
-    FOR INSERT TO authenticated, anon
+CREATE POLICY "sites_restrictive_insert_deny" ON public.sites
+    AS RESTRICTIVE
+    FOR INSERT
+    TO anon, authenticated
     WITH CHECK (false);
 
-CREATE POLICY "sites_delete_policy" ON public.sites
-    FOR DELETE TO authenticated, anon
+CREATE POLICY "sites_restrictive_delete_deny" ON public.sites
+    AS RESTRICTIVE
+    FOR DELETE
+    TO anon, authenticated
     USING (false);
 
--- 4. Legitimate Read Privileges (Governed by sites_select_policy)
+-- 4. Explicit Column-Level INSERT Revocation (20261120000003)
+-- In PostgreSQL, table-level REVOKE does not remove prior column-level grants in pg_attribute.attacl.
+-- Explicitly revokes all historical column-level INSERT privileges from 20261120000001:
+REVOKE INSERT (
+    id,
+    business_id,
+    subdomain,
+    primary_domain,
+    created_at,
+    updated_at
+) ON public.sites FROM anon, authenticated, PUBLIC;
+
+-- 5. Legitimate Read Privileges (Governed by sites_select_policy)
 GRANT SELECT ON public.sites TO anon, authenticated;
 GRANT SELECT ON public.site_versions TO anon, authenticated;
 
--- 5. Column-Level UPDATE on public.sites (Governed by sites_update_policy: can_manage_business)
+-- 6. Column-Level UPDATE on public.sites (Governed by sites_update_policy: can_manage_business)
 -- Strictly excludes status, business_id, current_draft_version_id, published_version_id
 GRANT UPDATE (subdomain, primary_domain, updated_at)
 ON public.sites TO authenticated;
 
--- 6. Direct INSERT, UPDATE, DELETE on site_versions are completely REVOKED for authenticated and anon
+-- 7. Direct INSERT, UPDATE, DELETE on site_versions are completely REVOKED for authenticated and anon
 -- Version records can ONLY be created via save_site_draft_configuration_atomic().
 
--- 7. Full Administrative Privileges for Trusted Server Infrastructure
+-- 8. Full Administrative Privileges for Trusted Server Infrastructure
 GRANT ALL ON public.sites TO service_role;
 GRANT ALL ON public.site_versions TO service_role;
 ```

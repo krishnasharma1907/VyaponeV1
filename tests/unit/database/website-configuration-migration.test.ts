@@ -28,12 +28,19 @@ describe("VO-040 Website Configuration Migration Verification", () => {
     "migrations",
     "20261120000002_revoke_direct_sites_insert_delete.sql",
   );
+  const columnRevokeMigrationPath = path.join(
+    rootDir,
+    "supabase",
+    "migrations",
+    "20261120000003_revoke_column_insert_and_enforce_restrictive_rls.sql",
+  );
   const combinedPath = path.join(rootDir, "supabase", "combined_migrations.sql");
 
   const migrationSql = fs.readFileSync(migrationPath, "utf-8");
   const auditMigrationSql = fs.readFileSync(auditMigrationPath, "utf-8");
   const pointerAuditSql = fs.readFileSync(pointerAuditMigrationPath, "utf-8");
   const sitesRevokeSql = fs.readFileSync(sitesRevokeMigrationPath, "utf-8");
+  const columnRevokeSql = fs.readFileSync(columnRevokeMigrationPath, "utf-8");
   const combinedSql = fs.readFileSync(combinedPath, "utf-8");
 
   it("verifies migration files exist and are populated with deterministic timestamps", () => {
@@ -52,6 +59,10 @@ describe("VO-040 Website Configuration Migration Verification", () => {
     expect(fs.existsSync(sitesRevokeMigrationPath)).toBe(true);
     expect(path.basename(sitesRevokeMigrationPath)).toMatch(/^\d{14}_[a-z0-9_]+\.sql$/);
     expect(sitesRevokeSql.length).toBeGreaterThan(500);
+
+    expect(fs.existsSync(columnRevokeMigrationPath)).toBe(true);
+    expect(path.basename(columnRevokeMigrationPath)).toMatch(/^\d{14}_[a-z0-9_]+\.sql$/);
+    expect(columnRevokeSql.length).toBeGreaterThan(500);
   });
 
   it("verifies preflight hardening revokes service_role on atomic business creation and import RPCs", () => {
@@ -263,6 +274,51 @@ describe("VO-040 Website Configuration Migration Verification", () => {
     expect(sitesRevokeSql).toContain("GRANT ALL ON public.sites TO service_role;");
   });
 
+  it("verifies explicit column-level INSERT revocation and restrictive RLS policies (20261120000003)", () => {
+    // Explicit column-level INSERT revocation
+    expect(columnRevokeSql).toContain("REVOKE INSERT (");
+    expect(columnRevokeSql).toContain("id,");
+    expect(columnRevokeSql).toContain("business_id,");
+    expect(columnRevokeSql).toContain("subdomain,");
+    expect(columnRevokeSql).toContain("primary_domain,");
+    expect(columnRevokeSql).toContain("created_at,");
+    expect(columnRevokeSql).toContain("updated_at");
+    expect(columnRevokeSql).toContain(") ON public.sites FROM anon, authenticated, PUBLIC;");
+
+    // Table-level REVOKE re-affirmation
+    expect(columnRevokeSql).toContain(
+      "REVOKE INSERT, DELETE ON public.sites FROM anon, authenticated, PUBLIC;",
+    );
+
+    // Dedicated AS RESTRICTIVE denial policies
+    expect(columnRevokeSql).toContain(
+      'DROP POLICY IF EXISTS "sites_restrictive_insert_deny" ON public.sites;',
+    );
+    expect(columnRevokeSql).toContain(
+      'DROP POLICY IF EXISTS "sites_restrictive_delete_deny" ON public.sites;',
+    );
+    expect(columnRevokeSql).toContain(
+      'CREATE POLICY "sites_restrictive_insert_deny" ON public.sites',
+    );
+    expect(columnRevokeSql).toContain("AS RESTRICTIVE");
+    expect(columnRevokeSql).toContain("FOR INSERT");
+    expect(columnRevokeSql).toContain("TO anon, authenticated");
+    expect(columnRevokeSql).toContain("WITH CHECK (false);");
+
+    expect(columnRevokeSql).toContain(
+      'CREATE POLICY "sites_restrictive_delete_deny" ON public.sites',
+    );
+    expect(columnRevokeSql).toContain("FOR DELETE");
+    expect(columnRevokeSql).toContain("USING (false);");
+
+    // Preserved permissions
+    expect(columnRevokeSql).toContain(
+      "GRANT UPDATE (subdomain, primary_domain, updated_at) ON public.sites TO authenticated;",
+    );
+    expect(columnRevokeSql).toContain("GRANT SELECT ON public.sites TO anon, authenticated;");
+    expect(columnRevokeSql).toContain("GRANT ALL ON public.sites TO service_role;");
+  });
+
   it("verifies all VO-040 migrations are accurately appended to supabase/combined_migrations.sql", () => {
     expect(combinedSql).toContain("CREATE TABLE public.site_versions");
     expect(combinedSql).toContain("uq_site_versions_site_version");
@@ -277,5 +333,11 @@ describe("VO-040 Website Configuration Migration Verification", () => {
     expect(combinedSql).toContain(
       "REVOKE INSERT, DELETE ON public.sites FROM anon, authenticated, PUBLIC;",
     );
+    expect(combinedSql).toContain(
+      "-- VyapOne Database Migration: 20261120000003_revoke_column_insert_and_enforce_restrictive_rls.sql",
+    );
+    expect(combinedSql).toContain("sites_restrictive_insert_deny");
+    expect(combinedSql).toContain("sites_restrictive_delete_deny");
+    expect(combinedSql).toContain("AS RESTRICTIVE");
   });
 });

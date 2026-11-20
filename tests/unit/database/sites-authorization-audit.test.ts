@@ -5,17 +5,20 @@
  * of direct INSERT and DELETE operations on public.sites across migration history:
  *
  * 1. Static Migration Tests:
- *    - Verifies 20261120000002_revoke_direct_sites_insert_delete.sql revokes INSERT and DELETE
- *      on public.sites from untrusted roles (anon, authenticated, PUBLIC).
- *    - Verifies restrictive RLS policies installed (WITH CHECK (false), USING (false)).
- *    - Verifies combined_migrations.sql contains the forward migration.
+ *    - Verifies 20261120000002_revoke_direct_sites_insert_delete.sql revokes table-level INSERT/DELETE.
+ *    - Verifies 20261120000003_revoke_column_insert_and_enforce_restrictive_rls.sql explicitly
+ *      revokes column-level INSERT on (id, business_id, subdomain, primary_domain, created_at, updated_at).
+ *    - Verifies dedicated AS RESTRICTIVE denial policies installed (WITH CHECK (false), USING (false)).
+ *    - Verifies combined_migrations.sql contains all forward migrations.
  *
- * 2. Mocked Policy & Permission Model Tests:
+ * 2. Mocked Policy & Permission Model Tests (PostgreSQL Dual-Tier Privilege & RLS Simulation):
+ *    - Column-level privilege revocation verification (closing the pg_attribute.attacl gap).
+ *    - Restrictive RLS policy conjunction (AND-combinator across permissive policies).
  *    - Allowed and disallowed site INSERT (preventing draft_websites capacity bypass).
  *    - Allowed and disallowed site DELETE (preventing un-audited destructive deletions).
- *    - Cross-tenant site deletion rejection.
- *    - Audit trail requirements (PRD §17).
- *    - Site-version lifecycle and deletion constraints (ON DELETE RESTRICT, immutability trigger).
+ *    - Cross-tenant site mutation rejection.
+ *    - Audit trail preservation (PRD §17).
+ *    - Site-version lifecycle and deletion constraints (ON DELETE RESTRICT).
  *    - Existing authorized website read/write workflows (SELECT and scoped UPDATE preserved).
  */
 
@@ -25,60 +28,103 @@ import * as path from "node:path";
 
 describe("VO-040 Sites Table Direct INSERT & DELETE Authorization Audit", () => {
   const rootDir = process.cwd();
-  const revokeMigrationPath = path.join(
+  const tableRevokeMigrationPath = path.join(
     rootDir,
     "supabase",
     "migrations",
     "20261120000002_revoke_direct_sites_insert_delete.sql",
   );
+  const columnRevokeMigrationPath = path.join(
+    rootDir,
+    "supabase",
+    "migrations",
+    "20261120000003_revoke_column_insert_and_enforce_restrictive_rls.sql",
+  );
   const combinedPath = path.join(rootDir, "supabase", "combined_migrations.sql");
 
-  const revokeSql = fs.readFileSync(revokeMigrationPath, "utf-8");
+  const tableRevokeSql = fs.readFileSync(tableRevokeMigrationPath, "utf-8");
+  const columnRevokeSql = fs.readFileSync(columnRevokeMigrationPath, "utf-8");
   const combinedSql = fs.readFileSync(combinedPath, "utf-8");
 
   // ============================================================================
   // 1. Static Migration Tests
   // ============================================================================
-  describe("1. Static Migration Invariants (20261120000002)", () => {
-    it("revokes direct INSERT and DELETE privileges on public.sites from untrusted roles", () => {
-      expect(revokeSql).toContain(
+  describe("1. Static Migration Invariants", () => {
+    it("verifies migration files exist and have deterministic timestamps", () => {
+      expect(fs.existsSync(tableRevokeMigrationPath)).toBe(true);
+      expect(path.basename(tableRevokeMigrationPath)).toMatch(/^\d{14}_[a-z0-9_]+\.sql$/);
+
+      expect(fs.existsSync(columnRevokeMigrationPath)).toBe(true);
+      expect(path.basename(columnRevokeMigrationPath)).toMatch(/^\d{14}_[a-z0-9_]+\.sql$/);
+      expect(columnRevokeSql.length).toBeGreaterThan(500);
+    });
+
+    it("verifies 20261120000002 revokes table-level INSERT and DELETE privileges on public.sites", () => {
+      expect(tableRevokeSql).toContain(
         "REVOKE INSERT, DELETE ON public.sites FROM anon, authenticated, PUBLIC;",
       );
-      expect(revokeSql).not.toMatch(/GRANT (INSERT|DELETE) ON public\.sites TO authenticated/i);
-      expect(revokeSql).not.toMatch(/GRANT (INSERT|DELETE) ON public\.sites TO anon/i);
-      expect(revokeSql).not.toMatch(/GRANT (INSERT|DELETE) ON public\.sites TO PUBLIC/i);
+      expect(tableRevokeSql).not.toMatch(
+        /GRANT (INSERT|DELETE) ON public\.sites TO authenticated/i,
+      );
     });
 
-    it("replaces permissive RLS policies with explicit restrictive policies on public.sites", () => {
-      expect(revokeSql).toContain('DROP POLICY IF EXISTS "sites_insert_policy" ON public.sites;');
-      expect(revokeSql).toContain('DROP POLICY IF EXISTS "sites_delete_policy" ON public.sites;');
-
-      // Restrictive INSERT policy
-      expect(revokeSql).toContain('CREATE POLICY "sites_insert_policy" ON public.sites');
-      expect(revokeSql).toContain("FOR INSERT");
-      expect(revokeSql).toContain("TO authenticated, anon");
-      expect(revokeSql).toContain("WITH CHECK (false);");
-
-      // Restrictive DELETE policy
-      expect(revokeSql).toContain('CREATE POLICY "sites_delete_policy" ON public.sites');
-      expect(revokeSql).toContain("FOR DELETE");
-      expect(revokeSql).toContain("TO authenticated, anon");
-      expect(revokeSql).toContain("USING (false);");
+    it("verifies 20261120000003 explicitly revokes historical column-level INSERT privileges", () => {
+      // Must explicitly revoke column-level grants from 20261120000001
+      expect(columnRevokeSql).toContain("REVOKE INSERT (");
+      expect(columnRevokeSql).toContain("id,");
+      expect(columnRevokeSql).toContain("business_id,");
+      expect(columnRevokeSql).toContain("subdomain,");
+      expect(columnRevokeSql).toContain("primary_domain,");
+      expect(columnRevokeSql).toContain("created_at,");
+      expect(columnRevokeSql).toContain("updated_at");
+      expect(columnRevokeSql).toContain(") ON public.sites FROM anon, authenticated, PUBLIC;");
     });
 
-    it("confirms service_role maintains full administrative privileges", () => {
-      expect(revokeSql).toContain("GRANT ALL ON public.sites TO service_role;");
+    it("verifies 20261120000003 installs dedicated AS RESTRICTIVE denial policies on public.sites", () => {
+      expect(columnRevokeSql).toContain(
+        'DROP POLICY IF EXISTS "sites_restrictive_insert_deny" ON public.sites;',
+      );
+      expect(columnRevokeSql).toContain(
+        'DROP POLICY IF EXISTS "sites_restrictive_delete_deny" ON public.sites;',
+      );
+
+      // Dedicated Restrictive INSERT denial
+      expect(columnRevokeSql).toContain(
+        'CREATE POLICY "sites_restrictive_insert_deny" ON public.sites',
+      );
+      expect(columnRevokeSql).toContain("AS RESTRICTIVE");
+      expect(columnRevokeSql).toContain("FOR INSERT");
+      expect(columnRevokeSql).toContain("TO anon, authenticated");
+      expect(columnRevokeSql).toContain("WITH CHECK (false);");
+
+      // Dedicated Restrictive DELETE denial
+      expect(columnRevokeSql).toContain(
+        'CREATE POLICY "sites_restrictive_delete_deny" ON public.sites',
+      );
+      expect(columnRevokeSql).toContain("AS RESTRICTIVE");
+      expect(columnRevokeSql).toContain("FOR DELETE");
+      expect(columnRevokeSql).toContain("TO anon, authenticated");
+      expect(columnRevokeSql).toContain("USING (false);");
     });
 
-    it("verifies combined_migrations.sql contains the forward-only revocation migration", () => {
+    it("verifies approved UPDATE, SELECT, and service_role administrative grants are preserved", () => {
+      expect(columnRevokeSql).toContain(
+        "GRANT UPDATE (subdomain, primary_domain, updated_at) ON public.sites TO authenticated;",
+      );
+      expect(columnRevokeSql).toContain("GRANT SELECT ON public.sites TO anon, authenticated;");
+      expect(columnRevokeSql).toContain("GRANT ALL ON public.sites TO service_role;");
+    });
+
+    it("verifies combined_migrations.sql contains both forward migrations", () => {
       expect(combinedSql).toContain(
         "-- VyapOne Database Migration: 20261120000002_revoke_direct_sites_insert_delete.sql",
       );
       expect(combinedSql).toContain(
-        "REVOKE INSERT, DELETE ON public.sites FROM anon, authenticated, PUBLIC;",
+        "-- VyapOne Database Migration: 20261120000003_revoke_column_insert_and_enforce_restrictive_rls.sql",
       );
-      expect(combinedSql).toContain("WITH CHECK (false);");
-      expect(combinedSql).toContain("USING (false);");
+      expect(combinedSql).toContain("sites_restrictive_insert_deny");
+      expect(combinedSql).toContain("sites_restrictive_delete_deny");
+      expect(combinedSql).toContain("AS RESTRICTIVE");
     });
   });
 
@@ -92,11 +138,17 @@ describe("VO-040 Sites Table Direct INSERT & DELETE Authorization Audit", () => 
         insert: Set<string>;
         update: Set<string>;
       };
-      rlsPolicies: {
-        insert: (context: AuthContext, record: Record<string, unknown>) => boolean;
-        update: (context: AuthContext, record: Record<string, unknown>) => boolean;
-        delete: (context: AuthContext, record: Record<string, unknown>) => boolean;
-        select: (context: AuthContext, record: Record<string, unknown>) => boolean;
+      permissivePolicies: {
+        insert: Array<(context: AuthContext, record: Record<string, unknown>) => boolean>;
+        update: Array<(context: AuthContext, record: Record<string, unknown>) => boolean>;
+        delete: Array<(context: AuthContext, record: Record<string, unknown>) => boolean>;
+        select: Array<(context: AuthContext, record: Record<string, unknown>) => boolean>;
+      };
+      restrictivePolicies: {
+        insert: Array<(context: AuthContext, record: Record<string, unknown>) => boolean>;
+        update: Array<(context: AuthContext, record: Record<string, unknown>) => boolean>;
+        delete: Array<(context: AuthContext, record: Record<string, unknown>) => boolean>;
+        select: Array<(context: AuthContext, record: Record<string, unknown>) => boolean>;
       };
     }
 
@@ -109,7 +161,7 @@ describe("VO-040 Sites Table Direct INSERT & DELETE Authorization Audit", () => 
       canManageBusiness?: boolean;
     }
 
-    // Cumulative PostgreSQL catalog state following migration 20261120000002
+    // Cumulative PostgreSQL catalog state following migrations 20261120000002 and 20261120000003
     const cumulativeSitesCatalog: Record<"anon" | "authenticated" | "service_role", RoleCatalog> = {
       anon: {
         tablePrivileges: new Set(["SELECT"]),
@@ -117,27 +169,42 @@ describe("VO-040 Sites Table Direct INSERT & DELETE Authorization Audit", () => 
           insert: new Set(),
           update: new Set(),
         },
-        rlsPolicies: {
-          insert: () => false,
-          update: () => false,
-          delete: () => false,
-          select: (_ctx, record) => record.status === "published",
+        permissivePolicies: {
+          insert: [() => false], // sites_insert_policy (WITH CHECK false)
+          update: [],
+          delete: [() => false], // sites_delete_policy (USING false)
+          select: [(_ctx, record) => record.status === "published"],
+        },
+        restrictivePolicies: {
+          insert: [() => false], // sites_restrictive_insert_deny (WITH CHECK false)
+          update: [],
+          delete: [() => false], // sites_restrictive_delete_deny (USING false)
+          select: [],
         },
       },
       authenticated: {
-        // Both INSERT and DELETE are stripped at the table level
         tablePrivileges: new Set(["SELECT"]),
         columnPrivileges: {
-          insert: new Set(), // Direct column INSERT revoked
+          insert: new Set(), // Direct column INSERT explicitly revoked in 20261120000003
           update: new Set(["subdomain", "primary_domain", "updated_at"]), // Scoped UPDATE preserved
         },
-        rlsPolicies: {
-          insert: () => false, // RLS sites_insert_policy: WITH CHECK (false)
-          delete: () => false, // RLS sites_delete_policy: USING (false)
-          update: (ctx, record) => !!ctx.canManageBusiness && ctx.businessId === record.business_id,
-          select: (ctx, record) =>
-            record.status === "published" ||
-            (!!ctx.canManageBusiness && ctx.businessId === record.business_id),
+        permissivePolicies: {
+          insert: [() => false], // sites_insert_policy (WITH CHECK false)
+          delete: [() => false], // sites_delete_policy (USING false)
+          update: [
+            (ctx, record) => !!ctx.canManageBusiness && ctx.businessId === record.business_id,
+          ],
+          select: [
+            (ctx, record) =>
+              record.status === "published" ||
+              (!!ctx.canManageBusiness && ctx.businessId === record.business_id),
+          ],
+        },
+        restrictivePolicies: {
+          insert: [() => false], // sites_restrictive_insert_deny (AS RESTRICTIVE WITH CHECK false)
+          delete: [() => false], // sites_restrictive_delete_deny (AS RESTRICTIVE USING false)
+          update: [],
+          select: [],
         },
       },
       service_role: {
@@ -154,20 +221,35 @@ describe("VO-040 Sites Table Direct INSERT & DELETE Authorization Audit", () => 
           ]),
           update: new Set(["subdomain", "primary_domain", "status", "updated_at"]),
         },
-        rlsPolicies: {
-          // service_role bypasses RLS
-          insert: () => true,
-          update: () => true,
-          delete: () => true,
-          select: () => true,
+        permissivePolicies: {
+          insert: [() => true],
+          update: [() => true],
+          delete: [() => true],
+          select: [() => true],
+        },
+        restrictivePolicies: {
+          insert: [],
+          update: [],
+          delete: [],
+          select: [],
         },
       },
     };
 
+    /**
+     * Executes an INSERT adhering to PostgreSQL standard authorization rules:
+     * 1. Privilege Check: Table INSERT OR Column INSERT for all inserted columns.
+     * 2. RLS Permissive Policies: Combined with OR (at least one must be true).
+     * 3. RLS Restrictive Policies: Combined with AND (all must be true).
+     */
     function executeInsert(
       role: "anon" | "authenticated" | "service_role",
       ctx: AuthContext,
       record: Record<string, unknown>,
+      additionalPermissivePolicy?: (
+        context: AuthContext,
+        record: Record<string, unknown>,
+      ) => boolean,
     ): { success: boolean; error?: string } {
       const catalog = cumulativeSitesCatalog[role];
 
@@ -186,12 +268,30 @@ describe("VO-040 Sites Table Direct INSERT & DELETE Authorization Audit", () => 
         }
       }
 
-      // 2. Check Row-Level Security
+      // 2. Check Row-Level Security (bypassed by service_role)
       if (role !== "service_role") {
-        if (!catalog.rlsPolicies.insert(ctx, record)) {
+        const permissiveList = [...catalog.permissivePolicies.insert];
+        if (additionalPermissivePolicy) {
+          permissiveList.push(additionalPermissivePolicy);
+        }
+
+        // Permissive policies combine with OR: at least one must pass
+        const permissivePass =
+          permissiveList.length === 0 || permissiveList.some((p) => p(ctx, record));
+        if (!permissivePass) {
           return {
             success: false,
             error: 'new row violates row-level security policy for table "sites" (SQLSTATE 42501)',
+          };
+        }
+
+        // Restrictive policies combine with AND: all must pass
+        const restrictivePass = catalog.restrictivePolicies.insert.every((p) => p(ctx, record));
+        if (!restrictivePass) {
+          return {
+            success: false,
+            error:
+              'new row violates restrictive row-level security policy for table "sites" (SQLSTATE 42501)',
           };
         }
       }
@@ -199,10 +299,20 @@ describe("VO-040 Sites Table Direct INSERT & DELETE Authorization Audit", () => 
       return { success: true };
     }
 
+    /**
+     * Executes a DELETE adhering to PostgreSQL standard authorization rules:
+     * 1. Privilege Check: Table DELETE privilege.
+     * 2. RLS Permissive Policies: Combined with OR.
+     * 3. RLS Restrictive Policies: Combined with AND.
+     */
     function executeDelete(
       role: "anon" | "authenticated" | "service_role",
       ctx: AuthContext,
       record: Record<string, unknown>,
+      additionalPermissivePolicy?: (
+        context: AuthContext,
+        record: Record<string, unknown>,
+      ) => boolean,
     ): { success: boolean; error?: string } {
       const catalog = cumulativeSitesCatalog[role];
 
@@ -218,10 +328,28 @@ describe("VO-040 Sites Table Direct INSERT & DELETE Authorization Audit", () => 
 
       // 2. Check Row-Level Security
       if (role !== "service_role") {
-        if (!catalog.rlsPolicies.delete(ctx, record)) {
+        const permissiveList = [...catalog.permissivePolicies.delete];
+        if (additionalPermissivePolicy) {
+          permissiveList.push(additionalPermissivePolicy);
+        }
+
+        // Permissive policies combine with OR
+        const permissivePass =
+          permissiveList.length === 0 || permissiveList.some((p) => p(ctx, record));
+        if (!permissivePass) {
           return {
             success: false,
             error: 'row violates row-level security policy for table "sites" (SQLSTATE 42501)',
+          };
+        }
+
+        // Restrictive policies combine with AND
+        const restrictivePass = catalog.restrictivePolicies.delete.every((p) => p(ctx, record));
+        if (!restrictivePass) {
+          return {
+            success: false,
+            error:
+              'row violates restrictive row-level security policy for table "sites" (SQLSTATE 42501)',
           };
         }
       }
@@ -254,10 +382,22 @@ describe("VO-040 Sites Table Direct INSERT & DELETE Authorization Audit", () => 
 
       // 2. Check Row-Level Security
       if (role !== "service_role") {
-        if (!catalog.rlsPolicies.update(ctx, targetRecord)) {
+        const permissivePass = catalog.permissivePolicies.update.some((p) => p(ctx, targetRecord));
+        if (!permissivePass) {
           return {
             success: false,
             error: 'row violates row-level security policy for table "sites" (SQLSTATE 42501)',
+          };
+        }
+
+        const restrictivePass = catalog.restrictivePolicies.update.every((p) =>
+          p(ctx, targetRecord),
+        );
+        if (!restrictivePass) {
+          return {
+            success: false,
+            error:
+              'row violates restrictive row-level security policy for table "sites" (SQLSTATE 42501)',
           };
         }
       }
@@ -266,9 +406,103 @@ describe("VO-040 Sites Table Direct INSERT & DELETE Authorization Audit", () => 
     }
 
     // --------------------------------------------------------------------------
-    // A. Direct INSERT Authorization & Capacity Bypass Prevention
+    // A. Column-Level Privilege & Restrictive RLS Conjunction
     // --------------------------------------------------------------------------
-    describe("A. Direct INSERT Authorization & Capacity Protection", () => {
+    describe("A. Column-Level Privilege & Restrictive RLS Conjunction", () => {
+      it("proves column-level INSERT privileges are empty for authenticated role", () => {
+        const catalog = cumulativeSitesCatalog.authenticated;
+        expect(catalog.columnPrivileges.insert.size).toBe(0);
+        expect(catalog.tablePrivileges.has("INSERT")).toBe(false);
+      });
+
+      it("proves restrictive RLS policy blocks INSERT even if another permissive policy allows it", () => {
+        // Assume an adversary or buggy migration injected a permissive policy that returns true:
+        const permissiveBypass = () => true;
+
+        const ctx: AuthContext = {
+          role: "authenticated",
+          userId: "user-1",
+          businessId: "biz-1",
+          canManageBusiness: true,
+        };
+
+        // Temporarily simulate having column-level privileges to isolate RLS evaluation:
+        const originalInsertCols = new Set(
+          cumulativeSitesCatalog.authenticated.columnPrivileges.insert,
+        );
+        cumulativeSitesCatalog.authenticated.columnPrivileges.insert = new Set([
+          "id",
+          "business_id",
+          "subdomain",
+          "created_at",
+          "updated_at",
+        ]);
+
+        try {
+          const result = executeInsert(
+            "authenticated",
+            ctx,
+            {
+              id: "00000000-0000-0000-0000-000000000001",
+              business_id: "biz-1",
+              subdomain: "adversary-site",
+              created_at: new Date().toISOString(),
+              updated_at: new Date().toISOString(),
+            },
+            permissiveBypass,
+          );
+
+          // Must be rejected by the RESTRICTIVE policy despite the permissive bypass!
+          expect(result.success).toBe(false);
+          expect(result.error).toContain(
+            'new row violates restrictive row-level security policy for table "sites"',
+          );
+        } finally {
+          cumulativeSitesCatalog.authenticated.columnPrivileges.insert = originalInsertCols;
+        }
+      });
+
+      it("proves restrictive RLS policy blocks DELETE even if another permissive policy allows it", () => {
+        const permissiveBypass = () => true;
+
+        const ctx: AuthContext = {
+          role: "authenticated",
+          userId: "owner-1",
+          businessId: "biz-1",
+          isSovereignOwner: true,
+          canManageBusiness: true,
+        };
+
+        // Temporarily simulate having table DELETE privilege to isolate RLS evaluation:
+        cumulativeSitesCatalog.authenticated.tablePrivileges.add("DELETE");
+
+        try {
+          const result = executeDelete(
+            "authenticated",
+            ctx,
+            {
+              id: "site-1",
+              business_id: "biz-1",
+              status: "draft",
+            },
+            permissiveBypass,
+          );
+
+          // Must be rejected by the RESTRICTIVE policy despite the permissive bypass!
+          expect(result.success).toBe(false);
+          expect(result.error).toContain(
+            'row violates restrictive row-level security policy for table "sites"',
+          );
+        } finally {
+          cumulativeSitesCatalog.authenticated.tablePrivileges.delete("DELETE");
+        }
+      });
+    });
+
+    // --------------------------------------------------------------------------
+    // B. Direct INSERT Authorization & Capacity Protection
+    // --------------------------------------------------------------------------
+    describe("B. Direct INSERT Authorization & Capacity Protection", () => {
       it("rejects direct site INSERT by authenticated business manager with permission denied", () => {
         const ctx: AuthContext = {
           role: "authenticated",
@@ -307,9 +541,6 @@ describe("VO-040 Sites Table Direct INSERT & DELETE Authorization Audit", () => 
       });
 
       it("demonstrates capacity protection: untrusted caller cannot bypass draft_websites limits", () => {
-        // If direct INSERT were permitted, an authenticated tenant could create unlimited draft sites
-        // exceeding workspace capacity without invoking assert_and_lock_workspace_capacity.
-        // Revocation strictly forces site provisioning through server-controlled workflows.
         const ctx: AuthContext = {
           role: "authenticated",
           userId: "user-1",
@@ -328,8 +559,6 @@ describe("VO-040 Sites Table Direct INSERT & DELETE Authorization Audit", () => 
       });
 
       it("demonstrates audit protection: direct INSERT lacks audit logging and is forbidden", () => {
-        // Direct table inserts on public.sites do not trigger audit log creation.
-        // Legitimate site creation occurs through trusted server procedures that record audit logs.
         const ctx: AuthContext = {
           role: "authenticated",
           userId: "user-1",
@@ -346,9 +575,9 @@ describe("VO-040 Sites Table Direct INSERT & DELETE Authorization Audit", () => 
     });
 
     // --------------------------------------------------------------------------
-    // B. Direct DELETE Authorization & Destructive Operation Prevention
+    // C. Direct DELETE Authorization & Lifecycle Integrity
     // --------------------------------------------------------------------------
-    describe("B. Direct DELETE Authorization & Lifecycle Integrity", () => {
+    describe("C. Direct DELETE Authorization & Lifecycle Integrity", () => {
       it("rejects direct site DELETE by authenticated business manager with permission denied", () => {
         const ctx: AuthContext = {
           role: "authenticated",
@@ -368,8 +597,6 @@ describe("VO-040 Sites Table Direct INSERT & DELETE Authorization Audit", () => 
       });
 
       it("rejects direct site DELETE even by sovereign owner (PRD soft-lifecycle invariant)", () => {
-        // Per PRD §9.2 and §17, sites follow a soft lifecycle (draft -> published -> suspended -> archived).
-        // Hard deletion destroys audit trail and is prohibited from client execution.
         const ctx: AuthContext = {
           role: "authenticated",
           userId: "owner-1",
@@ -407,8 +634,6 @@ describe("VO-040 Sites Table Direct INSERT & DELETE Authorization Audit", () => 
       });
 
       it("preserves site-version integrity: active versions cannot be deleted while referenced", () => {
-        // Under ON DELETE RESTRICT on fk_sites_current_draft_version and fk_sites_published_version:
-        // A version cannot be deleted while pointed to by a site record.
         const site = {
           id: "site-1",
           current_draft_version_id: "version-1",
@@ -416,7 +641,7 @@ describe("VO-040 Sites Table Direct INSERT & DELETE Authorization Audit", () => 
 
         const canDeleteReferencedVersion = (versionId: string): boolean => {
           if (site.current_draft_version_id === versionId) {
-            return false; // ON DELETE RESTRICT blocks deletion
+            return false;
           }
           return true;
         };
@@ -427,9 +652,9 @@ describe("VO-040 Sites Table Direct INSERT & DELETE Authorization Audit", () => 
     });
 
     // --------------------------------------------------------------------------
-    // C. Existing Authorized Website Read/Write Workflows
+    // D. Existing Authorized Website Read/Write Workflows
     // --------------------------------------------------------------------------
-    describe("C. Existing Authorized Website Read/Write Workflows", () => {
+    describe("D. Existing Authorized Website Read/Write Workflows", () => {
       it("preserves legitimate SELECT permissions for public storefronts (anon)", () => {
         const anonCtx: AuthContext = { role: "anon" };
         const publishedSite = { id: "site-1", business_id: "biz-1", status: "published" };
@@ -437,8 +662,8 @@ describe("VO-040 Sites Table Direct INSERT & DELETE Authorization Audit", () => 
 
         const catalog = cumulativeSitesCatalog.anon;
         expect(catalog.tablePrivileges.has("SELECT")).toBe(true);
-        expect(catalog.rlsPolicies.select(anonCtx, publishedSite)).toBe(true);
-        expect(catalog.rlsPolicies.select(anonCtx, draftSite)).toBe(false); // Drafts hidden from public
+        expect(catalog.permissivePolicies.select.some((p) => p(anonCtx, publishedSite))).toBe(true);
+        expect(catalog.permissivePolicies.select.some((p) => p(anonCtx, draftSite))).toBe(false);
       });
 
       it("preserves legitimate SELECT permissions for authenticated business operators", () => {
@@ -452,7 +677,7 @@ describe("VO-040 Sites Table Direct INSERT & DELETE Authorization Audit", () => 
 
         const catalog = cumulativeSitesCatalog.authenticated;
         expect(catalog.tablePrivileges.has("SELECT")).toBe(true);
-        expect(catalog.rlsPolicies.select(authCtx, draftSite)).toBe(true);
+        expect(catalog.permissivePolicies.select.some((p) => p(authCtx, draftSite))).toBe(true);
       });
 
       it("preserves scoped UPDATE on permitted columns (subdomain, primary_domain, updated_at)", () => {

@@ -48,7 +48,10 @@ Record implementation changes by task ID. Do not record planned work as complete
     - **Direct INSERT Revoked:** Completely revoked direct `INSERT` on `public.sites` from untrusted client roles (`anon`, `authenticated`, `PUBLIC`). Closes the critical capacity bypass vector where clients could create unauthorized draft sites without invoking workspace capacity checks (`draft_websites`) or logging append-only audit entries.
     - **Direct DELETE Revoked:** Completely revoked direct `DELETE` on `public.sites` from untrusted roles. Enforces PRD §9.2 soft-lifecycle archival (`archived`), prevents un-audited destruction of sites, and avoids foreign key RESTRICT violations with active versions.
     - **Restrictive RLS Defense-in-Depth:** Installed `sites_insert_policy` (`WITH CHECK (false)`) and `sites_delete_policy` (`USING (false)`). Preserved legitimate storefront `SELECT` and scoped `UPDATE (subdomain, primary_domain, updated_at)`.
-    - **95 dedicated unit and migration tests passing across 7 test suites.**
+  - **Final Column-Level INSERT Revocation & Restrictive RLS Deny (`20261120000003_revoke_column_insert_and_enforce_restrictive_rls.sql`):**
+    - **Column-Level INSERT Revoked:** Explicitly revoked column-level `INSERT` privileges on `(id, business_id, subdomain, primary_domain, created_at, updated_at)` from `anon`, `authenticated`, and `PUBLIC`, closing the `pg_attribute.attacl` gap left by previous table-level revocation.
+    - **Dedicated AS RESTRICTIVE Denial Policies:** Installed `sites_restrictive_insert_deny` (`AS RESTRICTIVE FOR INSERT TO anon, authenticated WITH CHECK (false)`) and `sites_restrictive_delete_deny` (`AS RESTRICTIVE FOR DELETE TO anon, authenticated USING (false)`). Restrictive policies combine with `AND` across all permissive policies, guaranteeing unconditional rejection of direct client writes even if any permissive policy is present.
+    - **101 dedicated unit, migration, and authorization tests passing across 7 test suites.**
 - Implemented multi-format business import with human-in-the-loop review and confirmation:
   - **Strict Confirmation Invariant:**
     - Every extracted price, timing, address, tax identifier, and material fact strictly starts in "unconfirmed" (`To Confirm`) state.

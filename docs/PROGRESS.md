@@ -65,15 +65,19 @@
      - **Direct DELETE Revocation & Lifecycle Protection:** Completely revoked direct `DELETE` on `public.sites` from untrusted roles. Enforces PRD §9.2 soft-lifecycle archival (`archived`), prevents un-audited destruction of business sites, eliminates orphaned media references in quarantine, and protects against foreign key RESTRICT conflicts with actively referenced site versions.
      - **Defense-in-Depth RLS Hardening:** Dropped permissive insert/delete policies and installed explicit restrictive policies: `sites_insert_policy` (`WITH CHECK (false)`) and `sites_delete_policy` (`USING (false)`).
      - **Preserved Authorized Workflows:** `SELECT` remains granted for storefront visitors and business dashboard operators. Scoped `UPDATE (subdomain, primary_domain, updated_at)` remains granted for legitimate tenant domain configuration. Full administrative permissions remain granted exclusively to `service_role`.
-  11. **Comprehensive Verification & Quality Gates:**
-     - `tests/unit/database/sites-authorization-audit.test.ts`: 17 tests passing.
+  11. **Final Column-Level INSERT & Restrictive RLS Deny Audit (`20261120000003_revoke_column_insert_and_enforce_restrictive_rls.sql`):**
+     - **Column-Level INSERT Revocation:** Closed the PostgreSQL `pg_attribute.attacl` gap by explicitly revoking column-level INSERT on `(id, business_id, subdomain, primary_domain, created_at, updated_at)` from `anon, authenticated, PUBLIC`. In PostgreSQL, table-level REVOKE does not remove prior column-level grants; explicit column-level revocation guarantees zero residual write permissions.
+     - **Dedicated AS RESTRICTIVE Denial Policies:** Installed `sites_restrictive_insert_deny` (`AS RESTRICTIVE FOR INSERT TO anon, authenticated WITH CHECK (false)`) and `sites_restrictive_delete_deny` (`AS RESTRICTIVE FOR DELETE TO anon, authenticated USING (false)`). Restrictive policies combine with `AND` across all permissive policies, guaranteeing unconditional rejection of direct client writes even if any permissive policy is present.
+     - **Preserved Authorized Capabilities:** Verified `SELECT` reads and scoped `UPDATE (subdomain, primary_domain, updated_at)` remain active for legitimate business administration.
+  12. **Comprehensive Verification & Quality Gates:**
+     - `tests/unit/database/sites-authorization-audit.test.ts`: 22 tests passing.
      - `tests/unit/database/website-pointer-privilege-audit.test.ts`: 14 tests passing.
-     - `tests/unit/database/website-configuration-migration.test.ts`: 14 tests passing.
+     - `tests/unit/database/website-configuration-migration.test.ts`: 15 tests passing.
      - `tests/unit/websites/configuration-schemas.test.ts`: 16 tests passing.
      - `tests/unit/websites/versioning.test.ts`: 10 tests passing.
      - `tests/unit/websites/service.test.ts`: 16 tests passing.
      - `tests/unit/websites/actions.test.ts`: 8 tests passing.
-     - Total VO-040 suite: 95 tests passing across 7 test files (0 failures).
+     - Total VO-040 suite: 101 tests passing across 7 test files (0 failures).
 
 ## Task Report: VO-034 — Build Business Import and Confirmation Review
 
