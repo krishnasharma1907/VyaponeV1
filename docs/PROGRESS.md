@@ -1,10 +1,10 @@
 # VyapOne Build Progress
 
 **Current phase:** P4 — Website engine, templates and publishing (`IN_PROGRESS`)  
-**Completed tasks:** VO-000, VO-001, VO-002, VO-003, VO-004, VO-005, VO-006, VO-010, VO-011, VO-012, VO-013, VO-014, VO-015, VO-016, VO-017, VO-018, VO-019, VO-020, VO-021, VO-022, VO-023, VO-024, VO-025, VO-026, VO-027, VO-028, VO-030, VO-031, VO-032, VO-033, VO-034, VO-040, VO-041, VO-042, VO-043  
-**Latest task:** VO-043 — Implement navigation, SEO and metadata  
-**Next task:** VO-044 — Integrate constrained visual editor  
-**Project status:** STOREFRONT MULTI-PAGE NAVIGATION, DYNAMIC SEO METADATA, SITEMAP & ROBOTS.TXT ENGINE IMPLEMENTED WITH ZERO DRAFT/SENSITIVE DATA LEAKAGE / PHASE P4 IN PROGRESS  
+**Completed tasks:** VO-000, VO-001, VO-002, VO-003, VO-004, VO-005, VO-006, VO-010, VO-011, VO-012, VO-013, VO-014, VO-015, VO-016, VO-017, VO-018, VO-019, VO-020, VO-021, VO-022, VO-023, VO-024, VO-025, VO-026, VO-027, VO-028, VO-030, VO-031, VO-032, VO-033, VO-034, VO-040, VO-041, VO-042, VO-043, VO-044  
+**Latest task:** VO-044 — Integrate constrained visual editor  
+**Next task:** VO-045 — Build responsive preview and device modes  
+**Project status:** CONSTRAINED VISUAL WEBSITE EDITOR INTEGRATED WITH APPROVED BLOCKS, DRAFT ISOLATION, OPTIMISTIC CONCURRENCY AND LIVE PREVIEW / PHASE P4 IN PROGRESS  
 
 ## Phase status
 
@@ -14,7 +14,39 @@
 | P1 — Repository, design system and application shell | COMPLETE | All tasks VO-010 to VO-019 verified and done; Phase P1 gate passed |
 | P2 — Platform identity, authentication and multi-tenancy | COMPLETE | All tasks VO-020 to VO-028 verified and done; Phase P2 gate passed |
 | P3 — Niche registry, presets and business onboarding | COMPLETE | All tasks VO-030 to VO-034 verified and done; Phase P3 complete |
-| P4 — Website engine, templates and publishing | IN_PROGRESS | VO-040, VO-041, VO-042, VO-043 complete; VO-044 next |
+| P4 — Website engine, templates and publishing | IN_PROGRESS | VO-040, VO-041, VO-042, VO-043, VO-044 complete; VO-045 next |
+
+## Task Report: VO-044 — Integrate Constrained Visual Editor
+
+- **Target:** VO-044 — Integrate constrained visual editor
+- **Phase:** P4 — Website engine, templates and publishing
+- **Status:** COMPLETED & VERIFIED
+- **Key Deliverables Implemented & Hardened:**
+  1. **Constrained Component Architecture (`src/components/websites/editor/`):**
+     - Evaluated visual editor strategies in accordance with ADR-005. Designed a native, lightweight, zero-dependency visual editor tailored for VyapOne's canonical design system, completely bypassing third-party bundle bloat and React 19 peer-dependency conflicts while strictly enforcing block constraints.
+     - **AddSectionModal (`add-section-modal.tsx`):** Constrained component selector that exclusively exposes the 13 canonical approved blocks from `APPROVED_BLOCK_REGISTRY` (PRD FINAL v2 §15.3, §6.14). Categorizes blocks into Essential Core, Store & Commerce, Content & Story, Customer Action, and Navigation & Footer. Features instant search and category filtering with full keyboard accessibility (`Escape` dismissal, focus trapping).
+     - **SectionNavigator (`section-navigator.tsx`):** Ordered section list displaying current page sections sequentially. Provides reordering controls (Move Up / Move Down with boundary disabling), visibility toggling (Hide/Show with visual muted states), delete confirmation, and quick selection.
+     - **SectionInspector (`section-inspector.tsx`):** Form controls tailored to block-specific schemas with real-time feedback. Includes layout variant selector dynamically populated from `metadata.allowedVariants`. Employs `sanitizeLinkUrl` to prevent unsafe `javascript:` or `data:` URL injection, and displays dynamic server-binding notices for catalogue and location blocks protecting server-owned statutory facts.
+     - **EditorTopBar (`editor-top-bar.tsx`):** Identity banner displaying site subdomain, draft version badge (`Draft v{versionNumber}`), change summary note input (max 200 chars), save status badges (`Unsaved Changes`, `Saving...`, `Draft Saved`, `Version Conflict`, `Save Failed`), responsive view mode switcher (`Split`, `Sections`, `Live Preview`), and atomic "Save Draft" button.
+     - **PageSelector (`page-selector.tsx`):** Multi-page tab bar supporting active page switching and inline new page creation with slug validation and normalization (`normalizePageSlug`).
+     - **ConstrainedWebsiteEditor (`constrained-website-editor.tsx`):** Master client component coordinating configuration state, section manipulation (`handleAddBlock`, `handleRemoveSection`, `handleToggleSectionEnabled`, `handleMoveSection`, `handleUpdateSectionProps`), live draft preview via `PublicWebsiteRenderer` (with `context.previewMode = true`), and atomic server persistence via `saveSiteDraftConfigurationAction`.
+  2. **Draft Preview Isolation (PRD FINAL v2 §6.14, §15.3, §16, §17):**
+     - The editor embeds `PublicWebsiteRenderer` in an isolated preview container with `context.previewMode = true`.
+     - Displays a persistent "Private Draft Preview" badge informing the business owner that customers only see published versions.
+     - Draft persistence exclusively invokes `saveSiteDraftConfigurationAction` / `saveSiteDraftConfiguration`, which updates `sites.current_draft_version_id` and inserts into `site_versions` without ever touching `sites.published_version_id` or `sites.status`.
+  3. **Optimistic Concurrency & Conflict Protection:**
+     - Tracks `baseVersionNumber` across edits. When the server detects that another session has saved a newer draft (`CONFLICT` code or version mismatch), the editor surfaces a clear `⚠ Version Conflict` banner and prevents silent data overwrite, requiring the user to refresh before persisting.
+  4. **Arbitrary Code Injection Prevention:**
+     - Rejecting arbitrary HTML, scripts, iframes, and unapproved component types at the inspector, renderer, and database validation layers.
+  5. **Verification Evidence & Quality Gates:**
+     - Unit & Integration Test Suite (`tests/unit/websites/constrained-editor.test.tsx`, 22 tests): 100% passing.
+     - Website test suite (`tests/unit/websites/`, 8 test files, 136 tests): 100% passing.
+     - Route shells suite (`tests/unit/routing/route-shells.test.tsx`, 34 tests): 100% passing.
+     - Full test suite (`pnpm test`, 99 test files, 1,196 tests): 100% passing.
+     - TypeScript strict check (`tsc --noEmit`): 0 errors.
+     - ESLint check (`pnpm lint`): 0 errors, 0 warnings.
+     - Prettier code style check: All files formatted cleanly.
+     - Next.js production build (`pnpm build`): Successfully compiled all 40 routes without errors.
 
 ## Task Report: VO-043 — Implement Navigation, SEO and Metadata
 

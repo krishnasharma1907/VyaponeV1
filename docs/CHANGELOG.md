@@ -4,6 +4,26 @@ Record implementation changes by task ID. Do not record planned work as complete
 
 ## Unreleased
 
+### [VO-044] — Integrate Constrained Visual Editor (2026-11-21)
+- Built the constrained visual website builder strictly restricted to the 13 canonical approved blocks from `APPROVED_BLOCK_REGISTRY` (PRD FINAL v2 §15.3, §6.14):
+  - **Constrained Editor Component Architecture (`src/components/websites/editor/`):**
+    - `AddSectionModal (`add-section-modal.tsx`):` Accessible dialog exposing all 13 canonical approved blocks (`hero`, `header_nav`, `footer`, `catalogue`, `menu`, `pricing`, `offers`, `story_media`, `features`, `faq`, `trust`, `testimonials`, `contact_channels`). Includes category filters (`core`, `commerce`, `content`, `interaction`, `navigation`), live keyword search, and keyboard accessibility (`Escape` key dismissal, focus management).
+    - `SectionNavigator (`section-navigator.tsx`):` Ordered section list supporting Move Up and Move Down reordering (with boundary disabling for first/last elements), visibility toggle (`isEnabled` hide/show with muted styling), and section deletion with confirmation.
+    - `SectionInspector (`section-inspector.tsx`):` Block-specific property form controls strictly adhering to approved block Zod schemas. Supports visual layout variant selection dynamically derived from `metadata.allowedVariants`. Enforces `sanitizeLinkUrl` to neutralize unsafe `javascript:` or `data:` URL schemes, and displays dynamic server-binding notices for catalogue and location blocks protecting server-owned statutory data.
+    - `EditorTopBar (`editor-top-bar.tsx`):` Subdomain badge, draft version indicator (`Draft v{versionNumber}`), change summary note input (max 200 chars), save state indicators (`Unsaved Changes`, `Saving...`, `Draft Saved`, `Version Conflict`, `Save Failed`), view mode toggle (`Split`, `Sections`, `Live Preview`), and atomic "Save Draft" button.
+    - `PageSelector (`page-selector.tsx`):` Multi-page tab bar supporting active page switching and inline new page creation with slug validation and normalization (`normalizePageSlug`).
+    - `ConstrainedWebsiteEditor (`constrained-website-editor.tsx`):` Master client workspace integrating top bar, page tabs, section navigator, section inspector, and live draft preview via `PublicWebsiteRenderer` (`context.previewMode = true`).
+  - **Draft Preview & Concurrency Isolation (PRD FINAL v2 §6.14, §15.3, §16, §17):**
+     - Draft editing exclusively interacts with `saveSiteDraftConfigurationAction`, updating `sites.current_draft_version_id` and creating immutable `site_versions` rows without mutating `sites.published_version_id` or publication status.
+     - Live preview displays a prominent "Private Draft Preview" alert informing the business owner that customers only see published versions.
+     - Optimistic concurrency protection: Tracks `baseVersionNumber` across saves; safely detects concurrent edits and displays `⚠ Version Conflict` banner, preventing silent data overwrite.
+  - **Zero Arbitrary Code Injection:**
+     - Pure native React 19 architecture without third-party editor bundle bloat or React 19 peer-dependency conflicts.
+     - Rejects arbitrary HTML, scripts, custom styles, iframes, and unknown component types at the inspector, renderer, and database validation layers.
+  - **Verification:**
+    - 22 unit & integration tests in `tests/unit/websites/constrained-editor.test.tsx` verifying draft initialization, approved block registry integration (all 13 blocks), category filtering, keyword searching, section reordering, visibility toggling, property inspector, variant selection, link sanitization, unapproved block rejection, draft persistence, error states, optimistic concurrency conflict detection, draft preview isolation, and multi-page creation.
+    - 100% pass across all 99 workspace test files (1,196 tests). Strict TypeScript mode (0 errors), ESLint (0 errors, 0 warnings), Prettier formatted, Next.js production build passing (all 40 routes).
+
 ### [VO-043] — Implement Navigation, SEO and Metadata (2026-11-21)
 - Built storefront multi-page navigation, dynamic SEO metadata, canonical URL generator, sitemap and robots.txt engine with zero draft or statutory data leakage (PRD FINAL v2 §6.14, §15.3, §16, §17):
   - **Accessible Multi-Page Navigation Header (`src/components/websites/public-renderer/website-header-nav.tsx`):**

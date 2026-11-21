@@ -304,13 +304,13 @@
 
 **Status:** `DONE`
 
-### [ ] VO-044 — Integrate constrained visual editor
+### [x] VO-044 — Integrate constrained visual editor
 
 **Scope:** Adapt Puck or selected editor to approved blocks only. Support selecting, editing, adding, hiding and reordering sections.
 
 **Acceptance:** Editor cannot inject arbitrary code; edits update structured config and preserve unknown-safe fields.
 
-**Status:** `NOT_STARTED`
+**Status:** `DONE`
 
 ### [ ] VO-045 — Build responsive preview and device modes
 
