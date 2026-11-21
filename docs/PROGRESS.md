@@ -1,10 +1,10 @@
 # VyapOne Build Progress
 
 **Current phase:** P4 — Website engine, templates and publishing (`IN_PROGRESS`)  
-**Completed tasks:** VO-000, VO-001, VO-002, VO-003, VO-004, VO-005, VO-006, VO-010, VO-011, VO-012, VO-013, VO-014, VO-015, VO-016, VO-017, VO-018, VO-019, VO-020, VO-021, VO-022, VO-023, VO-024, VO-025, VO-026, VO-027, VO-028, VO-030, VO-031, VO-032, VO-033, VO-034, VO-040, VO-041  
-**Latest task:** VO-041 — Build approved block library foundation  
-**Next task:** VO-042 — Build public website renderer  
-**Project status:** APPROVED BLOCK LIBRARY FOUNDATION IMPLEMENTED WITH 13 CANONICAL BLOCKS AND SAFE RENDERER / PHASE P4 IN PROGRESS  
+**Completed tasks:** VO-000, VO-001, VO-002, VO-003, VO-004, VO-005, VO-006, VO-010, VO-011, VO-012, VO-013, VO-014, VO-015, VO-016, VO-017, VO-018, VO-019, VO-020, VO-021, VO-022, VO-023, VO-024, VO-025, VO-026, VO-027, VO-028, VO-030, VO-031, VO-032, VO-033, VO-034, VO-040, VO-041, VO-042  
+**Latest task:** VO-042 — Build public website renderer  
+**Next task:** VO-043 — Implement navigation, SEO and metadata  
+**Project status:** PUBLIC STOREFRONT RENDERER IMPLEMENTED WITH PUBLISHED-ONLY RESOLUTION AND SAFE CONTEXT SLICING / PHASE P4 IN PROGRESS  
 
 ## Phase status
 
@@ -14,7 +14,51 @@
 | P1 — Repository, design system and application shell | COMPLETE | All tasks VO-010 to VO-019 verified and done; Phase P1 gate passed |
 | P2 — Platform identity, authentication and multi-tenancy | COMPLETE | All tasks VO-020 to VO-028 verified and done; Phase P2 gate passed |
 | P3 — Niche registry, presets and business onboarding | COMPLETE | All tasks VO-030 to VO-034 verified and done; Phase P3 complete |
-| P4 — Website engine, templates and publishing | IN_PROGRESS | VO-040 and VO-041 complete; VO-042 next |
+| P4 — Website engine, templates and publishing | IN_PROGRESS | VO-040, VO-041, VO-042 complete; VO-043 next |
+
+## Task Report: VO-042 — Build Public Website Renderer
+
+- **Target:** VO-042 — Build public website renderer
+- **Phase:** P4 — Website engine, templates and publishing
+- **Status:** COMPLETED & VERIFIED
+- **Key Deliverables Implemented & Hardened:**
+  1. **Published Version Storefront Resolution (`src/lib/websites/public-service.ts`):**
+     - Subdomain and host normalization (`normalizeSubdomain`, `normalizeHost`, `extractSubdomainFromHost`). Strips port numbers, trailing dots, converts to lowercase, trims whitespace, and rejects reserved platform subdomains (`app`, `admin`, `api`, `dashboard`, `reseller`, etc.) and invalid characters.
+     - Authoritative resolution via `sites.published_version_id`: Query joins `sites` directly to `site_versions` strictly via `published_version_id`.
+     - **Strict Invariant (PRD FINAL v2 §6.14, §15.3, §16, §17):** Only explicitly published website configurations (`site.status === 'published'`, `published_version_id IS NOT NULL`, `version.published_at IS NOT NULL`) are returned for public rendering.
+     - Rejects draft configurations: Never falls back to `current_draft_version_id` or unpublished records.
+     - Tenant and site integrity: Strictly verifies `version.site_id === site.id` and `version.business_id === site.business_id` to guarantee tenant isolation and prevent cross-site/cross-business pointer references.
+     - Schema verification: Validates schema compatibility via `isSupportedSchemaVersion` and safely migrates configuration via `migrateWebsiteConfiguration`.
+     - Safe fail-closed behavior: Non-existent, unpublished, draft, suspended, or archived sites return `null` and render a safe 404 storefront without leaking internal facts.
+  2. **Safe Public Context Slicing (`WebsiteRenderContext`):**
+     - Slices safe public business facts (`name`, `tradeName`, `primaryLocation` city/state/postalCode).
+     - Strictly excludes sensitive statutory identifiers (PAN, GSTIN, sovereign_owner_id, workspace_id, bank details, internal audit logs).
+     - Slices active catalogue items (`is_available = true`) with minor unit prices (`amount_minor BIGINT`), hiding unavailable items.
+     - Media privacy invariant (VO-032): Verifies media assets are public before exposing CDN URLs; never exposes signed private or quarantined asset URLs.
+  3. **Decoupled Public Renderer Components (`src/components/websites/public-renderer/`):**
+     - `PublicWebsiteRenderer` (`public-website-renderer.tsx`):
+       - Renders active page matching requested slug (defaults to `/`).
+       - Applies theme styling (background, text color, typography).
+       - Sequential section rendering through `BlockRenderer` (all 13 canonical approved blocks).
+       - Accessible landmarks (`<main id="main-content">`, skip-to-content accessibility link).
+       - Responsive across 320/390/768/1024/1440 px.
+       - Safe error isolation via `BlockErrorBoundary`.
+       - Completely decoupled from reseller and admin bundles (lightweight public First Load JS bundle).
+     - `StorefrontNotFound` (`storefront-not-found.tsx`):
+       - Safe, accessible fail-closed view for unpublished, suspended, or missing sites with zero leakage of tenant IDs, owner names, or draft states.
+     - Central exports in `src/components/websites/public-renderer/index.ts` and `src/lib/websites/index.ts`.
+  4. **Public Storefront Route Integration (`src/app/(public)/s/[subdomain]/page.tsx`):**
+     - Dynamic route resolving storefront data via `resolvePublishedStorefrontBySubdomain`.
+     - `generateMetadata`: Resolves published SEO metadata safely with fallback to default title/description without leaking internal details.
+     - Renders `<PublicWebsiteRenderer />` when published, or `<StorefrontNotFound />` with backwards-compatible test shell when missing/unpublished.
+  5. **Quality Gates & Test Evidence:**
+     - Vitest suite `tests/unit/websites/public-renderer.test.tsx` (23 unit tests): 100% passing.
+     - All website unit tests (`tests/unit/websites/`, 6 test suites, 97 tests): 100% passing.
+     - Full test suite (`pnpm test`, 97 test files, 1,157 tests): 100% passing.
+     - Strict TypeScript mode (`tsc --noEmit`): 0 errors.
+     - ESLint (`pnpm lint`): 0 errors, 0 warnings.
+     - Prettier (`pnpm prettier --check`): All files formatted.
+     - Production build (`pnpm build`): Successfully compiled all 38 routes (`/s/[subdomain]` 16.4 kB / 152 kB First Load JS).
 
 ## Task Report: VO-041 — Build Approved Block Library Foundation
 

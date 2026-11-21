@@ -4,6 +4,31 @@ Record implementation changes by task ID. Do not record planned work as complete
 
 ## Unreleased
 
+### [VO-042] — Build Public Website Renderer (2026-11-21)
+- Built multi-tenant public storefront rendering engine with verified host/slug mapping and safe context slicing (PRD FINAL v2 §6.14, §15.3, §16, §17):
+  - **Authoritative Published Resolution (`src/lib/websites/public-service.ts`):**
+    - Subdomain and host normalization (`normalizeSubdomain`, `normalizeHost`, `extractSubdomainFromHost`): cleans hostnames, strips port numbers, validates format, and guards against reserved platform subdomains (`app`, `admin`, `api`, `dashboard`, `reseller`, `preview`, `dev`, etc.).
+    - Strict published version integrity: `resolvePublishedStorefrontBySubdomain` and `resolvePublishedStorefrontByHost` resolve storefronts strictly via `sites.published_version_id` join on `site_versions`.
+    - Zero draft leakage: Verifies `site.status === 'published'`, `published_version_id IS NOT NULL`, and `version.published_at IS NOT NULL`. Never falls back to `current_draft_version_id` or unpublished versions.
+    - Tenant and site integrity: Asserts `version.site_id === site.id` and `version.business_id === site.business_id` to prevent cross-tenant and cross-site version reference exploits.
+    - Schema migration and validation: Validates schema version via `isSupportedSchemaVersion` and safely parses configuration through `migrateWebsiteConfiguration`.
+    - Safe fail-closed behavior: Non-existent, unpublished, draft, suspended, or archived sites fail closed with safe 404 response without leaking business or tenant existence facts.
+  - **Safe Public Context Slicing (`WebsiteRenderContext`):**
+    - Slices safe public business facts (`name`, `tradeName`, `primaryLocation` city/state/postalCode).
+    - Strictly excludes sensitive statutory identifiers (PAN, GSTIN, sovereign_owner_id, workspace_id, bank details, internal audit logs).
+    - Slices active catalogue items (`is_available = true`) with minor unit prices (`amount_minor BIGINT`), hiding unavailable items.
+    - Media privacy invariant (VO-032): Verifies media assets are public before exposing CDN URLs; never exposes signed private or quarantined asset URLs.
+  - **Decoupled Public Renderer Components (`src/components/websites/public-renderer/`):**
+    - `PublicWebsiteRenderer`: Resolves active page by slug (defaults to `/`), applies theme tokens (background, text color, typography), renders sequential sections using `BlockRenderer` (all 13 canonical approved blocks), provides accessible landmarks (`<main id="main-content">`, skip-to-content accessibility link), responsive layouts (320px–1440px), and section error isolation via `BlockErrorBoundary`.
+    - `StorefrontNotFound`: Safe, accessible fail-closed view for unpublished, suspended, or missing sites.
+    - Complete decoupling from reseller and platform-admin bundles, keeping public First Load JS bundle lightweight (152 kB).
+  - **Public Storefront Route (`src/app/(public)/s/[subdomain]/page.tsx`):**
+    - Next.js dynamic route resolving storefront data via `resolvePublishedStorefrontBySubdomain`.
+    - Dynamic `generateMetadata` generating SEO title and description from published page/site config with safe fallbacks.
+  - **Verification:**
+    - 23 unit tests in `tests/unit/websites/public-renderer.test.tsx` verifying hostname normalization, published version resolution, draft rejection, suspended site rejection, cross-site reference rejection, schema validation, private data exclusion, unavailable catalogue filtering, media privacy, all 13 canonical blocks, and error boundary isolation.
+    - 100% pass across all 97 workspace test files (1,157 tests). Strict TypeScript mode (0 errors), ESLint (0 errors, 0 warnings), Prettier formatted, Next.js production build passing.
+
 ### [VO-041] — Build Approved Block Library Foundation (2026-11-21)
 - Built component library and safe runtime foundation for the 13 canonical approved website blocks (PRD FINAL v2 §15.3, §6.14):
   - **13 Canonical Block Components (`src/components/websites/blocks/`):**

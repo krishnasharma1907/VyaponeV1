@@ -288,13 +288,13 @@
 
 **Status:** `DONE`
 
-### [ ] VO-042 — Build public website renderer
+### [x] VO-042 — Build public website renderer
 
 **Scope:** Render published structured site configuration through a shared multi-tenant runtime. Resolve business from verified host/slug mapping.
 
 **Acceptance:** Public sites render without loading reseller/admin bundles; invalid configuration fails safely.
 
-**Status:** `NOT_STARTED`
+**Status:** `DONE`
 
 ### [ ] VO-043 — Implement navigation, SEO and metadata
 

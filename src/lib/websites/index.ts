@@ -10,4 +10,5 @@ export * from "./schemas";
 export * from "./defaults";
 export * from "./versioning";
 export * from "./service";
+export * from "./public-service";
 export * from "./actions";
