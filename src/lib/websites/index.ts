@@ -11,4 +11,6 @@ export * from "./defaults";
 export * from "./versioning";
 export * from "./service";
 export * from "./public-service";
+export * from "./seo";
+export * from "./sitemap";
 export * from "./actions";

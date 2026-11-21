@@ -3,4 +3,5 @@
  */
 
 export * from "./public-website-renderer";
+export * from "./website-header-nav";
 export * from "./storefront-not-found";

@@ -4,6 +4,35 @@ Record implementation changes by task ID. Do not record planned work as complete
 
 ## Unreleased
 
+### [VO-043] — Implement Navigation, SEO and Metadata (2026-11-21)
+- Built storefront multi-page navigation, dynamic SEO metadata, canonical URL generator, sitemap and robots.txt engine with zero draft or statutory data leakage (PRD FINAL v2 §6.14, §15.3, §16, §17):
+  - **Accessible Multi-Page Navigation Header (`src/components/websites/public-renderer/website-header-nav.tsx`):**
+    - Semantic landmark structure: `<header role="banner">` and `<nav aria-label="Main Navigation">`.
+    - Brand identity: Displays business trade name / brand text and safe CDN-resolved logo image with `@next/next/no-img-element` lint rule compliance.
+    - Multi-page navigation links: Renders navigation links sorted by order, highlights the active page with `aria-current="page"`, and computes safe internal storefront hrefs (`/s/[subdomain]?p=...`).
+    - Responsive mobile menu: Dedicated toggle button with `aria-expanded`, `aria-label`, `aria-controls`, visible focus outlines, and keyboard event listener closing the mobile menu on `Escape`.
+    - Call-to-action button: Supports direct WhatsApp ordering, phone calling, and validated custom external links via `sanitizeLinkUrl`.
+  - **Multi-Page Routing & Within-Storefront 404 (`src/components/websites/public-renderer/public-website-renderer.tsx`, `page.tsx`):**
+    - Integrates `<WebsiteHeaderNav />` prominently across storefront layouts.
+    - Resolves requested page slug from query parameters (`?p=...` or `?page=...`), normalizing trailing slashes and default route (`/`).
+    - Safe within-storefront 404: When an unknown page slug is requested for a published storefront, renders an accessible within-storefront error section with a direct "Return to Home" link, keeping storefront branding intact without crashing or exposing stack traces.
+    - Persistent footer landmark: Automatically renders `<FooterBlock />` landmark if the active page sections do not already include a footer block.
+  - **SEO & Metadata Engine (`src/lib/websites/seo.ts`):**
+    - RFC 1123 custom domain validation: Rejects scheme prefixes, port numbers, URL paths, loopback addresses (`127.0.0.1`, `localhost`), and test TLDs (`.test`, `.example`, `.invalid`, `.localhost`).
+    - Page slug normalization: Strips query strings, hash anchors, and redundant duplicate slashes; asserts valid URI path formatting.
+    - Canonical URL builder: Constructs authoritative canonical URLs strictly using the business's verified `primaryDomain` or platform subdomain (`https://<subdomain>.vyapone.in`), immune to client Host-header spoofing.
+    - Sensitive data redaction: Sanitizes title and description strings, stripping raw HTML tags and strictly redacting PAN (`[A-Z]{5}[0-9]{4}[A-Z]`), GSTIN (15 alphanumeric characters), IFSC codes, and internal database UUIDs to ensure zero statutory identifier leakage.
+    - Next.js Metadata generation: Exports OpenGraph metadata (`title`, `description`, `url`, `siteName`, `locale`, `type: "website"`, public banner images), Twitter card (`summary_large_image`), canonical URL alternates, and robots directives (`index`, `follow`, or `noindex`/`nofollow` when `page.noIndex: true`).
+  - **Dynamic Sitemap Generation (`src/lib/websites/sitemap.ts`, `src/app/sitemap.ts`, `route.ts`):**
+    - Storefront sitemap route (`/s/[subdomain]/sitemap.xml`): Dynamic XML sitemap serving all published pages (`isPublished: true`) for the verified published site, utilizing authoritative `site_versions.published_at` timestamps (never fabricated). Returns safe 404 for draft, non-existent, or suspended sites.
+    - Platform root sitemap route (`/sitemap.xml`): Server-side sitemap querying `sites` joined strictly to `site_versions!fk_sites_published_version`, including only sites with `status = 'published'` and `published_version_id IS NOT NULL`. Strictly excludes private platform routes (`/dashboard`, `/workspace`, `/platform-admin`, `/counter`).
+  - **Dynamic Robots Engine (`src/app/robots.ts`, `src/app/(public)/s/[subdomain]/robots.txt/route.ts`):**
+    - Storefront robots endpoint: Allows crawling (`Allow: /`) for published sites with sitemap reference; returns `Disallow: /` for draft, unpublished, or suspended sites.
+    - Platform root robots endpoint: Disallows private administrative paths (`/dashboard`, `/workspace`, `/platform-admin`, `/counter`, `/api/`, `/auth/`), allows public storefronts (`/s/`, `/privacy`, `/`), and declares platform sitemap URL.
+  - **Verification:**
+    - 17 unit tests in `tests/unit/websites/navigation-seo.test.tsx` verifying domain validation, slug normalization, canonical URLs, sensitive data redaction, SEO metadata, OpenGraph, Twitter cards, noIndex directives, header nav rendering, mobile toggle & Escape key, URL sanitization, within-storefront 404, sitemap XML, platform sitemap, and robots.txt.
+    - 100% pass across all 98 workspace test files (1,174 tests). Strict TypeScript mode (0 errors), ESLint (0 errors, 0 warnings), Prettier formatted, Next.js production build passing (all 40 routes).
+
 ### [VO-042] — Build Public Website Renderer (2026-11-21)
 - Built multi-tenant public storefront rendering engine with verified host/slug mapping and safe context slicing (PRD FINAL v2 §6.14, §15.3, §16, §17):
   - **Authoritative Published Resolution (`src/lib/websites/public-service.ts`):**

@@ -1,10 +1,10 @@
 # VyapOne Build Progress
 
 **Current phase:** P4 — Website engine, templates and publishing (`IN_PROGRESS`)  
-**Completed tasks:** VO-000, VO-001, VO-002, VO-003, VO-004, VO-005, VO-006, VO-010, VO-011, VO-012, VO-013, VO-014, VO-015, VO-016, VO-017, VO-018, VO-019, VO-020, VO-021, VO-022, VO-023, VO-024, VO-025, VO-026, VO-027, VO-028, VO-030, VO-031, VO-032, VO-033, VO-034, VO-040, VO-041, VO-042  
-**Latest task:** VO-042 — Build public website renderer  
-**Next task:** VO-043 — Implement navigation, SEO and metadata  
-**Project status:** PUBLIC STOREFRONT RENDERER IMPLEMENTED WITH PUBLISHED-ONLY RESOLUTION AND SAFE CONTEXT SLICING / PHASE P4 IN PROGRESS  
+**Completed tasks:** VO-000, VO-001, VO-002, VO-003, VO-004, VO-005, VO-006, VO-010, VO-011, VO-012, VO-013, VO-014, VO-015, VO-016, VO-017, VO-018, VO-019, VO-020, VO-021, VO-022, VO-023, VO-024, VO-025, VO-026, VO-027, VO-028, VO-030, VO-031, VO-032, VO-033, VO-034, VO-040, VO-041, VO-042, VO-043  
+**Latest task:** VO-043 — Implement navigation, SEO and metadata  
+**Next task:** VO-044 — Integrate constrained visual editor  
+**Project status:** STOREFRONT MULTI-PAGE NAVIGATION, DYNAMIC SEO METADATA, SITEMAP & ROBOTS.TXT ENGINE IMPLEMENTED WITH ZERO DRAFT/SENSITIVE DATA LEAKAGE / PHASE P4 IN PROGRESS  
 
 ## Phase status
 
@@ -14,7 +14,52 @@
 | P1 — Repository, design system and application shell | COMPLETE | All tasks VO-010 to VO-019 verified and done; Phase P1 gate passed |
 | P2 — Platform identity, authentication and multi-tenancy | COMPLETE | All tasks VO-020 to VO-028 verified and done; Phase P2 gate passed |
 | P3 — Niche registry, presets and business onboarding | COMPLETE | All tasks VO-030 to VO-034 verified and done; Phase P3 complete |
-| P4 — Website engine, templates and publishing | IN_PROGRESS | VO-040, VO-041, VO-042 complete; VO-043 next |
+| P4 — Website engine, templates and publishing | IN_PROGRESS | VO-040, VO-041, VO-042, VO-043 complete; VO-044 next |
+
+## Task Report: VO-043 — Implement Navigation, SEO and Metadata
+
+- **Target:** VO-043 — Implement navigation, SEO and metadata
+- **Phase:** P4 — Website engine, templates and publishing
+- **Status:** COMPLETED & VERIFIED
+- **Key Deliverables Implemented & Hardened:**
+  1. **Accessible Multi-Page Navigation Header (`src/components/websites/public-renderer/website-header-nav.tsx`):**
+     - Semantic landmark structure: `<header role="banner">` and `<nav aria-label="Main Navigation">`.
+     - Brand identity: Displays business trade name / brand text and safe CDN-resolved logo image with `@next/next/no-img-element` lint rule compliance.
+     - Multi-page navigation links: Renders navigation links sorted by order, highlights the active page with `aria-current="page"`, and computes safe internal storefront hrefs (`/s/[subdomain]?p=...`).
+     - Responsive mobile menu: Dedicated toggle button with `aria-expanded`, `aria-label`, `aria-controls`, visible focus outlines, and keyboard event listener closing the mobile menu on `Escape`.
+     - Call-to-action button: Supports direct WhatsApp ordering, phone calling, and validated custom external links via `sanitizeLinkUrl`.
+  2. **Multi-Page Routing & Within-Storefront 404 (`src/components/websites/public-renderer/public-website-renderer.tsx`, `page.tsx`):**
+     - Renders header navigation prominently at the top of the storefront layout.
+     - Resolves requested page slug from query parameters (`?p=...` or `?page=...`), normalizing trailing slashes and default route (`/`).
+     - Safe within-storefront 404: When an unknown page slug is requested for a published storefront, renders an accessible within-storefront error section with a direct "Return to Home" link, keeping storefront branding intact without crashing or exposing stack traces.
+     - Persistent footer landmark: Automatically renders `<FooterBlock />` landmark if the active page sections do not already include a footer block.
+  3. **SEO & Metadata Engine (`src/lib/websites/seo.ts`):**
+     - RFC 1123 custom domain validation: Rejects scheme prefixes, port numbers, URL paths, loopback addresses (`127.0.0.1`, `localhost`), and test TLDs (`.test`, `.example`, `.invalid`, `.localhost`).
+     - Page slug normalization: Strips query strings, hash anchors, and redundant duplicate slashes; asserts valid URI path formatting.
+     - Canonical URL builder: Constructs authoritative canonical URLs strictly using the business's verified `primaryDomain` or platform subdomain (`https://<subdomain>.vyapone.in`), immune to client Host-header spoofing.
+     - Sensitive data redaction: Sanitizes title and description strings, stripping raw HTML tags and strictly redacting PAN (`[A-Z]{5}[0-9]{4}[A-Z]`), GSTIN (15 alphanumeric characters), IFSC codes, and internal database UUIDs to ensure zero statutory identifier leakage.
+     - Next.js Metadata generation: Exports OpenGraph metadata (`title`, `description`, `url`, `siteName`, `locale`, `type: "website"`, public banner images), Twitter card (`summary_large_image`), canonical URL alternates, and robots directives (`index`, `follow`, or `noindex`/`nofollow` when `page.noIndex: true`).
+  4. **Dynamic Sitemap Generation (`src/lib/websites/sitemap.ts`, `src/app/sitemap.ts`, `route.ts`):**
+     - Storefront sitemap route (`/s/[subdomain]/sitemap.xml`): Dynamic XML sitemap serving all published pages (`isPublished: true`) for the verified published site, utilizing authoritative `site_versions.published_at` timestamps (never fabricated). Returns safe 404 for draft, non-existent, or suspended sites.
+     - Platform root sitemap route (`/sitemap.xml`): Server-side sitemap querying `sites` joined strictly to `site_versions!fk_sites_published_version`, including only sites with `status = 'published'` and `published_version_id IS NOT NULL`. Strictly excludes private platform routes (`/dashboard`, `/workspace`, `/platform-admin`, `/counter`).
+  5. **Dynamic Robots Engine (`src/app/robots.ts`, `src/app/(public)/s/[subdomain]/robots.txt/route.ts`):**
+     - Storefront robots endpoint: Allows crawling (`Allow: /`) for published sites with sitemap reference; returns `Disallow: /` for draft, unpublished, or suspended sites.
+     - Platform root robots endpoint: Disallows private administrative paths (`/dashboard`, `/workspace`, `/platform-admin`, `/counter`, `/api/`, `/auth/`), allows public storefronts (`/s/`, `/privacy`, `/`), and declares platform sitemap URL.
+  6. **Media Schema Verification (Addressing Section 3 Preflight Gate):**
+     - Direct inspection of authoritative VO-032 migrations (`20261118000003` and `20261118000004`) confirmed `public.media_items` table schema:
+       - `status VARCHAR(32)` (`'pending_upload'`, `'ready'`, `'failed'`, `'deletion_pending'`, `'archived'`).
+       - `is_public BOOLEAN` (`true` for public bucket, `false` for private).
+       - `bucket VARCHAR(64)` (`vyapone-public-media` vs `vyapone-private-media`).
+       - `verified_at TIMESTAMPTZ`.
+       - Confirmed that `public.media_items` does not have a `quarantine_status` column. The public service query correctly filters `item.is_public === true && item.status === "ready" && item.verified_at !== null`.
+  7. **Verification Evidence (Mocked Unit & Route Integration Tests):**
+     - Unit tests (`tests/unit/websites/navigation-seo.test.tsx`, 17 tests): 100% passing.
+     - Website test suite (`tests/unit/websites/`, 7 test files, 114 tests): 100% passing.
+     - Full test suite (`pnpm test`, 98 test files, 1,174 tests): 100% passing.
+     - TypeScript strict mode (`tsc --noEmit`): 0 errors.
+     - ESLint (`pnpm lint`): 0 errors, 0 warnings.
+     - Prettier (`pnpm prettier --check`): All files formatted.
+     - Production build (`pnpm build`): Successfully compiled all 40 routes without errors.
 
 ## Task Report: VO-042 — Build Public Website Renderer
 

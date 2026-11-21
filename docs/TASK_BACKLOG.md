@@ -296,13 +296,13 @@
 
 **Status:** `DONE`
 
-### [ ] VO-043 — Implement navigation, SEO and metadata
+### [x] VO-043 — Implement navigation, SEO and metadata
 
 **Scope:** Add navigation, footer, SEO title/description, social previews, canonical URLs and sitemap/robots controls as applicable.
 
 **Acceptance:** Metadata is business-specific and validated; drafts do not leak as public pages.
 
-**Status:** `NOT_STARTED`
+**Status:** `DONE`
 
 ### [ ] VO-044 — Integrate constrained visual editor
 

@@ -3,6 +3,7 @@ import type { Metadata } from "next";
 import { createAdminSupabaseClient } from "@/lib/supabase/admin";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 import { resolvePublishedStorefrontBySubdomain } from "@/lib/websites/public-service";
+import { buildStorefrontMetadata } from "@/lib/websites/seo";
 import { PublicWebsiteRenderer, StorefrontNotFound } from "@/components/websites/public-renderer";
 import {
   Card,
@@ -16,6 +17,7 @@ import {
 
 interface StorefrontPageProps {
   params: Promise<{ subdomain: string }>;
+  searchParams?: Promise<{ p?: string; page?: string }>;
 }
 
 /**
@@ -35,36 +37,39 @@ async function fetchPublishedStorefront(subdomain: string) {
   }
 }
 
-export async function generateMetadata({ params }: StorefrontPageProps): Promise<Metadata> {
+export async function generateMetadata({
+  params,
+  searchParams,
+}: StorefrontPageProps): Promise<Metadata> {
   const { subdomain } = await params;
+  const sParams = searchParams ? await searchParams : {};
+  const requestedSlug = sParams.p || sParams.page || "/";
   const storefront = await fetchPublishedStorefront(subdomain);
 
   if (storefront) {
-    const config = storefront.configuration;
-    const homePage = config.pages.find((p) => p.slug === "/") || config.pages[0];
-    const pageTitle =
-      homePage?.seo?.title ||
-      config.metadata.title ||
-      `${storefront.context.business?.tradeName || subdomain} — Official Storefront`;
-    const pageDescription =
-      homePage?.seo?.metaDescription ||
-      config.metadata.description ||
-      `Official storefront for ${storefront.context.business?.tradeName || subdomain}. Powered by VyapOne.`;
-
-    return {
-      title: pageTitle,
-      description: pageDescription,
-    };
+    return buildStorefrontMetadata({
+      storefront,
+      slug: requestedSlug,
+    });
   }
 
   return {
     title: `${subdomain} — Storefront | VyapOne`,
     description: `Official storefront on VyapOne.`,
+    robots: {
+      index: false,
+      follow: false,
+    },
   };
 }
 
-export default async function SubdomainStorefrontPage({ params }: StorefrontPageProps) {
+export default async function SubdomainStorefrontPage({
+  params,
+  searchParams,
+}: StorefrontPageProps) {
   const { subdomain } = await params;
+  const sParams = searchParams ? await searchParams : {};
+  const requestedSlug = sParams.p || sParams.page || "/";
   const storefront = await fetchPublishedStorefront(subdomain);
 
   // 1. If verified published website is found, render through the approved block runtime
@@ -73,6 +78,8 @@ export default async function SubdomainStorefrontPage({ params }: StorefrontPage
       <PublicWebsiteRenderer
         configuration={storefront.configuration}
         context={storefront.context}
+        currentPath={requestedSlug}
+        subdomain={subdomain}
       />
     );
   }
