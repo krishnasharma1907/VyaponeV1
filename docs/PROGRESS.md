@@ -1,10 +1,10 @@
 # VyapOne Build Progress
 
 **Current phase:** P4 — Website engine, templates and publishing (`IN_PROGRESS`)  
-**Completed tasks:** VO-000, VO-001, VO-002, VO-003, VO-004, VO-005, VO-006, VO-010, VO-011, VO-012, VO-013, VO-014, VO-015, VO-016, VO-017, VO-018, VO-019, VO-020, VO-021, VO-022, VO-023, VO-024, VO-025, VO-026, VO-027, VO-028, VO-030, VO-031, VO-032, VO-033, VO-034, VO-040  
-**Latest task:** VO-040 — Define website configuration schema  
-**Next task:** VO-041 — Build approved block library foundation  
-**Project status:** WEBSITE CONFIGURATION SCHEMA AND IMMUTABLE VERSIONED STORAGE IMPLEMENTED / PHASE P4 IN PROGRESS  
+**Completed tasks:** VO-000, VO-001, VO-002, VO-003, VO-004, VO-005, VO-006, VO-010, VO-011, VO-012, VO-013, VO-014, VO-015, VO-016, VO-017, VO-018, VO-019, VO-020, VO-021, VO-022, VO-023, VO-024, VO-025, VO-026, VO-027, VO-028, VO-030, VO-031, VO-032, VO-033, VO-034, VO-040, VO-041  
+**Latest task:** VO-041 — Build approved block library foundation  
+**Next task:** VO-042 — Build public website renderer  
+**Project status:** APPROVED BLOCK LIBRARY FOUNDATION IMPLEMENTED WITH 13 CANONICAL BLOCKS AND SAFE RENDERER / PHASE P4 IN PROGRESS  
 
 ## Phase status
 
@@ -14,7 +14,47 @@
 | P1 — Repository, design system and application shell | COMPLETE | All tasks VO-010 to VO-019 verified and done; Phase P1 gate passed |
 | P2 — Platform identity, authentication and multi-tenancy | COMPLETE | All tasks VO-020 to VO-028 verified and done; Phase P2 gate passed |
 | P3 — Niche registry, presets and business onboarding | COMPLETE | All tasks VO-030 to VO-034 verified and done; Phase P3 complete |
-| P4 — Website engine, templates and publishing | IN_PROGRESS | VO-040 complete; VO-041 next |
+| P4 — Website engine, templates and publishing | IN_PROGRESS | VO-040 and VO-041 complete; VO-042 next |
+
+## Task Report: VO-041 — Build Approved Block Library Foundation
+
+- **Target:** VO-041 — Build approved block library foundation
+- **Phase:** P4 — Website engine, templates and publishing
+- **Status:** COMPLETED & VERIFIED
+- **Key Deliverables Implemented & Hardened:**
+  1. **Canonical Block Components (PRD FINAL v2 §15.3, §6.14):**
+     - Built dedicated React components for all 13 approved block types:
+       - `HeroBlock` (`hero-block.tsx`): Split, center, photo-left, and minimal layouts; primary/secondary CTAs; responsive image; WhatsApp direct action.
+       - `AboutBlock` (`about-block.tsx`): Multi-paragraph story, verified highlight checklist badges, and responsive photo showcase.
+       - `MenuBlock` (`menu-block.tsx`): Category tabs, veg/non-veg indicator chips, ₹ price formatting, and WhatsApp ordering shortcuts. Dynamically bound to `source: "catalogue"`.
+       - `CatalogueGridBlock` (`catalogue-grid-block.tsx`): 2/3/4 column product grid, `featuredOnly` filter option, responsive image cards, and WhatsApp order CTAs.
+       - `GalleryBlock` (`gallery-block.tsx`): Multi-column photo showcase with accessible captions and lightbox enlargement dialog.
+       - `BookingFormBlock` (`booking-form-block.tsx`): Appointment intake form with +91 Indian mobile number validation, preferred date/time slot selection, notice box, and action handler dispatch.
+       - `PricingBlock` (`pricing-block.tsx`): Responsive tiered pricing packages with "Most Popular" highlighted plan badge, feature checklists, and action buttons.
+       - `ReviewsBlock` (`reviews-block.tsx`): Average rating summary card, star rating icons with accessible aria-labels, verified customer badges, and testimonial cards.
+       - `OffersBlock` (`offers-block.tsx`): Promotional coupon cards with dashed border design, one-click copy code interaction, and expiration date badges.
+       - `LocationMapBlock` (`location-map-block.tsx`): Primary location address display bound dynamically to `business.primary_location`, structured business hours table, and safe Google Maps directions link.
+       - `ContactBlock` (`contact-block.tsx`): Direct phone call, WhatsApp chat, email channels, and integrated inquiry message form.
+       - `FaqBlock` (`faq-block.tsx`): Keyboard-accessible accordion with `aria-expanded` and `aria-controls` panel toggles.
+       - `FooterBlock` (`footer-block.tsx`): Semantic `<footer>` landmark, dynamic copyright notice, "Powered by VyapOne" brand badge, and sanitized social/legal links.
+  2. **Security & Zero Arbitrary Code Invariant (PRD §6.14):**
+     - Schema-validated execution: Every section is validated against canonical Zod schemas from `src/lib/websites/schemas.ts`.
+     - Reject unapproved blocks: `BlockRenderer` detects and blocks arbitrary code, raw HTML, scripts, or unknown block types without crashing the runtime.
+     - URL sanitization (`sanitizeLinkUrl`): Strips dangerous protocols (`javascript:`, `data:`, `vbscript:`) to safe hash (`#`) fallback.
+     - Dynamic fact binding: Prices, statutory taxes, and business addresses are never hardcoded in block configuration; they resolve from verified server facts (`WebsiteRenderContext`).
+     - Safe error isolation: `BlockErrorBoundary` encapsulates individual block render failures, preventing page-wide crashes.
+  3. **Accessibility & Responsive Foundations (WCAG 2.2 AA):**
+     - Semantic landmarks (`<section>`, `<figure>`, `<footer>`, `<dialog>`, `role="region"`, `role="contentinfo"`).
+     - Full keyboard accessibility and visible focus states across accordion, dialog, and form controls.
+     - Validated responsive layout classes across target breakpoints (320px, 390px, 768px, 1024px, 1440px).
+  4. **Quality Gates & Test Evidence:**
+     - Vitest suite `tests/unit/websites/approved-blocks.test.tsx` (24 unit tests): 100% passing.
+     - All website unit tests (`tests/unit/websites/`, 5 test suites, 74 tests): 100% passing.
+     - Sites database tests (`tests/unit/database/sites*`, 3 test suites, 51 tests): 100% passing.
+     - Full test suite (`pnpm test`, 96 test files, 1,134 tests): 100% passing.
+     - TypeScript strict mode (`tsc --noEmit`): 0 errors.
+     - ESLint (`pnpm lint`): 0 errors, 0 warnings.
+     - Production build (`pnpm build`): Successfully compiled all 38 routes.
 
 ## Task Report: VO-040 — Define Website Configuration Schema
 

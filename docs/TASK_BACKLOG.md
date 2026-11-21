@@ -280,13 +280,13 @@
 
 **Status:** `DONE`
 
-### [ ] VO-041 — Build approved block library foundation
+### [x] VO-041 — Build approved block library foundation
 
 **Scope:** Create shared blocks such as hero, about, catalogue/menu, services, gallery, pricing, booking/enquiry form, offers, reviews, location, FAQ and footer.
 
 **Acceptance:** Blocks are responsive, accessible, schema-validated and never accept arbitrary executable code.
 
-**Status:** `NOT_STARTED`
+**Status:** `DONE`
 
 ### [ ] VO-042 — Build public website renderer
 

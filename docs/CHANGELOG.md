@@ -4,6 +4,33 @@ Record implementation changes by task ID. Do not record planned work as complete
 
 ## Unreleased
 
+### [VO-041] — Build Approved Block Library Foundation (2026-11-21)
+- Built component library and safe runtime foundation for the 13 canonical approved website blocks (PRD FINAL v2 §15.3, §6.14):
+  - **13 Canonical Block Components (`src/components/websites/blocks/`):**
+    - `HeroBlock` (`hero-block.tsx`): Responsive banner supporting split, center, photo-left, and minimal variants, headline/subheadline, primary/secondary action triggers, and direct WhatsApp order flow.
+    - `AboutBlock` (`about-block.tsx`): Multi-paragraph story presentation, verified highlight badges, and responsive photo layout.
+    - `MenuBlock` (`menu-block.tsx`): Food/dining menu dynamically bound to catalogue facts (`source: "catalogue"`), category navigation chips, veg/non-veg indicator chips, ₹ price formatting, and WhatsApp ordering shortcuts.
+    - `CatalogueGridBlock` (`catalogue-grid-block.tsx`): Responsive 2/3/4 column product grid bound to catalogue facts, `featuredOnly` filter, dynamic price, and WhatsApp order CTA.
+    - `GalleryBlock` (`gallery-block.tsx`): Image showcase grid (2/3/4 columns), accessible captions/alt text, and lightbox modal dialog.
+    - `BookingFormBlock` (`booking-form-block.tsx`): Service appointment intake form, dynamic catalogue service binding, +91 mobile number validation, date/time slot selection, and action dispatch.
+    - `PricingBlock` (`pricing-block.tsx`): Pricing tiers bound to catalogue facts or structured service packages, "Most Popular" highlighted card badge for `highlightCategory`, feature checklists, and CTA buttons.
+    - `ReviewsBlock` (`reviews-block.tsx`): Average rating summary card, star rating SVGs with accessible aria-labels, verified customer badges, and testimonial cards.
+    - `OffersBlock` (`offers-block.tsx`): Promotional coupon cards with dashed border design, one-click copy code interaction, and expiration date badges.
+    - `LocationMapBlock` (`location-map-block.tsx`): Primary location address resolution (`addressRef: "business.primary_location"`), operating hours list, and safe Google Maps directions link.
+    - `ContactBlock` (`contact-block.tsx`): Direct phone call, WhatsApp chat, email channels, and interactive contact message form.
+    - `FaqBlock` (`faq-block.tsx`): Keyboard-accessible accordion with `aria-expanded`, `aria-controls`, and smooth toggle transitions.
+    - `FooterBlock` (`footer-block.tsx`): Semantic `<footer>` landmark, dynamic copyright notice, Powered by VyapOne brand badge, and sanitized social/legal links.
+  - **Central Registry & Safe Renderer (`block-registry.ts`, `block-renderer.tsx`):**
+    - `APPROVED_BLOCK_REGISTRY`: Canonical registry mapping all 13 approved block types to components, metadata, allowed variants, category filters, and default props.
+    - `BlockRenderer`: Validates section configuration against canonical Zod schemas, rejects unapproved block types without crashing, skips disabled sections, and isolates errors in `BlockErrorBoundary`.
+  - **Zero Arbitrary Code & Sanitization (`utils.ts`):**
+    - Enforced zero arbitrary code execution invariant (PRD §6.14).
+    - `sanitizeLinkUrl` sanitizes dangerous schemes (`javascript:`, `data:`, `vbscript:`) to safe hash (`#`) fallbacks.
+    - `formatCurrencyMinor` formats 64-bit integer minor units (paise) to standard Indian Rupee notation (₹).
+  - **Verification:**
+    - 24 unit tests in `tests/unit/websites/approved-blocks.test.tsx` verifying registry completeness, 13-block component rendering, accessible landmarks, dynamic facts, URL sanitization, XSS defense, and error boundaries.
+    - 100% pass across all 96 workspace test files (1,134 tests). Strict TypeScript mode (0 errors), ESLint (0 errors, 0 warnings), Prettier formatted, Next.js production build passing.
+
 ### [VO-040] — Define Website Configuration Schema (2026-11-19)
 - Defined versioned JSON schema and immutable database model for component-based websites (PRD FINAL v2 §6.14, §15.3, §16, §17):
   - **Assembled Blocks Only (PRD FINAL v2 §15.3):**
