@@ -34,6 +34,8 @@ export interface ConstrainedWebsiteEditorProps {
   availableModules?: Record<string, ModuleRenderStatus>;
   readOnly?: boolean;
   initialDeviceMode?: EditorDeviceMode;
+  autosaveDebounceMs?: number;
+  disableAutosave?: boolean;
   className?: string;
 }
 
@@ -83,6 +85,13 @@ export interface EditorTopBarProps {
   onChangeViewMode: (mode: EditorViewMode) => void;
   deviceMode?: EditorDeviceMode;
   onChangeDeviceMode?: (mode: EditorDeviceMode) => void;
+  canUndo?: boolean;
+  canRedo?: boolean;
+  onUndo?: () => void;
+  onRedo?: () => void;
+  lastSavedAt?: Date | null;
+  onRetrySave?: () => void;
+  isAutosaving?: boolean;
   className?: string;
 }
 

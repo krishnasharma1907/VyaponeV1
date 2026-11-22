@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import type { BlockComponentProps, BookingFormBlockProps } from "./types";
 import { getButtonRadiusClass, getCardRadiusClass } from "./utils";
 import { CalendarIcon, CheckCircleIcon } from "./icons";
@@ -41,6 +41,15 @@ export function BookingFormBlock({
   const [notes, setNotes] = useState<string>("");
   const [status, setStatus] = useState<"idle" | "submitting" | "success" | "error">("idle");
   const [errorMessage, setErrorMessage] = useState<string>("");
+  const submitTimerRef = useRef<NodeJS.Timeout | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (submitTimerRef.current) {
+        clearTimeout(submitTimerRef.current);
+      }
+    };
+  }, []);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -79,7 +88,11 @@ export function BookingFormBlock({
       });
     }
 
-    setTimeout(() => {
+    if (submitTimerRef.current) {
+      clearTimeout(submitTimerRef.current);
+    }
+
+    submitTimerRef.current = setTimeout(() => {
       setStatus("success");
     }, 400);
   };

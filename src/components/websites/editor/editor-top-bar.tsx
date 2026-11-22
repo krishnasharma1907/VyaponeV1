@@ -29,15 +29,26 @@ export function EditorTopBar({
   onChangeViewMode,
   deviceMode = "desktop",
   onChangeDeviceMode,
+  canUndo = false,
+  canRedo = false,
+  onUndo,
+  onRedo,
+  lastSavedAt,
+  onRetrySave,
+  isAutosaving = false,
   className = "",
 }: EditorTopBarProps) {
+  const formattedSavedTime = lastSavedAt
+    ? lastSavedAt.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" })
+    : null;
+
   return (
     <header
       role="toolbar"
       aria-label="Website Editor Controls"
       className={`bg-white border-b border-slate-200 px-4 py-2.5 flex flex-wrap items-center justify-between gap-3 ${className}`.trim()}
     >
-      {/* Site Identity & Version Info */}
+      {/* Site Identity, Version Info & Save Status */}
       <div className="flex items-center gap-2 flex-wrap">
         <div className="flex items-center gap-1.5">
           <span className="text-xs font-bold text-slate-900">{siteSubdomain}.vyapone.in</span>
@@ -46,16 +57,85 @@ export function EditorTopBar({
           </Badge>
         </div>
 
+        {/* History Controls: Undo / Redo */}
+        {(onUndo || onRedo) && (
+          <div
+            role="group"
+            aria-label="Edit History"
+            className="flex items-center rounded-md border border-slate-200 p-0.5 bg-slate-50 text-[11px]"
+          >
+            <button
+              type="button"
+              onClick={onUndo}
+              disabled={!canUndo}
+              aria-label="Undo change (Ctrl+Z)"
+              title="Undo change (Ctrl+Z)"
+              className={`p-1 rounded-xs transition-colors min-h-[28px] min-w-[28px] flex items-center justify-center ${
+                canUndo
+                  ? "text-slate-700 hover:text-slate-900 hover:bg-white cursor-pointer"
+                  : "text-slate-300 cursor-not-allowed"
+              }`}
+            >
+              <svg
+                className="w-3.5 h-3.5"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                aria-hidden="true"
+              >
+                <path d="M3 7v6h6" />
+                <path d="M21 17a9 9 0 0 0-9-9 9 9 0 0 0-6 2.3L3 13" />
+              </svg>
+            </button>
+            <button
+              type="button"
+              onClick={onRedo}
+              disabled={!canRedo}
+              aria-label="Redo change (Ctrl+Y)"
+              title="Redo change (Ctrl+Y)"
+              className={`p-1 rounded-xs transition-colors min-h-[28px] min-w-[28px] flex items-center justify-center ${
+                canRedo
+                  ? "text-slate-700 hover:text-slate-900 hover:bg-white cursor-pointer"
+                  : "text-slate-300 cursor-not-allowed"
+              }`}
+            >
+              <svg
+                className="w-3.5 h-3.5"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                aria-hidden="true"
+              >
+                <path d="M21 7v6h-6" />
+                <path d="M3 17a9 9 0 0 1 9-9 9 9 0 0 1 6 2.3L21 13" />
+              </svg>
+            </button>
+          </div>
+        )}
+
         {/* Save Status Badge */}
         {saveStatus === "saving" && (
           <Badge variant="warning" className="text-[10px] py-0 px-1.5 animate-pulse">
-            Saving Draft...
+            {isAutosaving ? "Autosaving Draft..." : "Saving Draft..."}
           </Badge>
         )}
         {saveStatus === "saved" && (
-          <Badge variant="success" className="text-[10px] py-0 px-1.5">
-            ✓ Draft Saved
-          </Badge>
+          <div className="flex items-center gap-1.5">
+            <Badge variant="success" className="text-[10px] py-0 px-1.5">
+              ✓ Draft Saved
+            </Badge>
+            {formattedSavedTime && (
+              <span className="text-[10px] text-slate-500 hidden sm:inline">
+                {formattedSavedTime}
+              </span>
+            )}
+          </div>
         )}
         {saveStatus === "unsaved" && (
           <Badge variant="accent" className="text-[10px] py-0 px-1.5">
@@ -238,9 +318,18 @@ export function EditorTopBar({
       {saveError && (
         <div
           role="alert"
-          className="w-full text-xs text-rose-700 bg-rose-50 border border-rose-200 rounded-md px-3 py-1.5 flex items-center justify-between"
+          className="w-full text-xs text-rose-700 bg-rose-50 border border-rose-200 rounded-md px-3 py-1.5 flex items-center justify-between gap-2"
         >
           <span>{saveError}</span>
+          {saveStatus === "error" && onRetrySave && (
+            <button
+              type="button"
+              onClick={onRetrySave}
+              className="text-xs font-semibold text-rose-800 hover:text-rose-900 underline shrink-0 cursor-pointer"
+            >
+              Retry Save
+            </button>
+          )}
         </div>
       )}
     </header>

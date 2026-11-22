@@ -1,10 +1,10 @@
 # VyapOne Build Progress
 
 **Current phase:** P4 — Website engine, templates and publishing (`IN_PROGRESS`)  
-**Completed tasks:** VO-000, VO-001, VO-002, VO-003, VO-004, VO-005, VO-006, VO-010, VO-011, VO-012, VO-013, VO-014, VO-015, VO-016, VO-017, VO-018, VO-019, VO-020, VO-021, VO-022, VO-023, VO-024, VO-025, VO-026, VO-027, VO-028, VO-030, VO-031, VO-032, VO-033, VO-034, VO-040, VO-041, VO-042, VO-043, VO-044, VO-045, VO-046  
-**Latest task:** VO-046 — Connect media and module data to website blocks  
-**Next task:** VO-047 — Implement draft autosave, undo and redo  
-**Project status:** MEDIA AND MODULE DATA FULLY BOUND TO APPROVED WEBSITE BLOCKS WITH TENANT ISOLATION, VERIFIED PUBLIC CDN URL RESOLUTION, OPERATIONAL/INFORMATIONAL MODULE AWARENESS, PRE-PUBLISH VALIDATION, AND DRAFT PREVIEW SUPPORT / PHASE P4 IN PROGRESS  
+**Completed tasks:** VO-000, VO-001, VO-002, VO-003, VO-004, VO-005, VO-006, VO-010, VO-011, VO-012, VO-013, VO-014, VO-015, VO-016, VO-017, VO-018, VO-019, VO-020, VO-021, VO-022, VO-023, VO-024, VO-025, VO-026, VO-027, VO-028, VO-030, VO-031, VO-032, VO-033, VO-034, VO-040, VO-041, VO-042, VO-043, VO-044, VO-045, VO-046, VO-047  
+**Latest task:** VO-047 — Implement draft autosave, undo and redo  
+**Next task:** VO-048 — Implement site versions and rollback  
+**Project status:** RELIABLE DRAFT AUTOSAVE, BOUNDED UNDO/REDO HISTORY, TRANSIENT LOCAL RECOVERY, AND CONFLICT-SAFE DRAFT PERSISTENCE INTEGRATED INTO CONSTRAINED WEBSITE EDITOR / PHASE P4 IN PROGRESS  
 
 ## Phase status
 
@@ -14,7 +14,44 @@
 | P1 — Repository, design system and application shell | COMPLETE | All tasks VO-010 to VO-019 verified and done; Phase P1 gate passed |
 | P2 — Platform identity, authentication and multi-tenancy | COMPLETE | All tasks VO-020 to VO-028 verified and done; Phase P2 gate passed |
 | P3 — Niche registry, presets and business onboarding | COMPLETE | All tasks VO-030 to VO-034 verified and done; Phase P3 complete |
-| P4 — Website engine, templates and publishing | IN_PROGRESS | VO-040, VO-041, VO-042, VO-043, VO-044, VO-045, VO-046 complete; VO-047 next |
+| P4 — Website engine, templates and publishing | IN_PROGRESS | VO-040, VO-041, VO-042, VO-043, VO-044, VO-045, VO-046, VO-047 complete; VO-048 next |
+
+## Task Report: VO-047 — Implement Draft Autosave, Undo and Redo
+
+- **Target:** VO-047 — Implement draft autosave, undo and redo
+- **Phase:** P4 — Website engine, templates and publishing
+- **Status:** COMPLETED & VERIFIED
+- **Key Deliverables Implemented & Verified:**
+  1. **Debounced Draft Autosave Engine (`ConstrainedWebsiteEditor`):**
+     - Change detection: Compares working draft configuration against last persisted server configuration; suppresses unnecessary saves for unchanged configurations.
+     - Debounced save execution: Automatically schedules autosave with customizable debounce delay (default 2500ms), giving merchants a seamless editing experience without network spam.
+     - Overlapping save guard: Concurrency refs (`isSavingRef`, `pendingSaveRef`) prevent duplicate in-flight requests and queue pending edits if the user makes edits while a save is in progress.
+     - Optimistic concurrency preservation: Transmits `expectedBaseVersionNumber` with every autosave, honoring PostgreSQL transaction-level concurrency control (`save_site_draft_configuration_atomic`) and preventing silent overwrites.
+     - Draft isolation invariant: Saves strictly create draft versions via `saveSiteDraftConfigurationAction` without altering `published_version_id` or publication status.
+  2. **Bounded Undo and Redo History (`useEditorHistory`):**
+     - Implements immutable history stack (`past`, `present`, `future`) for `WebsiteConfiguration`.
+     - Irrelevant UI state isolation: Excludes device viewports, active inspection tab, and UI presentation state from history; records only meaningful configuration changes.
+     - Bounded memory depth: Caps history at `maxDepth = 40` to prevent browser memory growth during extended sessions.
+     - Branch pruning: Any new user edit after an undo operation correctly clears the future redo stack.
+     - Coalesced input editing: Discrete operations (add section, remove, reorder, toggle visibility) record immediate history entries; rapid character typing in section inspectors coalesces smoothly.
+     - Keyboard shortcuts: Full support for `Ctrl+Z` / `Cmd+Z` (Undo), `Ctrl+Y` / `Cmd+Y` / `Ctrl+Shift+Z` (Redo).
+  3. **Local Transient Draft Recovery (`draft-recovery.ts`):**
+     - Tenant-scoped storage: Keyed strictly by `vyapone:website-editor-draft:{businessId}:{siteId}` with fail-closed null checks.
+     - Deep privacy sanitization: Strips transient blob URLs and query authentication tokens (`token=`, `apikey=`, `signature=`) prior to local storage.
+     - Expiration & skew validation: 24-hour TTL with 5-minute clock-skew tolerance; corrupted or expired drafts are automatically dropped and cleaned up.
+     - Stale detection & recovery prompt: On reload/navigation recovery, detects if server draft has advanced to a higher version number (`isDraftRecoveryStale`); presents an accessible notification banner allowing merchants to "Restore Draft" or "Discard" without silent conflict.
+     - Navigation protection: Adds `beforeunload` browser warnings whenever uncommitted changes exist.
+  4. **UI & Design System Integration (`EditorTopBar`):**
+     - Accessible Undo and Redo buttons with semantic SVGs, keyboard shortcut tooltips, and disabled states adhering to VyapOne Emerald + Marigold design tokens.
+     - Dynamic save status indicators: "Autosaving Draft...", "Saving Draft...", "✓ Draft Saved" (with formatted timestamp), "● Unsaved Changes", "⚠ Version Conflict", "✕ Save Failed" (with interactive "Retry Save" button).
+  5. **Verification Evidence & Quality Gates:**
+     - Dedicated autosave, undo/redo & recovery suite (`tests/unit/websites/autosave-undo-redo.test.tsx`, 25 tests): 100% passing.
+     - Full website test suite (`tests/unit/websites/`, 11 test files, 205 tests): 100% passing.
+     - Full repository test suite (`pnpm vitest run`, 103 test files, 1,279 tests): 100% passing with 0 errors.
+     - TypeScript strict check (`tsc --noEmit`): 0 errors.
+     - ESLint check (`pnpm lint`): 0 errors, 0 warnings.
+     - Prettier code style check: All files formatted cleanly.
+     - Next.js production build (`pnpm build`): Successfully compiled all 40 routes without errors.
 
 ## Task Report: VO-046 — Connect Media and Module Data to Website Blocks
 

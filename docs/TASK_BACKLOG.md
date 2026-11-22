@@ -328,13 +328,13 @@
 
 **Status:** `DONE`
 
-### [ ] VO-047 — Implement draft autosave, undo and redo
+### [x] VO-047 — Implement draft autosave, undo and redo
 
 **Scope:** Add debounced autosave, visible save state, local transient recovery if appropriate, undo/redo and conflict handling.
 
 **Acceptance:** No silent data loss on refresh/network interruption; save failures are visible and retryable.
 
-**Status:** `NOT_STARTED`
+**Status:** `DONE`
 
 ### [ ] VO-048 — Implement site versions and rollback
 

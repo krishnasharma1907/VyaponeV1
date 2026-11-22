@@ -1,7 +1,7 @@
 "use client";
 
 /**
- * VyapOne — Constrained Visual Website Editor [VO-044]
+ * VyapOne — Constrained Visual Website Editor [VO-044, VO-045, VO-046, VO-047]
  *
  * Implements the visual editor for VyapOne storefronts strictly constrained to
  * the 13 approved canonical blocks (PRD FINAL v2 §6.14, §15.3, §16, §17).
@@ -14,10 +14,13 @@
  *    published_version_id, and are never served on public anonymous routes.
  * 4. Optimistic Concurrency & Conflict Detection: Tracks base version numbers to prevent
  *    silent overwrites when concurrent sessions exist.
- * 5. Dynamic Data Binding: Prices, taxes, and locations remain bound to authoritative runtime facts.
+ * 5. Bounded Undo/Redo & Debounced Autosave [VO-047]: Preserves working edits without unbounded
+ *    memory growth or silent network data loss.
+ * 6. Local Transient Recovery [VO-047]: Recovers from accidental reloads or navigation with
+ *    strict tenant isolation, expiration (24h), and zero private credential storage.
  */
 
-import React, { useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type {
   ApprovedBlockType,
   PageConfig,
@@ -26,10 +29,19 @@ import type {
 } from "@/lib/websites/types";
 import { websiteConfigurationSchema } from "@/lib/websites/schemas";
 import { saveSiteDraftConfigurationAction } from "@/lib/websites/actions";
+import {
+  clearDraftRecovery,
+  isDraftRecoveryStale,
+  loadDraftRecovery,
+  saveDraftRecovery,
+  type WebsiteDraftRecoveryItem,
+} from "@/lib/websites/draft-recovery";
 import { APPROVED_BLOCK_REGISTRY } from "@/components/websites/blocks/block-registry";
 import { PublicWebsiteRenderer } from "@/components/websites/public-renderer/public-website-renderer";
 import type { WebsiteRenderContext } from "@/components/websites/blocks/types";
+import { Button } from "@/components/ui";
 import { normalizePageSlug } from "@/lib/websites/seo";
+import { useEditorHistory } from "./use-editor-history";
 import { EditorTopBar } from "./editor-top-bar";
 import { PageSelector } from "./page-selector";
 import { SectionNavigator } from "./section-navigator";
@@ -42,6 +54,8 @@ import type {
   EditorViewMode,
 } from "./types";
 
+export const AUTOSAVE_DEFAULT_DEBOUNCE_MS = 2500;
+
 export function ConstrainedWebsiteEditor({
   initialSite,
   initialVersion,
@@ -51,18 +65,24 @@ export function ConstrainedWebsiteEditor({
   availableModules = {},
   readOnly = false,
   initialDeviceMode = "desktop",
+  autosaveDebounceMs = AUTOSAVE_DEFAULT_DEBOUNCE_MS,
+  disableAutosave = false,
   className = "",
 }: ConstrainedWebsiteEditorProps) {
-  // Working draft configuration state
-  const [configuration, setConfiguration] = useState<WebsiteConfiguration>(initialConfiguration);
+  // Undo/Redo history stack management [VO-047]
+  const { configuration, canUndo, canRedo, undo, redo, setConfiguration, resetHistory } =
+    useEditorHistory(initialConfiguration);
+
   const [selectedSlug, setSelectedSlug] = useState<string>("/");
   const [selectedSectionId, setSelectedSectionId] = useState<string | null>(null);
 
-  // Persistence & feedback state
+  // Persistence, concurrency & autosave state [VO-044, VO-047]
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState<boolean>(false);
   const [saveStatus, setSaveStatus] = useState<EditorSaveStatus>("idle");
   const [saveError, setSaveError] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState<boolean>(false);
+  const [isAutosaving, setIsAutosaving] = useState<boolean>(false);
+  const [lastSavedAt, setLastSavedAt] = useState<Date | null>(null);
   const [changeSummary, setChangeSummary] = useState<string>("");
   const [currentVersionNumber, setCurrentVersionNumber] = useState<number | null>(
     initialSite.current_draft_version_id && initialVersion?.version_number
@@ -70,11 +90,49 @@ export function ConstrainedWebsiteEditor({
       : null,
   );
 
+  // Local transient draft recovery prompt state [VO-047]
+  const [recoveryPrompt, setRecoveryPrompt] = useState<{
+    item: WebsiteDraftRecoveryItem;
+    isStale: boolean;
+  } | null>(null);
+
   // UI view controls
   const [viewMode, setViewMode] = useState<EditorViewMode>("split");
   const [deviceMode, setDeviceMode] = useState<EditorDeviceMode>(initialDeviceMode);
   const [isAddModalOpen, setIsAddModalOpen] = useState<boolean>(false);
   const [validationErrors, setValidationErrors] = useState<Record<string, string[]>>({});
+
+  // Synchronized refs to avoid stale closures in debounced callbacks & async saves
+  const configRef = useRef<WebsiteConfiguration>(configuration);
+  configRef.current = configuration;
+
+  const changeSummaryRef = useRef<string>(changeSummary);
+  changeSummaryRef.current = changeSummary;
+
+  const currentVersionNumberRef = useRef<number | null>(currentVersionNumber);
+  currentVersionNumberRef.current = currentVersionNumber;
+
+  const lastPersistedConfigJsonRef = useRef<string>(JSON.stringify(initialConfiguration));
+  const autosaveTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const isSavingRef = useRef<boolean>(false);
+  const pendingSaveRef = useRef<boolean>(false);
+  const lastEditTimeRef = useRef<number>(0);
+  const lastEditedSectionIdRef = useRef<string | null>(null);
+
+  // 1. Initial Local Recovery Check on Mount [VO-047]
+  useEffect(() => {
+    const recovery = loadDraftRecovery(initialSite.business_id, initialSite.id);
+    if (recovery) {
+      const isDifferent =
+        JSON.stringify(recovery.configuration) !== JSON.stringify(initialConfiguration);
+      if (isDifferent) {
+        const isStale = isDraftRecoveryStale(recovery, currentVersionNumber);
+        setRecoveryPrompt({ item: recovery, isStale });
+      } else {
+        clearDraftRecovery(initialSite.business_id, initialSite.id);
+      }
+    }
+  }, [initialSite.business_id, initialSite.id, initialConfiguration, currentVersionNumber]);
 
   // Ensure current active page exists in working draft
   const normalizedSlug = normalizePageSlug(selectedSlug);
@@ -122,6 +180,227 @@ export function ConstrainedWebsiteEditor({
     availableModules,
   ]);
 
+  // 2. Navigation Protection (beforeunload) when unsaved changes exist [VO-047]
+  useEffect(() => {
+    if (!hasUnsavedChanges) return;
+
+    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+      e.preventDefault();
+      e.returnValue = "";
+    };
+
+    window.addEventListener("beforeunload", handleBeforeUnload);
+    return () => {
+      window.removeEventListener("beforeunload", handleBeforeUnload);
+    };
+  }, [hasUnsavedChanges]);
+
+  // 3. Draft Persistence Executor (Atomic save via Server Action + optimistic lock) [VO-040, VO-044, VO-047]
+  const executeSave = useCallback(
+    async (isAuto: boolean = false) => {
+      if (readOnly) return;
+
+      // Prevent overlapping concurrent saves
+      if (isSavingRef.current) {
+        pendingSaveRef.current = true;
+        return;
+      }
+
+      // Clear any pending debounce timer
+      if (autosaveTimerRef.current) {
+        clearTimeout(autosaveTimerRef.current);
+        autosaveTimerRef.current = null;
+      }
+
+      const currentConfig = configRef.current;
+      const currentSummary = changeSummaryRef.current;
+      const currentVersion = currentVersionNumberRef.current;
+
+      // Client-Side Validation against Zod schema
+      const parseResult = websiteConfigurationSchema.safeParse(currentConfig);
+      if (!parseResult.success) {
+        if (!isAuto) {
+          const errors: Record<string, string[]> = {};
+          for (const issue of parseResult.error.issues) {
+            const path = issue.path.join(".");
+            if (!errors[path]) errors[path] = [];
+            errors[path].push(issue.message);
+          }
+          setValidationErrors(errors);
+          setSaveStatus("error");
+          setSaveError("Configuration validation failed. Please check field errors.");
+        }
+        return;
+      }
+
+      setValidationErrors({});
+      setIsSaving(true);
+      isSavingRef.current = true;
+      setIsAutosaving(isAuto);
+      setSaveStatus("saving");
+      setSaveError(null);
+
+      try {
+        const response = await saveSiteDraftConfigurationAction({
+          siteId: initialSite.id,
+          configuration: currentConfig,
+          changeSummary: currentSummary.trim() || undefined,
+          expectedBaseVersionNumber: currentVersion,
+        });
+
+        if (!response.success) {
+          if (response.code === "CONFLICT" || response.error.toLowerCase().includes("conflict")) {
+            setSaveStatus("conflict");
+            setSaveError(
+              "Another session saved a newer draft version. Please refresh before saving.",
+            );
+          } else {
+            setSaveStatus("error");
+            setSaveError(response.error || "Failed to save draft configuration.");
+          }
+          return;
+        }
+
+        // Success: update draft version, clean dirty state and clear transient local recovery
+        const newVersionNumber = response.data.version.version_number;
+        setCurrentVersionNumber(newVersionNumber);
+        currentVersionNumberRef.current = newVersionNumber;
+        lastPersistedConfigJsonRef.current = JSON.stringify(response.data.configuration);
+        setHasUnsavedChanges(false);
+        setSaveStatus("saved");
+        setLastSavedAt(new Date());
+        setSaveError(null);
+        clearDraftRecovery(initialSite.business_id, initialSite.id);
+      } catch (err) {
+        setSaveStatus("error");
+        setSaveError(
+          err instanceof Error ? err.message : "An unexpected error occurred while saving.",
+        );
+      } finally {
+        setIsSaving(false);
+        isSavingRef.current = false;
+        setIsAutosaving(false);
+
+        // If another save was queued during in-flight request and config is still dirty
+        if (pendingSaveRef.current) {
+          pendingSaveRef.current = false;
+          if (JSON.stringify(configRef.current) !== lastPersistedConfigJsonRef.current) {
+            void executeSave(true);
+          }
+        }
+      }
+    },
+    [readOnly, initialSite.id, initialSite.business_id],
+  );
+
+  // 4. Meaningful Change Detection, Transient Recovery Persistence, and Debounced Autosave [VO-047]
+  useEffect(() => {
+    const currentJson = JSON.stringify(configuration);
+    const isDirty = currentJson !== lastPersistedConfigJsonRef.current;
+
+    if (!isDirty) {
+      setHasUnsavedChanges(false);
+      if (saveStatus === "unsaved") {
+        setSaveStatus(lastSavedAt ? "saved" : "idle");
+      }
+      clearDraftRecovery(initialSite.business_id, initialSite.id);
+      if (autosaveTimerRef.current) {
+        clearTimeout(autosaveTimerRef.current);
+        autosaveTimerRef.current = null;
+      }
+      return;
+    }
+
+    // Configuration differs from persisted server state: mark unsaved and persist recovery
+    setHasUnsavedChanges(true);
+    if (saveStatus !== "saving" && saveStatus !== "conflict") {
+      setSaveStatus("unsaved");
+    }
+
+    saveDraftRecovery(
+      initialSite.business_id,
+      initialSite.id,
+      currentVersionNumberRef.current,
+      configuration,
+      changeSummaryRef.current,
+    );
+
+    // Schedule debounced autosave
+    if (!disableAutosave && !readOnly && saveStatus !== "conflict") {
+      if (autosaveTimerRef.current) {
+        clearTimeout(autosaveTimerRef.current);
+      }
+      autosaveTimerRef.current = setTimeout(() => {
+        void executeSave(true);
+      }, autosaveDebounceMs);
+    }
+
+    return () => {
+      if (autosaveTimerRef.current) {
+        clearTimeout(autosaveTimerRef.current);
+        autosaveTimerRef.current = null;
+      }
+    };
+  }, [
+    configuration,
+    disableAutosave,
+    readOnly,
+    saveStatus,
+    autosaveDebounceMs,
+    executeSave,
+    lastSavedAt,
+    initialSite.business_id,
+    initialSite.id,
+  ]);
+
+  // 5. Undo and Redo Actions with keyboard bindings [VO-047]
+  const handleUndo = useCallback(() => {
+    if (readOnly || !canUndo) return;
+    undo();
+  }, [readOnly, canUndo, undo]);
+
+  const handleRedo = useCallback(() => {
+    if (readOnly || !canRedo) return;
+    redo();
+  }, [readOnly, canRedo, redo]);
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (readOnly) return;
+
+      const target = e.target as HTMLElement | null;
+      const isInput =
+        target &&
+        (target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.isContentEditable);
+
+      // Ctrl+Z or Cmd+Z
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "z") {
+        if (e.shiftKey) {
+          if (canRedo) {
+            e.preventDefault();
+            handleRedo();
+          }
+        } else {
+          if (!isInput && canUndo) {
+            e.preventDefault();
+            handleUndo();
+          }
+        }
+      } else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "y") {
+        // Ctrl+Y or Cmd+Y
+        if (!isInput && canRedo) {
+          e.preventDefault();
+          handleRedo();
+        }
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => {
+      window.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [readOnly, canUndo, canRedo, handleUndo, handleRedo]);
+
   // Handler: Select Page
   const handleSelectPage = (slug: string) => {
     setSelectedSlug(slug);
@@ -131,6 +410,7 @@ export function ConstrainedWebsiteEditor({
   // Handler: Add New Page
   const handleAddPage = (title: string, slug: string) => {
     if (readOnly) return;
+    lastEditTimeRef.current = 0;
     const newPageId = `page_${Date.now()}`;
     const newPage: PageConfig = {
       id: newPageId,
@@ -145,8 +425,6 @@ export function ConstrainedWebsiteEditor({
     }));
     setSelectedSlug(slug);
     setSelectedSectionId(null);
-    setHasUnsavedChanges(true);
-    setSaveStatus("unsaved");
   };
 
   // Handler: Add Approved Block Section
@@ -155,6 +433,7 @@ export function ConstrainedWebsiteEditor({
     const metadata = APPROVED_BLOCK_REGISTRY[type]?.metadata;
     if (!metadata) return;
 
+    lastEditTimeRef.current = 0;
     const newSectionId = `sec_${type}_${Date.now()}`;
     const newSection: SectionConfig = {
       id: newSectionId,
@@ -176,13 +455,12 @@ export function ConstrainedWebsiteEditor({
     }));
 
     setSelectedSectionId(newSectionId);
-    setHasUnsavedChanges(true);
-    setSaveStatus("unsaved");
   };
 
   // Handler: Remove Section
   const handleRemoveSection = (sectionId: string) => {
     if (readOnly || !activePage) return;
+    lastEditTimeRef.current = 0;
     setConfiguration((prev) => ({
       ...prev,
       pages: prev.pages.map((p) => {
@@ -197,13 +475,12 @@ export function ConstrainedWebsiteEditor({
     if (selectedSectionId === sectionId) {
       setSelectedSectionId(null);
     }
-    setHasUnsavedChanges(true);
-    setSaveStatus("unsaved");
   };
 
   // Handler: Toggle Section Visibility (Hide/Show)
   const handleToggleSectionEnabled = (sectionId: string) => {
     if (readOnly || !activePage) return;
+    lastEditTimeRef.current = 0;
     setConfiguration((prev) => ({
       ...prev,
       pages: prev.pages.map((p) => {
@@ -220,9 +497,6 @@ export function ConstrainedWebsiteEditor({
         };
       }),
     }));
-
-    setHasUnsavedChanges(true);
-    setSaveStatus("unsaved");
   };
 
   // Handler: Reorder Sections (Move Up / Down)
@@ -231,6 +505,7 @@ export function ConstrainedWebsiteEditor({
     const targetIndex = direction === "up" ? index - 1 : index + 1;
     if (targetIndex < 0 || targetIndex >= activePage.sections.length) return;
 
+    lastEditTimeRef.current = 0;
     const updatedSections = [...activePage.sections];
     const temp = updatedSections[index];
     updatedSections[index] = updatedSections[targetIndex];
@@ -246,12 +521,9 @@ export function ConstrainedWebsiteEditor({
         };
       }),
     }));
-
-    setHasUnsavedChanges(true);
-    setSaveStatus("unsaved");
   };
 
-  // Handler: Update Section Properties
+  // Handler: Update Section Properties (Coalesced continuous edits) [VO-047]
   const handleUpdateSectionProps = (
     sectionId: string,
     updatedProps: Record<string, unknown>,
@@ -259,92 +531,38 @@ export function ConstrainedWebsiteEditor({
   ) => {
     if (readOnly || !activePage) return;
 
-    setConfiguration((prev) => ({
-      ...prev,
-      pages: prev.pages.map((p) => {
-        if (p.id !== activePage.id) return p;
-        return {
-          ...p,
-          sections: p.sections.map((s) => {
-            if (s.id !== sectionId) return s;
-            return {
-              ...s,
-              variant: variant !== undefined ? variant : s.variant,
-              props: updatedProps,
-            };
-          }),
-        };
+    const now = Date.now();
+    const shouldRecordHistory =
+      sectionId !== lastEditedSectionIdRef.current || now - lastEditTimeRef.current > 1200;
+
+    lastEditTimeRef.current = now;
+    lastEditedSectionIdRef.current = sectionId;
+
+    setConfiguration(
+      (prev) => ({
+        ...prev,
+        pages: prev.pages.map((p) => {
+          if (p.id !== activePage.id) return p;
+          return {
+            ...p,
+            sections: p.sections.map((s) => {
+              if (s.id !== sectionId) return s;
+              return {
+                ...s,
+                variant: variant !== undefined ? variant : s.variant,
+                props: updatedProps,
+              };
+            }),
+          };
+        }),
       }),
-    }));
-
-    setHasUnsavedChanges(true);
-    setSaveStatus("unsaved");
-  };
-
-  // Handler: Save Draft Configuration
-  const handleSaveDraft = async () => {
-    if (readOnly || isSaving) return;
-
-    // 1. Client-Side Validation against Zod schema
-    const parseResult = websiteConfigurationSchema.safeParse(configuration);
-    if (!parseResult.success) {
-      const errors: Record<string, string[]> = {};
-      for (const issue of parseResult.error.issues) {
-        const path = issue.path.join(".");
-        if (!errors[path]) errors[path] = [];
-        errors[path].push(issue.message);
-      }
-      setValidationErrors(errors);
-      setSaveStatus("error");
-      setSaveError("Configuration validation failed. Please check field errors.");
-      return;
-    }
-
-    setValidationErrors({});
-    setIsSaving(true);
-    setSaveStatus("saving");
-    setSaveError(null);
-
-    try {
-      const response = await saveSiteDraftConfigurationAction({
-        siteId: initialSite.id,
-        configuration,
-        changeSummary: changeSummary.trim() || undefined,
-        expectedBaseVersionNumber: currentVersionNumber,
-      });
-
-      if (!response.success) {
-        if (response.code === "CONFLICT" || response.error.toLowerCase().includes("conflict")) {
-          setSaveStatus("conflict");
-          setSaveError(
-            "Another session saved a newer draft version. Please refresh before saving.",
-          );
-        } else {
-          setSaveStatus("error");
-          setSaveError(response.error || "Failed to save draft configuration.");
-        }
-        return;
-      }
-
-      // Success: update draft state
-      setCurrentVersionNumber(response.data.version.version_number);
-      setConfiguration(response.data.configuration);
-      setHasUnsavedChanges(false);
-      setSaveStatus("saved");
-      setChangeSummary("");
-      setSaveError(null);
-    } catch (err) {
-      setSaveStatus("error");
-      setSaveError(
-        err instanceof Error ? err.message : "An unexpected error occurred while saving.",
-      );
-    } finally {
-      setIsSaving(false);
-    }
+      shouldRecordHistory,
+    );
   };
 
   return (
     <div
+      data-testid="constrained-website-editor"
       className={`flex flex-col h-[calc(100vh-140px)] min-h-[640px] bg-slate-100 rounded-2xl overflow-hidden border border-slate-300 shadow-md pb-[env(safe-area-inset-bottom,0px)] ${className}`.trim()}
     >
       {/* Top Bar Controls */}
@@ -355,14 +573,92 @@ export function ConstrainedWebsiteEditor({
         saveError={saveError}
         changeSummary={changeSummary}
         onChangeSummary={setChangeSummary}
-        onSave={handleSaveDraft}
+        onSave={() => void executeSave(false)}
         isSaving={isSaving}
+        isAutosaving={isAutosaving}
         hasUnsavedChanges={hasUnsavedChanges}
         viewMode={viewMode}
         onChangeViewMode={setViewMode}
         deviceMode={deviceMode}
         onChangeDeviceMode={setDeviceMode}
+        canUndo={canUndo}
+        canRedo={canRedo}
+        onUndo={handleUndo}
+        onRedo={handleRedo}
+        lastSavedAt={lastSavedAt}
+        onRetrySave={() => void executeSave(false)}
       />
+
+      {/* Local Transient Draft Recovery Banner [VO-047] */}
+      {recoveryPrompt && (
+        <div
+          role="region"
+          aria-label="Draft Recovery Notification"
+          className="bg-amber-50 border-b border-amber-200 px-4 py-2 flex flex-wrap items-center justify-between gap-3 text-xs text-amber-900"
+        >
+          <div className="flex items-center gap-2">
+            <svg
+              className="w-4 h-4 text-amber-700 shrink-0"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              aria-hidden="true"
+            >
+              <path d="M12 9v4" />
+              <path d="M12 17h.01" />
+              <path d="M3.6 15h16.8L12 3z" />
+            </svg>
+            <span>
+              {recoveryPrompt.isStale ? (
+                <>
+                  <strong>Stale Local Recovery:</strong> Unsaved local edits from{" "}
+                  {new Date(recoveryPrompt.item.savedAt).toLocaleTimeString()} were found, but the
+                  server draft has advanced to v{currentVersionNumber}. Restoring may cause
+                  conflicts.
+                </>
+              ) : (
+                <>
+                  <strong>Unsaved Local Draft Found:</strong> You have unsaved changes from a
+                  previous session ({new Date(recoveryPrompt.item.savedAt).toLocaleTimeString()}).
+                  Would you like to restore them?
+                </>
+              )}
+            </span>
+          </div>
+          <div className="flex items-center gap-2">
+            <Button
+              variant="primary"
+              size="sm"
+              onClick={() => {
+                resetHistory(recoveryPrompt.item.configuration);
+                if (recoveryPrompt.item.changeSummary) {
+                  setChangeSummary(recoveryPrompt.item.changeSummary);
+                }
+                setHasUnsavedChanges(true);
+                setSaveStatus("unsaved");
+                setRecoveryPrompt(null);
+              }}
+              aria-label="Restore local draft"
+            >
+              Restore Draft
+            </Button>
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={() => {
+                clearDraftRecovery(initialSite.business_id, initialSite.id);
+                setRecoveryPrompt(null);
+              }}
+              aria-label="Discard local draft"
+            >
+              Discard
+            </Button>
+          </div>
+        </div>
+      )}
 
       {/* Page Tabs */}
       <PageSelector

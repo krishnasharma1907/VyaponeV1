@@ -4,6 +4,36 @@ Record implementation changes by task ID. Do not record planned work as complete
 
 ## Unreleased
 
+### [VO-047] — Implement Draft Autosave, Undo and Redo (2026-11-22)
+- Implemented robust draft autosave, bounded undo/redo history, transient local recovery, and concurrency conflict resilience in the constrained website editor (PRD FINAL v2 §5.5, §6.14, §15.3, §17.3):
+  - **Debounced Draft Autosave Engine (`ConstrainedWebsiteEditor`):**
+    - Structural change detection: Compares working draft against last persisted server configuration; eliminates redundant saves for unchanged configurations.
+    - Debounced save execution: Automatically triggers draft saves after debounce timeout (default 2500ms), providing seamless background persistence without network flooding.
+    - Overlapping save guard: Concurrency refs (`isSavingRef`, `pendingSaveRef`) prevent duplicate in-flight requests and queue dirty edits if the user makes changes while a save request is in flight.
+    - Optimistic concurrency preservation: Supplies `expectedBaseVersionNumber` with every autosave, honoring PostgreSQL transaction-level concurrency control (`save_site_draft_configuration_atomic`) and preventing silent overwrites.
+    - Draft isolation invariant: Saves strictly create draft versions via `saveSiteDraftConfigurationAction` without modifying `published_version_id` or publication status.
+  - **Bounded Undo and Redo History (`useEditorHistory`):**
+    - Implemented immutable history stack (`past`, `present`, `future`) for `WebsiteConfiguration`.
+    - Irrelevant UI state isolation: Excludes device viewports, active inspection tab, and UI presentation state from history; records only meaningful configuration changes.
+    - Bounded memory depth: Caps history at `maxDepth = 40` to prevent browser memory growth during extended sessions.
+    - Branch pruning: Any new user edit after an undo operation correctly clears the future redo stack.
+    - Coalesced input editing: Discrete operations (add section, remove, reorder, toggle visibility) record immediate history entries; rapid character typing in section inspectors coalesces smoothly.
+    - Keyboard shortcuts: Full support for `Ctrl+Z` / `Cmd+Z` (Undo), `Ctrl+Y` / `Cmd+Y` / `Ctrl+Shift+Z` (Redo).
+  - **Local Transient Draft Recovery (`draft-recovery.ts`):**
+    - Tenant-scoped storage: Keyed strictly by `vyapone:website-editor-draft:{businessId}:{siteId}` with fail-closed null checks.
+    - Deep privacy sanitization: Strips transient blob URLs and query authentication tokens (`token=`, `apikey=`, `signature=`) prior to local storage.
+    - Expiration & skew validation: 24-hour TTL with 5-minute clock-skew tolerance; corrupted or expired drafts are automatically dropped and cleaned up.
+    - Stale detection & recovery prompt: On reload/navigation recovery, detects if server draft has advanced to a higher version number (`isDraftRecoveryStale`); presents an accessible notification banner allowing merchants to "Restore Draft" or "Discard" without silent conflict.
+    - Navigation protection: Adds `beforeunload` browser warnings whenever uncommitted changes exist.
+  - **UI & Design System Integration (`EditorTopBar`):**
+    - Accessible Undo and Redo buttons with semantic SVGs, keyboard shortcut tooltips, and disabled states adhering to VyapOne Emerald + Marigold design tokens.
+    - Dynamic save status indicators: "Autosaving Draft...", "Saving Draft...", "✓ Draft Saved" (with formatted timestamp), "● Unsaved Changes", "⚠ Version Conflict", "✕ Save Failed" (with interactive "Retry Save" button).
+  - **Verification:**
+    - 25 unit & integration tests in `tests/unit/websites/autosave-undo-redo.test.tsx` verifying draft recovery storage, URL sanitization, TTL expiration, tenant isolation, bounded history transitions, branch pruning, undo/redo toolbar controls, debounced autosave, concurrent save protection, optimistic concurrency conflict handling, failure retry, transient recovery reload, stale recovery warnings, and keyboard shortcuts.
+    - Full website test suite (`tests/unit/websites/`, 11 test files, 205 tests) passing 100%.
+    - Full repository test suite (`pnpm vitest run`, 103 test files, 1,279 tests) passing 100% with 0 errors.
+    - Quality gates passed: strict TypeScript (`tsc --noEmit`, 0 errors), ESLint (0 errors, 0 warnings), Prettier formatted, and Next.js production build (`next build`, all 40 routes).
+
 ### [VO-046] — Connect Media and Module Data to Website Blocks (2026-11-22)
 - Connected approved website blocks with authorized business media and module data, establishing strict multi-tenant boundaries, safe URL resolution, and pre-publish validation (PRD FINAL v2 §6.14, §15.3, §15.5):
   - **Authorized Business Media Selection & Filtering (Editor):**
