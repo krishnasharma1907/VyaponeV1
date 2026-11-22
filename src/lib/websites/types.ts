@@ -359,3 +359,49 @@ export interface ModuleRenderStatus {
 export type WebsiteActionResult<T> =
   | { success: true; data: T }
   | { success: false; error: string; code?: string; validationErrors?: Record<string, string[]> };
+
+/**
+ * Lightweight summary of a site version for listing history [VO-048].
+ */
+export interface SiteVersionSummary {
+  id: string;
+  siteId: string;
+  businessId: string;
+  versionNumber: number;
+  schemaVersion: string;
+  changeSummary: string | null;
+  createdBy: string | null;
+  publishedAt: string | null;
+  createdAt: string;
+  isCurrentDraft: boolean;
+  isPublished: boolean;
+}
+
+/**
+ * Result of querying site version history.
+ */
+export interface GetSiteVersionsResult {
+  versions: SiteVersionRow[];
+  summaries: SiteVersionSummary[];
+  totalCount: number;
+  currentDraftVersionId: string | null;
+  publishedVersionId: string | null;
+}
+
+/**
+ * Result of rolling back a published site version [VO-048].
+ */
+export interface RollbackPublishedVersionResult {
+  site: SiteRow;
+  rolledBackToVersion: SiteVersionRow;
+  configuration: WebsiteConfiguration;
+}
+
+/**
+ * Result of restoring a historical version into a new draft [VO-048].
+ */
+export interface RestoreVersionToDraftResult {
+  site: SiteRow;
+  version: SiteVersionRow;
+  configuration: WebsiteConfiguration;
+}

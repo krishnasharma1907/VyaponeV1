@@ -92,6 +92,10 @@ export interface EditorTopBarProps {
   lastSavedAt?: Date | null;
   onRetrySave?: () => void;
   isAutosaving?: boolean;
+  onOpenHistory?: () => void;
+  isInspectingHistory?: boolean;
+  inspectedVersionNumber?: number | null;
+  onExitInspection?: () => void;
   className?: string;
 }
 

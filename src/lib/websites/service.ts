@@ -14,14 +14,25 @@ import type { Database, Json } from "@/lib/supabase/types";
 import { assertAuthenticatedUser, assertBusinessAccess } from "@/lib/auth/tenant-access";
 import { CANONICAL_MODULES } from "@/lib/niches/constants";
 import { buildInitialWebsiteConfiguration } from "./defaults";
-import { saveSiteDraftInputSchema, type SaveSiteDraftInput } from "./schemas";
+import {
+  restoreVersionToDraftInputSchema,
+  rollbackPublishedVersionInputSchema,
+  saveSiteDraftInputSchema,
+  type RestoreVersionToDraftInput,
+  type RollbackPublishedVersionInput,
+  type SaveSiteDraftInput,
+} from "./schemas";
 import type {
+  GetSiteVersionsResult,
   MediaItemSummary,
   ModuleOperationalStatus,
   ModuleRenderStatus,
+  RestoreVersionToDraftResult,
+  RollbackPublishedVersionResult,
   SaveSiteDraftResult,
   SiteRow,
   SiteVersionRow,
+  SiteVersionSummary,
   WebsiteConfiguration,
 } from "./types";
 import { migrateWebsiteConfiguration } from "./versioning";
@@ -121,24 +132,107 @@ export async function getSiteById(
 
 /**
  * Retrieves all versions for a given site in descending version order.
+ * Optionally supports pagination through limit and offset.
  */
 export async function getSiteVersions(
   supabase: SupabaseClient<Database>,
   siteId: string,
+  options?: { limit?: number; offset?: number },
 ): Promise<SiteVersionRow[]> {
   const site = await getSiteById(supabase, siteId);
 
-  const { data: versions, error } = await supabase
+  let query = supabase
     .from("site_versions")
     .select("*")
     .eq("site_id", site.id)
     .order("version_number", { ascending: false });
+
+  if (options?.limit !== undefined) {
+    const from = options.offset || 0;
+    const to = from + options.limit - 1;
+    query = query.range(from, to);
+  }
+
+  const { data: versions, error } = await query;
 
   if (error) {
     throw new WebsiteError("Failed to fetch site versions", "VERSIONS_FETCH_FAILED", 500);
   }
 
   return versions || [];
+}
+
+/**
+ * Retrieves paginated site version history with status flags and summary [VO-048].
+ */
+export async function getSiteVersionHistory(
+  supabase: SupabaseClient<Database>,
+  siteId: string,
+  options?: { limit?: number; offset?: number },
+): Promise<GetSiteVersionsResult> {
+  const site = await getSiteById(supabase, siteId);
+
+  const { count, error: countError } = await supabase
+    .from("site_versions")
+    .select("*", { count: "exact", head: true })
+    .eq("site_id", site.id);
+
+  if (countError) {
+    throw new WebsiteError("Failed to count site versions", "VERSIONS_COUNT_FAILED", 500);
+  }
+
+  const versions = await getSiteVersions(supabase, siteId, options);
+
+  const summaries: SiteVersionSummary[] = versions.map((v) => ({
+    id: v.id,
+    siteId: v.site_id,
+    businessId: v.business_id,
+    versionNumber: v.version_number,
+    schemaVersion: v.schema_version,
+    changeSummary: v.change_summary,
+    createdBy: v.created_by,
+    publishedAt: v.published_at,
+    createdAt: v.created_at,
+    isCurrentDraft: v.id === site.current_draft_version_id,
+    isPublished: v.id === site.published_version_id,
+  }));
+
+  return {
+    versions,
+    summaries,
+    totalCount: count ?? versions.length,
+    currentDraftVersionId: site.current_draft_version_id,
+    publishedVersionId: site.published_version_id,
+  };
+}
+
+/**
+ * Retrieves and validates the configuration for a specific version ID [VO-048].
+ */
+export async function getSiteConfigurationById(
+  supabase: SupabaseClient<Database>,
+  siteId: string,
+  versionId: string,
+): Promise<{ version: SiteVersionRow; configuration: WebsiteConfiguration }> {
+  const site = await getSiteById(supabase, siteId);
+
+  const { data: version, error } = await supabase
+    .from("site_versions")
+    .select("*")
+    .eq("site_id", site.id)
+    .eq("id", versionId)
+    .maybeSingle();
+
+  if (error || !version) {
+    throw new WebsiteError(`Site version '${versionId}' not found`, "VERSION_NOT_FOUND", 404);
+  }
+
+  const validatedConfig = migrateWebsiteConfiguration(version.configuration);
+
+  return {
+    version,
+    configuration: validatedConfig,
+  };
 }
 
 /**
@@ -341,6 +435,131 @@ export async function saveSiteDraftConfiguration(
     site: result.site,
     version: result.version,
     configuration: validated.configuration,
+  };
+}
+
+/**
+ * Rolls back a site's live published version to a previously published version [VO-048].
+ * Executes atomically via PostgreSQL RPC `rollback_published_site_version_atomic`:
+ * - Locks the site row FOR UPDATE.
+ * - Verifies caller identity and permissions.
+ * - Enforces optimistic concurrency on current published_version_id.
+ * - Verifies target version was previously published.
+ * - Updates sites.published_version_id and status to 'published'.
+ * - Preserves immutability of all version records (never mutates or deletes site_versions).
+ * - Writes audit log: site.published_version_rolled_back.
+ */
+export async function rollbackPublishedVersion(
+  supabase: SupabaseClient<Database>,
+  callerUserId: string,
+  input: RollbackPublishedVersionInput,
+): Promise<RollbackPublishedVersionResult> {
+  const validated = rollbackPublishedVersionInputSchema.parse(input);
+
+  // 1. Authorize site and business access
+  const site = await getSiteById(supabase, validated.siteId);
+  const { business } = await assertBusinessAccess(supabase, site.business_id);
+
+  // 2. Execute atomic rollback RPC
+  const { data: rpcData, error: rpcError } = await supabase.rpc(
+    "rollback_published_site_version_atomic",
+    {
+      p_site_id: site.id,
+      p_business_id: business.id,
+      p_caller_user_id: callerUserId,
+      p_target_version_id: validated.targetVersionId,
+      p_expected_current_published_version_id: validated.expectedCurrentPublishedVersionId ?? null,
+    },
+  );
+
+  if (rpcError || !rpcData) {
+    const errorMsg = rpcError?.message || "Failed to rollback published site version";
+    if (
+      errorMsg.includes("conflict") ||
+      errorMsg.includes("Rollback conflict") ||
+      rpcError?.code === "VY049"
+    ) {
+      throw new WebsiteError(errorMsg, "CONFLICT", 409);
+    }
+    if (
+      errorMsg.includes("Access denied") ||
+      errorMsg.includes("Unauthorized") ||
+      rpcError?.code === "VY020"
+    ) {
+      throw new WebsiteError(errorMsg, "UNAUTHORIZED", 403);
+    }
+    if (errorMsg.includes("not found") || rpcError?.code === "VY040") {
+      throw new WebsiteError(errorMsg, "NOT_FOUND", 404);
+    }
+    throw new WebsiteError(errorMsg, "ROLLBACK_FAILED", 500);
+  }
+
+  const rawResult = rpcData as unknown as {
+    site: SiteRow;
+    targetVersion: SiteVersionRow;
+  };
+
+  const migratedConfig = migrateWebsiteConfiguration(rawResult.targetVersion.configuration);
+
+  return {
+    site: rawResult.site,
+    rolledBackToVersion: rawResult.targetVersion,
+    configuration: migratedConfig,
+  };
+}
+
+/**
+ * Restores a historical site version into a new working draft [VO-048].
+ * Invariant: Preserves immutability of all past versions.
+ * Assigns a new version number (MAX + 1) without touching published_version_id.
+ */
+export async function restoreVersionToDraft(
+  supabase: SupabaseClient<Database>,
+  callerUserId: string,
+  input: RestoreVersionToDraftInput,
+): Promise<RestoreVersionToDraftResult> {
+  const validated = restoreVersionToDraftInputSchema.parse(input);
+
+  // 1. Authorize site access
+  const site = await getSiteById(supabase, validated.siteId);
+
+  // 2. Fetch target historical version
+  const { data: targetVersion, error: versionError } = await supabase
+    .from("site_versions")
+    .select("*")
+    .eq("id", validated.targetVersionId)
+    .eq("site_id", site.id)
+    .maybeSingle();
+
+  if (versionError || !targetVersion) {
+    throw new WebsiteError(
+      `Target site version '${validated.targetVersionId}' not found`,
+      "VERSION_NOT_FOUND",
+      404,
+    );
+  }
+
+  // 3. Migrate and align configuration
+  const targetConfig = migrateWebsiteConfiguration(targetVersion.configuration);
+  targetConfig.siteId = site.id;
+  targetConfig.businessId = site.business_id;
+
+  // 4. Determine change summary
+  const summary =
+    validated.changeSummary || `Restored from version ${targetVersion.version_number}`;
+
+  // 5. Save as a new draft version
+  const saveResult = await saveSiteDraftConfiguration(supabase, callerUserId, {
+    siteId: site.id,
+    configuration: targetConfig,
+    changeSummary: summary,
+    expectedBaseVersionNumber: validated.expectedBaseVersionNumber,
+  });
+
+  return {
+    site: saveResult.site,
+    version: saveResult.version,
+    configuration: saveResult.configuration,
   };
 }
 

@@ -4,6 +4,45 @@ Record implementation changes by task ID. Do not record planned work as complete
 
 ## Unreleased
 
+### [VO-048] — Implement Site Versions and Rollback (2026-11-22)
+- Implemented immutable site version history, read-only preview inspection, conflict-safe live rollback, and historical version restore in the constrained website editor (PRD FINAL v2 §5.5, §6.14, §15.3, §16, §17.3 FR-07, §21 item 11):
+  - **PostgreSQL Migration & Atomic Rollback RPC (`20261122000002_website_rollback_rpc.sql`):**
+    - Implemented `public.rollback_published_site_version_atomic(p_site_id, p_business_id, p_caller_user_id, p_target_version_id, p_expected_current_published_version_id)`.
+    - Strict `SECURITY DEFINER` with fixed `search_path = ''`.
+    - Row-level lock (`FOR UPDATE OF s`) serializing concurrent rollback and publishing operations.
+    - Caller identity verification (`auth.uid() = p_caller_user_id`) and business membership authorization.
+    - Enforces target version validation: target version must belong to the site and must have been previously published (`published_at IS NOT NULL`). Rejects rolling back to an unpublished draft.
+    - Optimistic concurrency control: checks `expectedCurrentPublishedVersionId` against current `sites.published_version_id` to prevent race conditions (`VY049`).
+    - Updates `sites.published_version_id` while leaving `current_draft_version_id` and all historical versions strictly immutable and untouched.
+    - Emits structured audit log: `site.published_version_rolled_back`.
+    - Direct execution revoked from anon and PUBLIC; granted to authenticated and service_role.
+  - **Service Layer & Server Actions (`service.ts`, `actions.ts`, `schemas.ts`):**
+    - `getSiteVersions`: Retrieves site versions in descending version number order with limit/offset pagination.
+    - `getSiteVersionHistory`: Retrieves paginated history with mapped summaries and status badges (`isCurrentDraft`, `isPublished`).
+    - `getSiteConfigurationById`: Retrieves and validates configuration for a specific version ID.
+    - `rollbackPublishedVersion`: Executes atomic rollback RPC with error sanitization and configuration migration.
+    - `restoreVersionToDraft`: Restores a historical configuration into a new working draft (`MAX(version_number) + 1`) via `saveSiteDraftConfiguration`, leaving `published_version_id` unchanged.
+    - Server Actions: `getSiteVersionsAction`, `getSiteVersionByIdAction`, `rollbackPublishedVersionAction`, `restoreVersionToDraftAction` with path revalidation (`/dashboard/website`, `/workspace/clients`, `/s/[subdomain]`).
+  - **Version History & Rollback UI Component (`VersionHistoryModal`):**
+    - Accessible modal dialog (`role="dialog" aria-modal="true" aria-labelledby="version-history-title"`).
+    - Status badges: Active Draft, Live Published, Previously Published, Draft Snapshot.
+    - Actions: Inspect (read-only canvas preview), Restore to Draft (with confirmation banner), Rollback Live (with warning confirmation for previously published versions).
+    - Keyboard accessible with Escape key dismiss.
+  - **Constrained Editor Integration (`ConstrainedWebsiteEditor`, `EditorTopBar`):**
+    - Top bar "History" button triggers the version history dialog.
+    - Read-only historical preview mode:
+      - Displays prominent inspection banner: "Historical Snapshot v{X} (Read-Only) — Your active draft is safely preserved."
+      - Renders historical version in PublicWebsiteRenderer canvas.
+      - Replaces left pane with read-only inspection notice and quick restore/exit buttons.
+      - Completely suspends autosave and dirty-state tracking while inspecting.
+      - "Exit Preview" cleanly returns to editing the active working draft.
+  - **Verification:**
+    - 12 unit tests in `tests/unit/database/website-rollback-migration.test.ts` verifying all security, locking, and parameter assertions.
+    - 16 unit tests in `tests/unit/websites/versions-rollback.test.tsx` verifying descending order retrieval, pagination, summary mapping, specific version retrieval, atomic rollback via RPC, concurrency conflict rejection (VY049), restore to draft pointer isolation, action revalidation, modal status badges, inspect callback, restore/rollback confirmation dialogs, keyboard dismiss, and autosave suspension.
+    - Full website test suite (`tests/unit/websites/`, 12 test files, 221 tests) passing 100%.
+    - Full repository test suite (`pnpm vitest run`, 105 test files, 1,307 tests) passing 100% with 0 errors.
+    - Quality gates passed: strict TypeScript (`tsc --noEmit`, 0 errors), ESLint (0 errors, 0 warnings), Prettier formatted, and Next.js production build (`next build`, all 40 routes).
+
 ### [VO-047] — Implement Draft Autosave, Undo and Redo (2026-11-22)
 - Implemented robust draft autosave, bounded undo/redo history, transient local recovery, and concurrency conflict resilience in the constrained website editor (PRD FINAL v2 §5.5, §6.14, §15.3, §17.3):
   - **Debounced Draft Autosave Engine (`ConstrainedWebsiteEditor`):**

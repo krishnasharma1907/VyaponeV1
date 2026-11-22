@@ -1,10 +1,10 @@
 # VyapOne Build Progress
 
 **Current phase:** P4 — Website engine, templates and publishing (`IN_PROGRESS`)  
-**Completed tasks:** VO-000, VO-001, VO-002, VO-003, VO-004, VO-005, VO-006, VO-010, VO-011, VO-012, VO-013, VO-014, VO-015, VO-016, VO-017, VO-018, VO-019, VO-020, VO-021, VO-022, VO-023, VO-024, VO-025, VO-026, VO-027, VO-028, VO-030, VO-031, VO-032, VO-033, VO-034, VO-040, VO-041, VO-042, VO-043, VO-044, VO-045, VO-046, VO-047  
-**Latest task:** VO-047 — Implement draft autosave, undo and redo  
-**Next task:** VO-048 — Implement site versions and rollback  
-**Project status:** RELIABLE DRAFT AUTOSAVE, BOUNDED UNDO/REDO HISTORY, TRANSIENT LOCAL RECOVERY, AND CONFLICT-SAFE DRAFT PERSISTENCE INTEGRATED INTO CONSTRAINED WEBSITE EDITOR / PHASE P4 IN PROGRESS  
+**Completed tasks:** VO-000, VO-001, VO-002, VO-003, VO-004, VO-005, VO-006, VO-010, VO-011, VO-012, VO-013, VO-014, VO-015, VO-016, VO-017, VO-018, VO-019, VO-020, VO-021, VO-022, VO-023, VO-024, VO-025, VO-026, VO-027, VO-028, VO-030, VO-031, VO-032, VO-033, VO-034, VO-040, VO-041, VO-042, VO-043, VO-044, VO-045, VO-046, VO-047, VO-048  
+**Latest task:** VO-048 — Implement site versions and rollback  
+**Next task:** VO-049 — Implement pre-publish validation, domains and QR  
+**Project status:** IMMUTABLE SITE VERSION HISTORY, READ-ONLY PREVIEW INSPECTION, CONFLICT-SAFE LIVE ROLLBACK, AND HISTORICAL VERSION RESTORE INTEGRATED INTO CONSTRAINED WEBSITE EDITOR / PHASE P4 IN PROGRESS  
 
 ## Phase status
 
@@ -14,7 +14,53 @@
 | P1 — Repository, design system and application shell | COMPLETE | All tasks VO-010 to VO-019 verified and done; Phase P1 gate passed |
 | P2 — Platform identity, authentication and multi-tenancy | COMPLETE | All tasks VO-020 to VO-028 verified and done; Phase P2 gate passed |
 | P3 — Niche registry, presets and business onboarding | COMPLETE | All tasks VO-030 to VO-034 verified and done; Phase P3 complete |
-| P4 — Website engine, templates and publishing | IN_PROGRESS | VO-040, VO-041, VO-042, VO-043, VO-044, VO-045, VO-046, VO-047 complete; VO-048 next |
+| P4 — Website engine, templates and publishing | IN_PROGRESS | VO-040 through VO-048 complete; VO-049 next |
+
+## Task Report: VO-048 — Implement Site Versions and Rollback
+
+- **Target:** VO-048 — Implement site versions and rollback
+- **Phase:** P4 — Website engine, templates and publishing
+- **Status:** COMPLETED & VERIFIED
+- **Key Deliverables Implemented & Verified:**
+  1. **PostgreSQL Migration & Atomic Rollback RPC (`20261122000002_website_rollback_rpc.sql`):**
+     - Implements `public.rollback_published_site_version_atomic(p_site_id, p_business_id, p_caller_user_id, p_target_version_id, p_expected_current_published_version_id)`.
+     - Strict `SECURITY DEFINER` with fixed `search_path = ''`.
+     - Row-level lock (`FOR UPDATE OF s`) serializing concurrent rollback and publishing operations.
+     - Caller identity verification (`auth.uid() = p_caller_user_id`) and business membership authorization.
+     - Enforces target version validation: target version must belong to the site and must have been previously published (`published_at IS NOT NULL`). Rejects rolling back to an unpublished draft.
+     - Optimistic concurrency control: checks `expectedCurrentPublishedVersionId` against current `sites.published_version_id` to prevent race conditions (`VY049`).
+     - Updates `sites.published_version_id` while leaving `current_draft_version_id` and all historical versions strictly immutable and untouched.
+     - Emits structured audit log: `site.published_version_rolled_back`.
+     - Direct execution revoked from anon and PUBLIC; granted to authenticated and service_role.
+  2. **Service Layer & Server Actions (`service.ts`, `actions.ts`, `schemas.ts`):**
+     - `getSiteVersions`: Retrieves site versions in descending version number order with limit/offset pagination.
+     - `getSiteVersionHistory`: Retrieves paginated history with mapped summaries and status badges (`isCurrentDraft`, `isPublished`).
+     - `getSiteConfigurationById`: Retrieves and validates configuration for a specific version ID.
+     - `rollbackPublishedVersion`: Executes atomic rollback RPC with error sanitization and configuration migration.
+     - `restoreVersionToDraft`: Restores a historical configuration into a new working draft (`MAX(version_number) + 1`) via `saveSiteDraftConfiguration`, leaving `published_version_id` unchanged.
+     - Server Actions: `getSiteVersionsAction`, `getSiteVersionByIdAction`, `rollbackPublishedVersionAction`, `restoreVersionToDraftAction` with path revalidation (`/dashboard/website`, `/workspace/clients`, `/s/[subdomain]`).
+  3. **Version History & Rollback UI Component (`VersionHistoryModal`):**
+     - Accessible modal dialog (`role="dialog" aria-modal="true" aria-labelledby="version-history-title"`).
+     - Status badges: Active Draft, Live Published, Previously Published, Draft Snapshot.
+     - Actions: Inspect (read-only canvas preview), Restore to Draft (with confirmation banner), Rollback Live (with warning confirmation for previously published versions).
+     - Keyboard accessible with Escape key dismiss.
+  4. **Constrained Editor Integration (`ConstrainedWebsiteEditor`, `EditorTopBar`):**
+     - Top bar "History" button triggers the version history dialog.
+     - Read-only historical preview mode:
+       - Displays prominent inspection banner: "Historical Snapshot v{X} (Read-Only) — Your active draft is safely preserved."
+       - Renders historical version in PublicWebsiteRenderer canvas.
+       - Replaces left pane with read-only inspection notice and quick restore/exit buttons.
+       - Completely suspends autosave and dirty-state tracking while inspecting.
+       - "Exit Preview" cleanly returns to editing the active working draft.
+  5. **Verification Evidence & Quality Gates:**
+     - Database migration unit suite (`tests/unit/database/website-rollback-migration.test.ts`, 12 tests): 100% passing.
+     - Versions and rollback unit suite (`tests/unit/websites/versions-rollback.test.tsx`, 16 tests): 100% passing.
+     - Full website test suite (`tests/unit/websites/`, 12 test files, 221 tests): 100% passing.
+     - Full repository test suite (`pnpm vitest run`, 105 test files, 1,307 tests): 100% passing.
+     - Strict TypeScript check (`tsc --noEmit`): 0 errors.
+     - ESLint check (`pnpm lint`): 0 errors, 0 warnings.
+     - Prettier code style check: All files formatted cleanly.
+     - Next.js production build (`pnpm build`): Successfully compiled all 40 routes without errors.
 
 ## Task Report: VO-047 — Implement Draft Autosave, Undo and Redo
 

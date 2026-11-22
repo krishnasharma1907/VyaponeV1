@@ -401,3 +401,41 @@ export const saveSiteDraftInputSchema = z.object({
 });
 
 export type SaveSiteDraftInput = z.input<typeof saveSiteDraftInputSchema>;
+
+/**
+ * Input schema for rolling back a site's published version.
+ */
+export const rollbackPublishedVersionInputSchema = z.object({
+  siteId: z.string().uuid("Invalid site ID"),
+  targetVersionId: z.string().uuid("Invalid target version ID"),
+  expectedCurrentPublishedVersionId: z
+    .string()
+    .uuid("Invalid expected published version ID")
+    .optional()
+    .nullable(),
+});
+
+export type RollbackPublishedVersionInput = z.infer<typeof rollbackPublishedVersionInputSchema>;
+
+/**
+ * Input schema for restoring a historical version into a new working draft.
+ */
+export const restoreVersionToDraftInputSchema = z.object({
+  siteId: z.string().uuid("Invalid site ID"),
+  targetVersionId: z.string().uuid("Invalid target version ID"),
+  expectedBaseVersionNumber: z.number().int().positive().nullable(),
+  changeSummary: z.string().trim().max(255).optional(),
+});
+
+export type RestoreVersionToDraftInput = z.infer<typeof restoreVersionToDraftInputSchema>;
+
+/**
+ * Query schema for retrieving site version history with pagination.
+ */
+export const getSiteVersionsQuerySchema = z.object({
+  siteId: z.string().uuid("Invalid site ID"),
+  limit: z.number().int().min(1).max(100).default(50).optional(),
+  offset: z.number().int().min(0).default(0).optional(),
+});
+
+export type GetSiteVersionsQuery = z.infer<typeof getSiteVersionsQuerySchema>;

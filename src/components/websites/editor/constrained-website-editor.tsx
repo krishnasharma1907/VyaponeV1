@@ -25,10 +25,16 @@ import type {
   ApprovedBlockType,
   PageConfig,
   SectionConfig,
+  SiteVersionSummary,
   WebsiteConfiguration,
 } from "@/lib/websites/types";
 import { websiteConfigurationSchema } from "@/lib/websites/schemas";
-import { saveSiteDraftConfigurationAction } from "@/lib/websites/actions";
+import {
+  getSiteVersionByIdAction,
+  restoreVersionToDraftAction,
+  rollbackPublishedVersionAction,
+  saveSiteDraftConfigurationAction,
+} from "@/lib/websites/actions";
 import {
   clearDraftRecovery,
   isDraftRecoveryStale,
@@ -47,6 +53,7 @@ import { PageSelector } from "./page-selector";
 import { SectionNavigator } from "./section-navigator";
 import { SectionInspector } from "./section-inspector";
 import { AddSectionModal } from "./add-section-modal";
+import { VersionHistoryModal } from "./version-history-modal";
 import type {
   ConstrainedWebsiteEditorProps,
   EditorDeviceMode,
@@ -88,6 +95,18 @@ export function ConstrainedWebsiteEditor({
     initialSite.current_draft_version_id && initialVersion?.version_number
       ? initialVersion.version_number
       : null,
+  );
+
+  // Version history & rollback state [VO-048]
+  const [isHistoryModalOpen, setIsHistoryModalOpen] = useState<boolean>(false);
+  const [inspectedVersion, setInspectedVersion] = useState<{
+    summary: SiteVersionSummary;
+    configuration: WebsiteConfiguration;
+  } | null>(null);
+  const [isRestoringVersion, setIsRestoringVersion] = useState<boolean>(false);
+  const [isRollingBackVersion, setIsRollingBackVersion] = useState<boolean>(false);
+  const [currentPublishedVersionId, setCurrentPublishedVersionId] = useState<string | null>(
+    initialSite.published_version_id,
   );
 
   // Local transient draft recovery prompt state [VO-047]
@@ -198,7 +217,7 @@ export function ConstrainedWebsiteEditor({
   // 3. Draft Persistence Executor (Atomic save via Server Action + optimistic lock) [VO-040, VO-044, VO-047]
   const executeSave = useCallback(
     async (isAuto: boolean = false) => {
-      if (readOnly) return;
+      if (readOnly || inspectedVersion !== null) return;
 
       // Prevent overlapping concurrent saves
       if (isSavingRef.current) {
@@ -290,11 +309,20 @@ export function ConstrainedWebsiteEditor({
         }
       }
     },
-    [readOnly, initialSite.id, initialSite.business_id],
+    [readOnly, inspectedVersion, initialSite.id, initialSite.business_id],
   );
 
   // 4. Meaningful Change Detection, Transient Recovery Persistence, and Debounced Autosave [VO-047]
   useEffect(() => {
+    // If inspecting historical version, completely suspend change detection & autosave
+    if (inspectedVersion !== null) {
+      if (autosaveTimerRef.current) {
+        clearTimeout(autosaveTimerRef.current);
+        autosaveTimerRef.current = null;
+      }
+      return;
+    }
+
     const currentJson = JSON.stringify(configuration);
     const isDirty = currentJson !== lastPersistedConfigJsonRef.current;
 
@@ -349,6 +377,7 @@ export function ConstrainedWebsiteEditor({
     autosaveDebounceMs,
     executeSave,
     lastSavedAt,
+    inspectedVersion,
     initialSite.business_id,
     initialSite.id,
   ]);
@@ -560,6 +589,95 @@ export function ConstrainedWebsiteEditor({
     );
   };
 
+  // 6. Version History & Rollback Handlers [VO-048]
+  const handleInspectVersion = useCallback(
+    async (versionSummary: SiteVersionSummary) => {
+      try {
+        const res = await getSiteVersionByIdAction(initialSite.id, versionSummary.id);
+        if (res.success) {
+          setInspectedVersion({
+            summary: versionSummary,
+            configuration: res.data.configuration,
+          });
+          const hasSlug = res.data.configuration.pages.some(
+            (p) => normalizePageSlug(p.slug) === normalizePageSlug(selectedSlug),
+          );
+          if (!hasSlug && res.data.configuration.pages.length > 0) {
+            setSelectedSlug(res.data.configuration.pages[0].slug);
+          }
+        } else {
+          setSaveError(`Failed to load version ${versionSummary.versionNumber}: ${res.error}`);
+        }
+      } catch {
+        setSaveError("Failed to load historical version.");
+      }
+    },
+    [initialSite.id, selectedSlug],
+  );
+
+  const handleRestoreToDraft = useCallback(
+    async (versionSummary: SiteVersionSummary) => {
+      setIsRestoringVersion(true);
+      setSaveError(null);
+      try {
+        const res = await restoreVersionToDraftAction({
+          siteId: initialSite.id,
+          targetVersionId: versionSummary.id,
+          expectedBaseVersionNumber: currentVersionNumberRef.current,
+        });
+
+        if (!res.success) {
+          throw new Error(res.error || "Failed to restore version to draft");
+        }
+
+        resetHistory(res.data.configuration);
+        setCurrentVersionNumber(res.data.version.version_number);
+        currentVersionNumberRef.current = res.data.version.version_number;
+        lastPersistedConfigJsonRef.current = JSON.stringify(res.data.configuration);
+        setHasUnsavedChanges(false);
+        setSaveStatus("saved");
+        setLastSavedAt(new Date());
+        setInspectedVersion(null);
+        clearDraftRecovery(initialSite.business_id, initialSite.id);
+      } catch (err: unknown) {
+        const msg = err instanceof Error ? err.message : "Restore failed";
+        setSaveError(msg);
+        throw err;
+      } finally {
+        setIsRestoringVersion(false);
+      }
+    },
+    [initialSite.id, initialSite.business_id, resetHistory],
+  );
+
+  const handleRollbackLiveSite = useCallback(
+    async (versionSummary: SiteVersionSummary) => {
+      setIsRollingBackVersion(true);
+      setSaveError(null);
+      try {
+        const res = await rollbackPublishedVersionAction({
+          siteId: initialSite.id,
+          targetVersionId: versionSummary.id,
+          expectedCurrentPublishedVersionId: currentPublishedVersionId,
+        });
+
+        if (!res.success) {
+          throw new Error(res.error || "Failed to roll back live website");
+        }
+
+        setCurrentPublishedVersionId(res.data.site.published_version_id);
+        setInspectedVersion(null);
+      } catch (err: unknown) {
+        const msg = err instanceof Error ? err.message : "Rollback failed";
+        setSaveError(msg);
+        throw err;
+      } finally {
+        setIsRollingBackVersion(false);
+      }
+    },
+    [initialSite.id, currentPublishedVersionId],
+  );
+
   return (
     <div
       data-testid="constrained-website-editor"
@@ -587,6 +705,10 @@ export function ConstrainedWebsiteEditor({
         onRedo={handleRedo}
         lastSavedAt={lastSavedAt}
         onRetrySave={() => void executeSave(false)}
+        onOpenHistory={() => setIsHistoryModalOpen(true)}
+        isInspectingHistory={inspectedVersion !== null}
+        inspectedVersionNumber={inspectedVersion?.summary.versionNumber ?? null}
+        onExitInspection={() => setInspectedVersion(null)}
       />
 
       {/* Local Transient Draft Recovery Banner [VO-047] */}
@@ -662,7 +784,7 @@ export function ConstrainedWebsiteEditor({
 
       {/* Page Tabs */}
       <PageSelector
-        pages={configuration.pages}
+        pages={inspectedVersion ? inspectedVersion.configuration.pages : configuration.pages}
         selectedSlug={selectedSlug}
         onSelectSlug={handleSelectPage}
         onAddPage={handleAddPage}
@@ -679,7 +801,62 @@ export function ConstrainedWebsiteEditor({
                 : "w-full"
             }`}
           >
-            {selectedSection ? (
+            {inspectedVersion ? (
+              <div
+                data-testid="historical-inspection-pane"
+                className="p-6 flex flex-col items-center justify-center text-center h-full space-y-4"
+              >
+                <div className="w-12 h-12 rounded-full bg-amber-100 text-amber-800 flex items-center justify-center">
+                  <svg
+                    className="w-6 h-6"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    aria-hidden="true"
+                  >
+                    <circle cx="12" cy="12" r="10" />
+                    <polyline points="12 6 12 12 16 14" />
+                  </svg>
+                </div>
+                <div className="space-y-1">
+                  <h3 className="font-bold text-slate-900 text-base">
+                    Historical Snapshot v{inspectedVersion.summary.versionNumber}
+                  </h3>
+                  <p className="text-xs text-slate-500 max-w-xs">
+                    You are inspecting a past snapshot in read-only mode. Changes cannot be made
+                    directly to historical records.
+                  </p>
+                  <p className="text-[11px] text-slate-400">
+                    Created {new Date(inspectedVersion.summary.createdAt).toLocaleString()}
+                  </p>
+                </div>
+                <div className="flex flex-col gap-2 w-full max-w-xs pt-2">
+                  <Button
+                    variant="primary"
+                    size="sm"
+                    onClick={() => handleRestoreToDraft(inspectedVersion.summary)}
+                    disabled={isRestoringVersion}
+                  >
+                    {isRestoringVersion ? "Restoring..." : "Restore as Working Draft"}
+                  </Button>
+                  {inspectedVersion.summary.publishedAt &&
+                    inspectedVersion.summary.id !== currentPublishedVersionId && (
+                      <Button
+                        variant="destructive"
+                        size="sm"
+                        onClick={() => handleRollbackLiveSite(inspectedVersion.summary)}
+                        disabled={isRollingBackVersion}
+                      >
+                        {isRollingBackVersion ? "Rolling back..." : "Rollback Live Website"}
+                      </Button>
+                    )}
+                  <Button variant="secondary" size="sm" onClick={() => setInspectedVersion(null)}>
+                    Exit Preview & Return to Draft
+                  </Button>
+                </div>
+              </div>
+            ) : selectedSection ? (
               <SectionInspector
                 section={selectedSection}
                 availableMedia={availableMedia}
@@ -708,33 +885,82 @@ export function ConstrainedWebsiteEditor({
         {/* Right Pane: Live Draft Preview */}
         {(viewMode === "split" || viewMode === "preview") && (
           <div className="flex-1 flex flex-col h-full bg-slate-200/80 overflow-hidden">
-            {/* Draft Preview Header Banner */}
-            <div className="bg-amber-100/90 border-b border-amber-200 px-4 py-2 flex flex-wrap items-center justify-between gap-2 text-xs text-amber-950 font-medium">
-              <div className="flex items-center gap-2 flex-wrap">
-                <div className="flex items-center gap-1.5">
-                  <span className="w-2 h-2 rounded-full bg-amber-500 animate-pulse" />
-                  <span>Private Draft Preview</span>
+            {/* Draft Preview Header Banner or Historical Inspection Banner */}
+            {inspectedVersion ? (
+              <div
+                role="region"
+                aria-label="Historical Version Inspection Banner"
+                className="bg-amber-100 border-b border-amber-300 px-4 py-2.5 flex flex-wrap items-center justify-between gap-3 text-xs text-amber-950 font-medium"
+              >
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="w-2 h-2 rounded-full bg-amber-600" />
+                  <span className="font-bold font-mono">
+                    Historical Snapshot v{inspectedVersion.summary.versionNumber} (Read-Only)
+                  </span>
+                  <span className="text-amber-800 text-[11px] hidden sm:inline">
+                    — Your active draft is safely preserved.
+                  </span>
                 </div>
-                <span
-                  data-testid="preview-device-badge"
-                  className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-mono font-medium bg-amber-200/70 text-amber-900 border border-amber-300"
-                >
-                  {deviceMode === "mobile"
-                    ? "Mobile Viewport (390px)"
-                    : deviceMode === "tablet"
-                      ? "Tablet Viewport (768px)"
-                      : "Desktop Viewport (Responsive)"}
-                </span>
-                <span className="text-amber-700/80 font-normal hidden lg:inline">
-                  — Customers only see published versions.
-                </span>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => handleRestoreToDraft(inspectedVersion.summary)}
+                    disabled={isRestoringVersion}
+                    aria-label={`Restore v${inspectedVersion.summary.versionNumber} to working draft`}
+                    className="px-2.5 py-1 text-xs font-semibold text-emerald-900 bg-emerald-200/80 hover:bg-emerald-200 border border-emerald-400 rounded-md transition-colors cursor-pointer"
+                  >
+                    {isRestoringVersion ? "Restoring..." : "Restore as Draft"}
+                  </button>
+                  {inspectedVersion.summary.publishedAt &&
+                    inspectedVersion.summary.id !== currentPublishedVersionId && (
+                      <button
+                        type="button"
+                        onClick={() => handleRollbackLiveSite(inspectedVersion.summary)}
+                        disabled={isRollingBackVersion}
+                        aria-label={`Roll back live website to v${inspectedVersion.summary.versionNumber}`}
+                        className="px-2.5 py-1 text-xs font-semibold text-rose-900 bg-rose-200/80 hover:bg-rose-200 border border-rose-400 rounded-md transition-colors cursor-pointer"
+                      >
+                        {isRollingBackVersion ? "Rolling back..." : "Rollback Live"}
+                      </button>
+                    )}
+                  <button
+                    type="button"
+                    onClick={() => setInspectedVersion(null)}
+                    aria-label="Exit historical inspection preview"
+                    className="px-2.5 py-1 text-xs font-semibold text-slate-700 bg-white hover:bg-slate-50 border border-slate-300 rounded-md transition-colors cursor-pointer"
+                  >
+                    Exit Preview
+                  </button>
+                </div>
               </div>
-              <div className="flex items-center gap-2">
-                <span className="text-[11px] text-amber-800 font-mono bg-amber-200/50 px-2 py-0.5 rounded-xs">
-                  {selectedSlug}
-                </span>
+            ) : (
+              <div className="bg-amber-100/90 border-b border-amber-200 px-4 py-2 flex flex-wrap items-center justify-between gap-2 text-xs text-amber-950 font-medium">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <div className="flex items-center gap-1.5">
+                    <span className="w-2 h-2 rounded-full bg-amber-500 animate-pulse" />
+                    <span>Private Draft Preview</span>
+                  </div>
+                  <span
+                    data-testid="preview-device-badge"
+                    className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-mono font-medium bg-amber-200/70 text-amber-900 border border-amber-300"
+                  >
+                    {deviceMode === "mobile"
+                      ? "Mobile Viewport (390px)"
+                      : deviceMode === "tablet"
+                        ? "Tablet Viewport (768px)"
+                        : "Desktop Viewport (Responsive)"}
+                  </span>
+                  <span className="text-amber-700/80 font-normal hidden lg:inline">
+                    — Customers only see published versions.
+                  </span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="text-[11px] text-amber-800 font-mono bg-amber-200/50 px-2 py-0.5 rounded-xs">
+                    {selectedSlug}
+                  </span>
+                </div>
               </div>
-            </div>
+            )}
 
             {/* Scrollable Storefront Frame Area */}
             <div
@@ -766,7 +992,7 @@ export function ConstrainedWebsiteEditor({
                 )}
 
                 <PublicWebsiteRenderer
-                  configuration={configuration}
+                  configuration={inspectedVersion ? inspectedVersion.configuration : configuration}
                   context={previewContext}
                   currentPath={selectedSlug}
                   subdomain={initialSite.subdomain}
@@ -782,6 +1008,22 @@ export function ConstrainedWebsiteEditor({
         isOpen={isAddModalOpen}
         onClose={() => setIsAddModalOpen(false)}
         onAddBlock={handleAddBlock}
+      />
+
+      {/* Version History & Rollback Modal [VO-048] */}
+      <VersionHistoryModal
+        isOpen={isHistoryModalOpen}
+        onClose={() => setIsHistoryModalOpen(false)}
+        siteId={initialSite.id}
+        siteSubdomain={initialSite.subdomain}
+        currentDraftVersionId={initialSite.current_draft_version_id}
+        currentPublishedVersionId={currentPublishedVersionId}
+        currentVersionNumber={currentVersionNumber}
+        onInspectVersion={handleInspectVersion}
+        onRestoreToDraft={handleRestoreToDraft}
+        onRollbackLiveSite={handleRollbackLiveSite}
+        isRestoring={isRestoringVersion}
+        isRollingBack={isRollingBackVersion}
       />
     </div>
   );

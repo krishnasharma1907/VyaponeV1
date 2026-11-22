@@ -1762,6 +1762,16 @@ export interface Database {
         };
         Returns: Json;
       };
+      rollback_published_site_version_atomic: {
+        Args: {
+          p_site_id: string;
+          p_business_id: string;
+          p_caller_user_id: string;
+          p_target_version_id: string;
+          p_expected_current_published_version_id: string | null;
+        };
+        Returns: Json;
+      };
     };
     Enums: {
       [_ in never]: never;

@@ -9,4 +9,5 @@ export * from "./section-navigator";
 export * from "./section-inspector";
 export * from "./page-selector";
 export * from "./add-section-modal";
+export * from "./version-history-modal";
 export * from "./owner-website-workspace";

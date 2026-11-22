@@ -336,13 +336,13 @@
 
 **Status:** `DONE`
 
-### [ ] VO-048 — Implement site versions and rollback
+### [x] VO-048 — Implement site versions and rollback
 
 **Scope:** Persist immutable draft/published versions with actor and timestamp; support restore/rollback.
 
 **Acceptance:** Rollback restores a previous published state without deleting newer history.
 
-**Status:** `NOT_STARTED`
+**Status:** `DONE`
 
 ### [ ] VO-049 — Implement pre-publish validation, domains and QR
 

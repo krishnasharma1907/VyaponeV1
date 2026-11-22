@@ -8,16 +8,31 @@
 
 import { revalidatePath } from "next/cache";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
-import { saveSiteDraftInputSchema, type SaveSiteDraftInput } from "./schemas";
+import {
+  getSiteVersionsQuerySchema,
+  restoreVersionToDraftInputSchema,
+  rollbackPublishedVersionInputSchema,
+  saveSiteDraftInputSchema,
+  type RestoreVersionToDraftInput,
+  type RollbackPublishedVersionInput,
+  type SaveSiteDraftInput,
+} from "./schemas";
 import {
   getSiteByBusinessId,
   getSiteConfiguration,
+  getSiteConfigurationById,
+  getSiteVersionHistory,
   loadOwnerWebsiteWorkspace,
+  restoreVersionToDraft,
+  rollbackPublishedVersion,
   saveSiteDraftConfiguration,
   WebsiteError,
   type OwnerWebsiteWorkspaceData,
 } from "./service";
 import type {
+  GetSiteVersionsResult,
+  RestoreVersionToDraftResult,
+  RollbackPublishedVersionResult,
   SaveSiteDraftResult,
   SiteRow,
   SiteVersionRow,
@@ -135,6 +150,158 @@ export async function saveSiteDraftConfigurationAction(
     }
 
     const result = await saveSiteDraftConfiguration(supabase, user.id, parseResult.data);
+
+    revalidatePath("/dashboard/website");
+    revalidatePath("/workspace/clients");
+
+    return { success: true, data: result };
+  } catch (error) {
+    return { success: false, ...sanitizeError(error) };
+  }
+}
+
+/**
+ * Retrieves the version history and status summaries for a site [VO-048].
+ */
+export async function getSiteVersionsAction(
+  siteId: string,
+  options?: { limit?: number; offset?: number },
+): Promise<WebsiteActionResult<GetSiteVersionsResult>> {
+  try {
+    const supabase = await createServerSupabaseClient();
+    const {
+      data: { user },
+      error: authError,
+    } = await supabase.auth.getUser();
+
+    if (authError || !user) {
+      return { success: false, error: "Authentication required", code: "UNAUTHENTICATED" };
+    }
+
+    const queryResult = getSiteVersionsQuerySchema.safeParse({ siteId, ...options });
+    if (!queryResult.success) {
+      return {
+        success: false,
+        error: "Invalid version query parameters",
+        code: "VALIDATION_FAILED",
+      };
+    }
+
+    const result = await getSiteVersionHistory(supabase, queryResult.data.siteId, {
+      limit: queryResult.data.limit,
+      offset: queryResult.data.offset,
+    });
+
+    return { success: true, data: result };
+  } catch (error) {
+    return { success: false, ...sanitizeError(error) };
+  }
+}
+
+/**
+ * Retrieves the configuration document for a specific historical version ID [VO-048].
+ */
+export async function getSiteVersionByIdAction(
+  siteId: string,
+  versionId: string,
+): Promise<WebsiteActionResult<{ version: SiteVersionRow; configuration: WebsiteConfiguration }>> {
+  try {
+    const supabase = await createServerSupabaseClient();
+    const {
+      data: { user },
+      error: authError,
+    } = await supabase.auth.getUser();
+
+    if (authError || !user) {
+      return { success: false, error: "Authentication required", code: "UNAUTHENTICATED" };
+    }
+
+    const result = await getSiteConfigurationById(supabase, siteId, versionId);
+    return { success: true, data: result };
+  } catch (error) {
+    return { success: false, ...sanitizeError(error) };
+  }
+}
+
+/**
+ * Rolls back the site's live published version to a previously published version [VO-048].
+ */
+export async function rollbackPublishedVersionAction(
+  rawInput: RollbackPublishedVersionInput,
+): Promise<WebsiteActionResult<RollbackPublishedVersionResult>> {
+  try {
+    const supabase = await createServerSupabaseClient();
+    const {
+      data: { user },
+      error: authError,
+    } = await supabase.auth.getUser();
+
+    if (authError || !user) {
+      return { success: false, error: "Authentication required", code: "UNAUTHENTICATED" };
+    }
+
+    const parseResult = rollbackPublishedVersionInputSchema.safeParse(rawInput);
+    if (!parseResult.success) {
+      const fieldErrors: Record<string, string[]> = {};
+      for (const issue of parseResult.error.issues) {
+        const path = issue.path.join(".");
+        if (!fieldErrors[path]) fieldErrors[path] = [];
+        fieldErrors[path].push(issue.message);
+      }
+      return {
+        success: false,
+        error: "Validation failed: please check rollback parameters",
+        code: "VALIDATION_FAILED",
+        validationErrors: fieldErrors,
+      };
+    }
+
+    const result = await rollbackPublishedVersion(supabase, user.id, parseResult.data);
+
+    revalidatePath("/dashboard/website");
+    revalidatePath("/workspace/clients");
+    revalidatePath(`/s/${result.site.subdomain}`, "layout");
+
+    return { success: true, data: result };
+  } catch (error) {
+    return { success: false, ...sanitizeError(error) };
+  }
+}
+
+/**
+ * Restores a historical version into a new working draft [VO-048].
+ */
+export async function restoreVersionToDraftAction(
+  rawInput: RestoreVersionToDraftInput,
+): Promise<WebsiteActionResult<RestoreVersionToDraftResult>> {
+  try {
+    const supabase = await createServerSupabaseClient();
+    const {
+      data: { user },
+      error: authError,
+    } = await supabase.auth.getUser();
+
+    if (authError || !user) {
+      return { success: false, error: "Authentication required", code: "UNAUTHENTICATED" };
+    }
+
+    const parseResult = restoreVersionToDraftInputSchema.safeParse(rawInput);
+    if (!parseResult.success) {
+      const fieldErrors: Record<string, string[]> = {};
+      for (const issue of parseResult.error.issues) {
+        const path = issue.path.join(".");
+        if (!fieldErrors[path]) fieldErrors[path] = [];
+        fieldErrors[path].push(issue.message);
+      }
+      return {
+        success: false,
+        error: "Validation failed: please check restore parameters",
+        code: "VALIDATION_FAILED",
+        validationErrors: fieldErrors,
+      };
+    }
+
+    const result = await restoreVersionToDraft(supabase, user.id, parseResult.data);
 
     revalidatePath("/dashboard/website");
     revalidatePath("/workspace/clients");
