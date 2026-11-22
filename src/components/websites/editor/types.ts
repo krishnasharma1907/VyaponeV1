@@ -62,7 +62,7 @@ export interface AddSectionModalProps {
 
 export interface EditorTopBarProps {
   siteSubdomain: string;
-  versionNumber: number;
+  versionNumber: number | null;
   saveStatus: EditorSaveStatus;
   saveError?: string | null;
   changeSummary: string;

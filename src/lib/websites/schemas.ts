@@ -397,7 +397,7 @@ export const saveSiteDraftInputSchema = z.object({
   siteId: z.string().uuid("Invalid site ID"),
   configuration: websiteConfigurationSchema,
   changeSummary: z.string().trim().max(255).optional(),
-  expectedBaseVersionNumber: z.number().int().positive().optional(),
+  expectedBaseVersionNumber: z.number().int().positive().nullable(),
 });
 
 export type SaveSiteDraftInput = z.input<typeof saveSiteDraftInputSchema>;

@@ -40,7 +40,7 @@ export function EditorTopBar({
         <div className="flex items-center gap-1.5">
           <span className="text-xs font-bold text-slate-900">{siteSubdomain}.vyapone.in</span>
           <Badge variant="default" className="text-[10px] font-mono py-0 px-1.5">
-            Draft v{versionNumber}
+            {versionNumber ? `Draft v${versionNumber}` : "Draft (Initial)"}
           </Badge>
         </div>
 

@@ -7413,10 +7413,17 @@ GRANT ALL ON public.sites TO service_role;
 
 -- ==============================================================================
 -- VyapOne — Website Draft Concurrency & Optimistic Lock RPC [VO-044 Audit C]
+--
 -- Migration: 20261122000001_website_draft_concurrency_and_optimistic_lock.sql
--- ==============================================================================
+-- Invariants:
+--   1. Replaces save_site_draft_configuration_atomic with 8-parameter version including p_expected_base_version_number.
+--   2. Atomically verifies caller's expected base version against current draft version number under FOR UPDATE lock.
+--   3. Rejects stale concurrent saves with SQLSTATE 'VY049' (Concurrency conflict).
+--   4. Preserves draft isolation (only mutates current_draft_version_id, never touches published_version_id or status).
 
+-- Drop previous overloads to prevent calling ambiguity and default parameter bypass
 DROP FUNCTION IF EXISTS public.save_site_draft_configuration_atomic(UUID, UUID, UUID, TEXT, JSONB, TEXT, UUID[]);
+DROP FUNCTION IF EXISTS public.save_site_draft_configuration_atomic(UUID, UUID, UUID, TEXT, JSONB, TEXT, UUID[], INT);
 
 CREATE OR REPLACE FUNCTION public.save_site_draft_configuration_atomic(
     p_site_id UUID,
@@ -7426,7 +7433,7 @@ CREATE OR REPLACE FUNCTION public.save_site_draft_configuration_atomic(
     p_configuration JSONB,
     p_change_summary TEXT,
     p_referenced_media_ids UUID[],
-    p_expected_base_version_number INT DEFAULT NULL
+    p_expected_base_version_number INT
 )
 RETURNS JSONB
 LANGUAGE plpgsql
@@ -7505,19 +7512,26 @@ BEGIN
         RAISE EXCEPTION 'You do not have permission to modify websites for this business' USING ERRCODE = 'VY021';
     END IF;
 
-    -- 5. Server-Enforced Optimistic Concurrency Check (VO-044 Audit C)
-    IF p_expected_base_version_number IS NOT NULL THEN
-        IF v_site.current_draft_version_id IS NOT NULL THEN
-            SELECT version_number INTO v_current_draft_version_number
-            FROM public.site_versions
-            WHERE id = v_site.current_draft_version_id;
+    -- 5. Server-Enforced Optimistic Concurrency Check (VO-044 Hardening)
+    -- Resolve current draft version number (or NULL if site has no draft yet)
+    IF v_site.current_draft_version_id IS NOT NULL THEN
+        SELECT version_number INTO v_current_draft_version_number
+        FROM public.site_versions
+        WHERE id = v_site.current_draft_version_id;
+    ELSE
+        v_current_draft_version_number := NULL;
+    END IF;
 
-            IF v_current_draft_version_number IS NOT NULL AND v_current_draft_version_number <> p_expected_base_version_number THEN
-                RAISE EXCEPTION 'Concurrency conflict: current draft version is %, but save was based on version %',
-                    v_current_draft_version_number, p_expected_base_version_number
-                    USING ERRCODE = 'VY049';
-            END IF;
-        END IF;
+    -- Null-safe comparison prevents silent concurrency bypass:
+    -- - Initial draft: current is NULL, caller must pass NULL (NULL IS DISTINCT FROM NULL is FALSE -> passes).
+    -- - Stale/mismatched draft: raises VY049.
+    -- - Non-null expected on unversioned site: raises VY049.
+    -- - NULL expected on versioned site: raises VY049.
+    IF v_current_draft_version_number IS DISTINCT FROM p_expected_base_version_number THEN
+        RAISE EXCEPTION 'Concurrency conflict: current draft version is %, but save was based on version %',
+            COALESCE(v_current_draft_version_number::text, 'null'),
+            COALESCE(p_expected_base_version_number::text, 'null')
+            USING ERRCODE = 'VY049';
     END IF;
 
     -- 6. Media Validation (existence, tenant ownership, status = 'ready', verified_at)
@@ -7626,6 +7640,8 @@ BEGIN
 END;
 $$;
 
+-- Permissions and Ownership
 ALTER FUNCTION public.save_site_draft_configuration_atomic(UUID, UUID, UUID, TEXT, JSONB, TEXT, UUID[], INT) OWNER TO postgres;
 REVOKE ALL ON FUNCTION public.save_site_draft_configuration_atomic(UUID, UUID, UUID, TEXT, JSONB, TEXT, UUID[], INT) FROM PUBLIC, anon, service_role;
 GRANT EXECUTE ON FUNCTION public.save_site_draft_configuration_atomic(UUID, UUID, UUID, TEXT, JSONB, TEXT, UUID[], INT) TO authenticated;
+

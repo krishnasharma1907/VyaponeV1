@@ -20,7 +20,7 @@
 
 - **Target:** VO-044 — Integrate constrained visual editor
 - **Phase:** P4 — Website engine, templates and publishing
-- **Status:** COMPLETED & AUDITED
+- **Status:** COMPLETED & HARDENED
 - **Key Deliverables Implemented, Audited & Hardened:**
   1. **Canonical Block Identifier Compatibility (Audit A):**
      - Aligned `APPROVED_BLOCK_REGISTRY` in `src/components/websites/blocks/block-registry.ts` with the 13 canonical approved block identifiers: `hero`, `about`, `menu`, `catalogue_grid`, `gallery`, `booking_form`, `pricing`, `reviews`, `offers`, `location_map`, `contact`, `faq`, `footer`.
@@ -31,21 +31,26 @@
      - Implemented `loadOwnerWebsiteWorkspace` in `src/lib/websites/service.ts` and `loadOwnerWebsiteWorkspaceAction` in `src/lib/websites/actions.ts`: enforces authentication via `assertAuthenticatedUser`, validates tenant authorization via `assertBusinessAccess`, queries tenant-scoped locations and active `catalogue_items` (`id, title, price_minor, currency_code, is_available`), and returns `OwnerWebsiteWorkspaceData`.
      - Created `src/components/websites/editor/owner-website-workspace.tsx` client component wrapper that calls `loadOwnerWebsiteWorkspaceAction` on mount. Surfaces `Starter Draft` badge when `isStarterDraft: true`, and renders an `Access Denied` error alert if tenant authorization fails.
      - Updated `src/app/(owner)/dashboard/website/page.tsx` to render `<OwnerWebsiteWorkspace />` with fallback starter props while preserving `<h1 ...>Storefront Website Builder</h1>` for route shell tests.
-  3. **Server-Enforced Optimistic Concurrency (Audit C):**
+  3. **Server-Enforced Optimistic Concurrency & Bypass Prevention (Audit C Hardening):**
      - Created migration `supabase/migrations/20261122000001_website_draft_concurrency_and_optimistic_lock.sql` and appended to `combined_migrations.sql`.
-     - Upgraded `public.save_site_draft_configuration_atomic` with `p_expected_base_version_number INT DEFAULT NULL`. Under `FOR UPDATE` lock, checks `v_current_draft_version_number <> p_expected_base_version_number` and raises `SQLSTATE 'VY049'`.
-     - Updated `saveSiteDraftInputSchema` in `schemas.ts` and `saveSiteDraftConfiguration` in `service.ts` to map `VY049` to `CONFLICT` (`statusCode: 409`).
-     - Updated editor state machine in `constrained-website-editor.tsx` to preserve working draft state when a conflict occurs.
+     - Upgraded `public.save_site_draft_configuration_atomic` with `p_expected_base_version_number INT` (removed `DEFAULT NULL` to prevent callers from silently bypassing concurrency checks).
+     - Dropped previous 7-parameter and 8-parameter overloads to purge any cached parameter defaults in PostgreSQL.
+     - Implemented null-safe comparison `v_current_draft_version_number IS DISTINCT FROM p_expected_base_version_number` distinguishing initial starter drafts (`NULL IS DISTINCT FROM NULL` is FALSE) from stale or mismatched versions (raises `SQLSTATE 'VY049'`).
+     - Made `expectedBaseVersionNumber: z.number().int().positive().nullable()` required in `saveSiteDraftInputSchema` (`schemas.ts`), rejecting calls that omit the field while allowing explicit `null` for initial drafts.
+     - Updated callers, `saveSiteDraftConfiguration`, and `ConstrainedWebsiteEditor` to always send `expectedBaseVersionNumber: currentVersionNumber` (or `null` when creating initial drafts), preserving unsaved working draft changes on conflict.
+     - Verified PostgreSQL EXECUTE privileges: revoked from `PUBLIC`, `anon`, and `service_role`; granted strictly to `authenticated`.
   4. **Draft Preview & Publication Isolation (Audit D & E):**
      - The editor embeds `PublicWebsiteRenderer` in an isolated preview container with `context.previewMode = true`.
      - Displays a persistent "Private Draft Preview" badge informing the business owner that customers only see published versions. Draft preview is strictly authenticated and non-indexable.
      - Draft persistence exclusively invokes `saveSiteDraftConfigurationAction` / `saveSiteDraftConfiguration`, which updates `sites.current_draft_version_id` and inserts into `site_versions` without ever touching `sites.published_version_id` or `sites.status`.
   5. **Verification Evidence & Quality Gates:**
-     - Constrained Visual Editor Unit Suite (`tests/unit/websites/constrained-editor.test.tsx`, 27 tests): 100% passing.
-     - Website test suite (`tests/unit/websites/`, 8 test files, 144 tests): 100% passing.
-     - Database migration test suite (`tests/unit/database/`, 15 test files, 156 tests): 100% passing.
+     - Constrained Visual Editor Unit Suite (`tests/unit/websites/constrained-editor.test.tsx`, 28 tests): 100% passing.
+     - Website Service Unit Suite (`tests/unit/websites/service.test.ts`, 22 tests): 100% passing.
+     - Website Actions Unit Suite (`tests/unit/websites/actions.test.ts`, 10 tests): 100% passing.
+     - Full website test suite (`tests/unit/websites/`, 8 test files, 150 tests): 100% passing.
+     - Database migration & concurrency simulation test suite (`tests/unit/database/`, 16 test files, 169 tests): 100% passing.
      - Route shells suite (`tests/unit/routing/route-shells.test.tsx`, 34 tests): 100% passing.
-     - Full test suite (`pnpm vitest run`, 99 test files, 1,205 tests): 100% passing.
+     - Full test suite (`pnpm vitest run`, 100 test files, 1,224 tests): 100% passing.
      - TypeScript strict check (`tsc --noEmit`): 0 errors.
      - ESLint check (`pnpm lint`): 0 errors, 0 warnings.
      - Prettier code style check: All files formatted cleanly.

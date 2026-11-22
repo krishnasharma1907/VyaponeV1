@@ -56,8 +56,10 @@ export function ConstrainedWebsiteEditor({
   const [saveError, setSaveError] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState<boolean>(false);
   const [changeSummary, setChangeSummary] = useState<string>("");
-  const [currentVersionNumber, setCurrentVersionNumber] = useState<number>(
-    initialVersion?.version_number || 1,
+  const [currentVersionNumber, setCurrentVersionNumber] = useState<number | null>(
+    initialSite.current_draft_version_id && initialVersion?.version_number
+      ? initialVersion.version_number
+      : null,
   );
 
   // UI view controls

@@ -627,6 +627,62 @@ describe("VO-044 Constrained Visual Editor Test Suite", () => {
       });
     });
 
+    it("saves initial starter draft with expectedBaseVersionNumber: null and updates version state", async () => {
+      const initialStarterSite: SiteRow = {
+        ...MOCK_SITE,
+        current_draft_version_id: null,
+      };
+
+      const mockSavedVersion1: SiteVersionRow = {
+        ...MOCK_VERSION,
+        version_number: 1,
+        change_summary: "Initial starter draft save",
+      };
+
+      vi.mocked(websiteActions.saveSiteDraftConfigurationAction).mockResolvedValueOnce({
+        success: true,
+        data: {
+          site: { ...initialStarterSite, current_draft_version_id: mockSavedVersion1.id },
+          version: mockSavedVersion1,
+          configuration: MOCK_CONFIG,
+        },
+      });
+
+      render(
+        <ConstrainedWebsiteEditor
+          initialSite={initialStarterSite}
+          initialVersion={null}
+          initialConfiguration={MOCK_CONFIG}
+          context={MOCK_CONTEXT}
+        />,
+      );
+
+      // Verify initial draft indicator
+      expect(screen.getByText("Draft (Initial)")).toBeDefined();
+
+      // Trigger change
+      fireEvent.click(screen.getByRole("button", { name: "+ Add Section" }));
+      fireEvent.click(within(screen.getByRole("dialog")).getByText("Contact Channels"));
+
+      // Click Save Draft
+      const saveButton = screen.getByRole("button", { name: "Save website draft" });
+      fireEvent.click(saveButton);
+
+      await waitFor(() => {
+        expect(websiteActions.saveSiteDraftConfigurationAction).toHaveBeenCalledWith({
+          siteId: initialStarterSite.id,
+          configuration: expect.any(Object),
+          changeSummary: undefined,
+          expectedBaseVersionNumber: null,
+        });
+      });
+
+      await waitFor(() => {
+        expect(screen.getByText("✓ Draft Saved")).toBeDefined();
+        expect(screen.getByText("Draft v1")).toBeDefined();
+      });
+    });
+
     it("displays error banner when save action fails", async () => {
       vi.mocked(websiteActions.saveSiteDraftConfigurationAction).mockResolvedValueOnce({
         success: false,

@@ -14,7 +14,7 @@ Record implementation changes by task ID. Do not record planned work as complete
     - `AddSectionModal` (`add-section-modal.tsx`): Accessible dialog exposing all 13 canonical approved blocks. Categorized into Essential Core, Store & Commerce, Content & Story, Customer Action, and Navigation & Footer with live search, keyboard accessibility (`Escape` key dismissal), and focus trapping.
     - `SectionNavigator` (`section-navigator.tsx`): Ordered section list supporting Move Up and Move Down reordering (with boundary disabling for first/last elements), visibility toggle (`isEnabled` hide/show with muted styling), and section deletion with confirmation.
     - `SectionInspector` (`section-inspector.tsx`): Block-specific property form controls strictly adhering to approved block Zod schemas. Supports visual layout variant selection dynamically derived from `metadata.allowedVariants`. Enforces `sanitizeLinkUrl` to neutralize unsafe `javascript:` or `data:` URL schemes, and displays dynamic server-binding notices for catalogue and location blocks protecting server-owned statutory data.
-    - `EditorTopBar` (`editor-top-bar.tsx`): Subdomain badge, draft version indicator (`Draft v{versionNumber}`), change summary note input (max 200 chars), save state indicators (`Unsaved Changes`, `Saving...`, `Draft Saved`, `Version Conflict`, `Save Failed`), view mode toggle (`Split`, `Sections`, `Live Preview`), and atomic "Save Draft" button.
+    - `EditorTopBar` (`editor-top-bar.tsx`): Subdomain badge, draft version indicator (`Draft v{versionNumber}` or `Draft (Initial)`), change summary note input (max 200 chars), save state indicators (`Unsaved Changes`, `Saving...`, `Draft Saved`, `Version Conflict`, `Save Failed`), view mode toggle (`Split`, `Sections`, `Live Preview`), and atomic "Save Draft" button.
     - `PageSelector` (`page-selector.tsx`): Multi-page tab bar supporting active page switching and inline new page creation with slug validation and normalization (`normalizePageSlug`).
     - `ConstrainedWebsiteEditor` (`constrained-website-editor.tsx`): Master client workspace integrating top bar, page tabs, section navigator, section inspector, and live draft preview via `PublicWebsiteRenderer` (`context.previewMode = true`).
   - **Business and Draft Workspace Initialization (Audit B & D):**
@@ -22,11 +22,13 @@ Record implementation changes by task ID. Do not record planned work as complete
     - Returns tenant-isolated business profile, primary location, active catalogue items (`id, title, price_minor, currency_code, is_available`), and the site's current draft configuration.
     - When no site or draft version exists, safely builds a fallback initial configuration with a prominent `Starter Draft` badge.
     - Created `<OwnerWebsiteWorkspace />` (`owner-website-workspace.tsx`) client boundary mounted in `/dashboard/website`, handling workspace loading states, permission-denied alerts, and passing live data to the editor.
-  - **Server-Enforced Optimistic Concurrency (Audit C):**
-    - Created migration `20261122000001_website_draft_concurrency_and_optimistic_lock.sql` updating `public.save_site_draft_configuration_atomic` with `p_expected_base_version_number INT DEFAULT NULL`.
-    - Locks the site record `FOR UPDATE`. If `p_expected_base_version_number` is supplied and does not match `v_current_draft_version_number`, raises `SQLSTATE 'VY049'` (`Optimistic concurrency conflict`).
-    - Mapped `VY049` in `saveSiteDraftConfiguration` to `CONFLICT` (`statusCode: 409`).
-    - Updated editor state machine to preserve user's unsaved working draft when a concurrency conflict occurs, allowing them to review changes and avoid silent overwrite.
+  - **Server-Enforced Optimistic Concurrency & Bypass Prevention (Audit C Hardening):**
+    - Created migration `20261122000001_website_draft_concurrency_and_optimistic_lock.sql` updating `public.save_site_draft_configuration_atomic` with `p_expected_base_version_number INT` (removed `DEFAULT NULL` to prevent callers from silently bypassing concurrency checks).
+    - Dropped previous 7-parameter and 8-parameter overloads to purge any cached parameter defaults in PostgreSQL.
+    - Implemented null-safe comparison `v_current_draft_version_number IS DISTINCT FROM p_expected_base_version_number` distinguishing initial starter drafts (`NULL IS DISTINCT FROM NULL` is FALSE) from stale or mismatched versions (raises `SQLSTATE 'VY049'`).
+    - Made `expectedBaseVersionNumber: z.number().int().positive().nullable()` required in `saveSiteDraftInputSchema` (`schemas.ts`), rejecting calls that omit the field while allowing explicit `null` for initial drafts.
+    - Updated callers, `saveSiteDraftConfiguration`, and `ConstrainedWebsiteEditor` to always send `expectedBaseVersionNumber: currentVersionNumber` (or `null` when creating initial drafts), preserving unsaved working draft changes on conflict.
+    - Verified PostgreSQL EXECUTE privileges: revoked from `PUBLIC`, `anon`, and `service_role`; granted strictly to `authenticated`.
   - **Draft Preview & Publication Isolation (Audit D & E):**
     - Live preview displays a prominent "Private Draft Preview" alert informing the business owner that customers only see published versions. Draft preview is strictly authenticated and non-indexable.
     - Draft persistence exclusively invokes `saveSiteDraftConfigurationAction`, updating `sites.current_draft_version_id` and creating immutable `site_versions` rows without mutating `sites.published_version_id` or publication status.
@@ -34,11 +36,13 @@ Record implementation changes by task ID. Do not record planned work as complete
     - Pure native React 19 architecture without third-party editor bundle bloat or React 19 peer-dependency conflicts.
     - Rejects arbitrary HTML, scripts, custom styles, iframes, and unknown component types at the inspector, renderer, and database validation layers.
   - **Verification:**
-    - 27 unit & integration tests in `tests/unit/websites/constrained-editor.test.tsx` verifying draft initialization, all 13 canonical approved blocks, unapproved block rejection, category filtering, keyword searching, section reordering, visibility toggling, property inspector, variant selection, link sanitization, draft persistence, error states, optimistic concurrency conflict detection, draft preservation on conflict, draft preview isolation, and multi-page creation.
-    - 144 tests in `tests/unit/websites/` (8 files) passing 100%.
-    - 156 database tests in `tests/unit/database/` (15 files) passing 100%.
+    - 28 unit & integration tests in `tests/unit/websites/constrained-editor.test.tsx` verifying draft initialization, initial starter draft save with `expectedBaseVersionNumber: null`, all 13 canonical approved blocks, unapproved block rejection, category filtering, keyword searching, section reordering, visibility toggling, property inspector, variant selection, link sanitization, draft persistence, error states, optimistic concurrency conflict detection, draft preservation on conflict, draft preview isolation, and multi-page creation.
+    - 22 tests in `tests/unit/websites/service.test.ts` verifying service layer authorization, media validation, optimistic concurrency parameter passing, bypass prevention, null initial draft, and conflict mapping.
+    - 10 tests in `tests/unit/websites/actions.test.ts` verifying authentication, schema validation, bypass rejection, and revalidation.
+    - 150 tests across all 8 website test files in `tests/unit/websites/` passing 100%.
+    - 169 database tests in `tests/unit/database/` (16 test files) passing 100%, including 13 tests in `draft-concurrency-simulation.test.ts` simulating RPC argument enforcement, null-safe comparison, concurrent saves, and privilege lockdown.
     - 34 route shell tests in `tests/unit/routing/route-shells.test.tsx` passing 100%.
-    - 100% pass across all 99 workspace test files (1,205 tests). Strict TypeScript mode (0 errors), ESLint (0 errors, 0 warnings), Prettier formatted, Next.js production build passing (all 40 routes).
+    - 100% pass across all 100 workspace test files (1,224 tests). Strict TypeScript mode (`tsc --noEmit`, 0 errors), ESLint (0 errors, 0 warnings), Prettier formatted, Next.js production build passing (all 40 routes).
 
 ### [VO-043] — Implement Navigation, SEO and Metadata (2026-11-21)
 - Built storefront multi-page navigation, dynamic SEO metadata, canonical URL generator, sitemap and robots.txt engine with zero draft or statutory data leakage (PRD FINAL v2 §6.14, §15.3, §16, §17):

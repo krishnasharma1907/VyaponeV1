@@ -9,6 +9,7 @@ import {
 } from "@/lib/websites/service";
 import { assertAuthenticatedUser, assertBusinessAccess } from "@/lib/auth/tenant-access";
 import { buildInitialWebsiteConfiguration } from "@/lib/websites/defaults";
+import type { SaveSiteDraftInput } from "@/lib/websites/schemas";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/lib/supabase/types";
 import type { BusinessMemberRow, BusinessRow } from "@/lib/businesses/types";
@@ -292,6 +293,7 @@ describe("VO-040 Website Service Layer", () => {
         expect(args.p_schema_version).toBe("v1");
         expect(args.p_change_summary).toBe("Updated header with official logo");
         expect(args.p_referenced_media_ids).toEqual([validMediaId]);
+        expect(args.p_expected_base_version_number).toBe(2);
         return { data: mockRpcResponse, error: null };
       });
 
@@ -334,6 +336,7 @@ describe("VO-040 Website Service Layer", () => {
         siteId: mockSiteId,
         configuration: configWithMedia,
         changeSummary: "Updated header with official logo",
+        expectedBaseVersionNumber: 2,
       });
 
       expect(mockRpc).toHaveBeenCalledTimes(1);
@@ -364,6 +367,7 @@ describe("VO-040 Website Service Layer", () => {
         saveSiteDraftConfiguration(mockSupabase, mockUserId, {
           siteId: mockSiteId,
           configuration: mismatchedConfig,
+          expectedBaseVersionNumber: 1,
         }),
       ).rejects.toMatchObject({
         code: "SITE_ID_MISMATCH",
@@ -392,6 +396,7 @@ describe("VO-040 Website Service Layer", () => {
         saveSiteDraftConfiguration(mockSupabase, mockUserId, {
           siteId: mockSiteId,
           configuration: mismatchedConfig,
+          expectedBaseVersionNumber: 1,
         }),
       ).rejects.toMatchObject({
         code: "BUSINESS_ID_MISMATCH",
@@ -439,6 +444,7 @@ describe("VO-040 Website Service Layer", () => {
         saveSiteDraftConfiguration(mockSupabase, mockUserId, {
           siteId: mockSiteId,
           configuration: configWithMissingMedia,
+          expectedBaseVersionNumber: 1,
         }),
       ).rejects.toMatchObject({
         code: "MEDIA_NOT_FOUND",
@@ -495,6 +501,7 @@ describe("VO-040 Website Service Layer", () => {
         saveSiteDraftConfiguration(mockSupabase, mockUserId, {
           siteId: mockSiteId,
           configuration: configWithForeignMedia,
+          expectedBaseVersionNumber: 1,
         }),
       ).rejects.toMatchObject({
         code: "MEDIA_ISOLATION_VIOLATION",
@@ -551,6 +558,7 @@ describe("VO-040 Website Service Layer", () => {
         saveSiteDraftConfiguration(mockSupabase, mockUserId, {
           siteId: mockSiteId,
           configuration: configWithUnverifiedMedia,
+          expectedBaseVersionNumber: 1,
         }),
       ).rejects.toMatchObject({
         code: "MEDIA_NOT_READY",
@@ -607,6 +615,7 @@ describe("VO-040 Website Service Layer", () => {
         saveSiteDraftConfiguration(mockSupabase, mockUserId, {
           siteId: mockSiteId,
           configuration: configWithDocMedia,
+          expectedBaseVersionNumber: 1,
         }),
       ).rejects.toMatchObject({
         code: "MEDIA_CATEGORY_NOT_ALLOWED",
@@ -636,6 +645,7 @@ describe("VO-040 Website Service Layer", () => {
         saveSiteDraftConfiguration(mockSupabase, mockUserId, {
           siteId: mockSiteId,
           configuration: sampleConfig,
+          expectedBaseVersionNumber: 1,
         }),
       ).rejects.toMatchObject({
         code: "FORBIDDEN",
@@ -665,6 +675,7 @@ describe("VO-040 Website Service Layer", () => {
         saveSiteDraftConfiguration(mockSupabase, mockUserId, {
           siteId: mockSiteId,
           configuration: sampleConfig,
+          expectedBaseVersionNumber: 1,
         }),
       ).rejects.toMatchObject({
         code: "MEDIA_VALIDATION_FAILED",
@@ -701,6 +712,94 @@ describe("VO-040 Website Service Layer", () => {
         code: "CONFLICT",
         statusCode: 409,
       });
+    });
+
+    it("rejects saving if expectedBaseVersionNumber is omitted (prevent bypass)", async () => {
+      const mockSupabase = {
+        from: vi.fn(),
+        rpc: vi.fn(),
+      } as unknown as SupabaseClient<Database>;
+
+      const inputMissingExpectedVersion = {
+        siteId: mockSiteId,
+        configuration: sampleConfig,
+      };
+
+      await expect(
+        saveSiteDraftConfiguration(
+          mockSupabase,
+          mockUserId,
+          inputMissingExpectedVersion as unknown as SaveSiteDraftInput,
+        ),
+      ).rejects.toThrow();
+    });
+
+    it("passes expectedBaseVersionNumber as null when initializing initial draft", async () => {
+      const mockRpc = vi.fn(async (funcName: string, args: Record<string, unknown>) => {
+        expect(funcName).toBe("save_site_draft_configuration_atomic");
+        expect(args.p_expected_base_version_number).toBeNull();
+        return {
+          data: {
+            site: { ...sampleSite, current_draft_version_id: "ver-1" },
+            version: { id: "ver-1", version_number: 1 },
+          },
+          error: null,
+        };
+      });
+
+      const mockSupabase = {
+        from: vi.fn(() => ({
+          select: vi.fn(() => ({
+            eq: vi.fn(() => ({
+              maybeSingle: vi.fn(async () => ({ data: sampleSite, error: null })),
+            })),
+          })),
+        })),
+        rpc: mockRpc,
+      } as unknown as SupabaseClient<Database>;
+
+      const result = await saveSiteDraftConfiguration(mockSupabase, mockUserId, {
+        siteId: mockSiteId,
+        configuration: sampleConfig,
+        expectedBaseVersionNumber: null,
+      });
+
+      expect(mockRpc).toHaveBeenCalledTimes(1);
+      expect(result.version.version_number).toBe(1);
+    });
+
+    it("passes explicit integer expectedBaseVersionNumber when updating existing draft", async () => {
+      const mockRpc = vi.fn(async (funcName: string, args: Record<string, unknown>) => {
+        expect(funcName).toBe("save_site_draft_configuration_atomic");
+        expect(args.p_expected_base_version_number).toBe(4);
+        return {
+          data: {
+            site: { ...sampleSite, current_draft_version_id: "ver-5" },
+            version: { id: "ver-5", version_number: 5 },
+          },
+          error: null,
+        };
+      });
+
+      const mockSupabase = {
+        from: vi.fn(() => ({
+          select: vi.fn(() => ({
+            eq: vi.fn(() => ({
+              maybeSingle: vi.fn(async () => ({ data: sampleSite, error: null })),
+            })),
+          })),
+        })),
+        rpc: mockRpc,
+      } as unknown as SupabaseClient<Database>;
+
+      const result = await saveSiteDraftConfiguration(mockSupabase, mockUserId, {
+        siteId: mockSiteId,
+        configuration: sampleConfig,
+        expectedBaseVersionNumber: 4,
+      });
+
+      expect(mockRpc).toHaveBeenCalledTimes(1);
+      expect(result.version.version_number).toBe(5);
     });
   });
 

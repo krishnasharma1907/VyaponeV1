@@ -350,12 +350,11 @@ describe("VO-040 Website Configuration Migration Verification", () => {
     expect(combinedSql).toContain("sites_restrictive_insert_deny");
     expect(combinedSql).toContain("sites_restrictive_delete_deny");
     expect(combinedSql).toContain("AS RESTRICTIVE");
+    expect(combinedSql).toContain("p_expected_base_version_number INT\n)");
     expect(combinedSql).toContain(
-      "p_expected_base_version_number INT DEFAULT NULL",
+      "v_current_draft_version_number IS DISTINCT FROM p_expected_base_version_number",
     );
-    expect(combinedSql).toContain(
-      "ERRCODE = 'VY049'",
-    );
+    expect(combinedSql).toContain("ERRCODE = 'VY049'");
   });
 
   it("verifies server-enforced optimistic concurrency RPC migration (20261122000001)", () => {
@@ -364,13 +363,16 @@ describe("VO-040 Website Configuration Migration Verification", () => {
       "DROP FUNCTION IF EXISTS public.save_site_draft_configuration_atomic(UUID, UUID, UUID, TEXT, JSONB, TEXT, UUID[]);",
     );
     expect(concurrencySql).toContain(
-      "p_expected_base_version_number INT DEFAULT NULL",
+      "DROP FUNCTION IF EXISTS public.save_site_draft_configuration_atomic(UUID, UUID, UUID, TEXT, JSONB, TEXT, UUID[], INT);",
     );
+    expect(concurrencySql).toContain("p_expected_base_version_number INT\n)");
+    expect(concurrencySql).not.toContain("p_expected_base_version_number INT DEFAULT NULL");
     expect(concurrencySql).toContain(
-      "v_current_draft_version_number <> p_expected_base_version_number",
+      "v_current_draft_version_number IS DISTINCT FROM p_expected_base_version_number",
     );
+    expect(concurrencySql).toContain("USING ERRCODE = 'VY049';");
     expect(concurrencySql).toContain(
-      "USING ERRCODE = 'VY049';",
+      "REVOKE ALL ON FUNCTION public.save_site_draft_configuration_atomic(UUID, UUID, UUID, TEXT, JSONB, TEXT, UUID[], INT) FROM PUBLIC, anon, service_role;",
     );
     expect(concurrencySql).toContain(
       "GRANT EXECUTE ON FUNCTION public.save_site_draft_configuration_atomic(UUID, UUID, UUID, TEXT, JSONB, TEXT, UUID[], INT) TO authenticated;",

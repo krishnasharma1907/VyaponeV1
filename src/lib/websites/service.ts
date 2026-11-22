@@ -292,7 +292,7 @@ export async function saveSiteDraftConfiguration(
       p_configuration: validated.configuration as unknown as Json,
       p_change_summary: validated.changeSummary || null,
       p_referenced_media_ids: referencedMediaIds.length > 0 ? referencedMediaIds : null,
-      p_expected_base_version_number: validated.expectedBaseVersionNumber || null,
+      p_expected_base_version_number: validated.expectedBaseVersionNumber,
     },
   );
 

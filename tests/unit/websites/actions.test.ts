@@ -15,6 +15,7 @@ import {
 } from "@/lib/websites/service";
 import { revalidatePath } from "next/cache";
 import { buildInitialWebsiteConfiguration } from "@/lib/websites/defaults";
+import type { SaveSiteDraftInput } from "@/lib/websites/schemas";
 import type { SiteRow, SiteVersionRow, WebsiteConfiguration } from "@/lib/websites/types";
 
 vi.mock("next/cache", () => ({
@@ -159,6 +160,7 @@ describe("VO-040 Website Server Actions", () => {
       const result = await saveSiteDraftConfigurationAction({
         siteId: mockSiteId,
         configuration: sampleConfig,
+        expectedBaseVersionNumber: 1,
       });
       expect(result.success).toBe(false);
       expect(result).toMatchObject({
@@ -174,6 +176,7 @@ describe("VO-040 Website Server Actions", () => {
       const invalidInput = {
         siteId: "not-a-uuid",
         configuration: {} as unknown as WebsiteConfiguration,
+        expectedBaseVersionNumber: 1,
       };
 
       const result = await saveSiteDraftConfigurationAction(invalidInput);
@@ -185,6 +188,57 @@ describe("VO-040 Website Server Actions", () => {
         expect(result.validationErrors).toBeDefined();
         expect(result.validationErrors?.siteId).toBeDefined();
       }
+    });
+
+    it("returns VALIDATION_FAILED when expectedBaseVersionNumber is omitted (prevent bypass)", async () => {
+      vi.mocked(createServerSupabaseClient).mockResolvedValue(
+        mockSupabaseWithUser as unknown as SupabaseClient<Database>,
+      );
+
+      const missingVersionInput = {
+        siteId: mockSiteId,
+        configuration: sampleConfig,
+      };
+
+      const result = await saveSiteDraftConfigurationAction(
+        missingVersionInput as unknown as SaveSiteDraftInput,
+      );
+      expect(result.success).toBe(false);
+      expect(result).toMatchObject({
+        code: "VALIDATION_FAILED",
+      });
+      if (!result.success) {
+        expect(result.validationErrors).toBeDefined();
+        expect(result.validationErrors?.expectedBaseVersionNumber).toBeDefined();
+      }
+    });
+
+    it("successfully saves initial draft with explicit null expectedBaseVersionNumber", async () => {
+      vi.mocked(createServerSupabaseClient).mockResolvedValue(
+        mockSupabaseWithUser as unknown as SupabaseClient<Database>,
+      );
+      vi.mocked(saveSiteDraftConfiguration).mockResolvedValue({
+        site: { id: mockSiteId, current_draft_version_id: "ver-1" } as unknown as SiteRow,
+        version: { id: "ver-1", version_number: 1 } as unknown as SiteVersionRow,
+        configuration: sampleConfig,
+      });
+
+      const result = await saveSiteDraftConfigurationAction({
+        siteId: mockSiteId,
+        configuration: sampleConfig,
+        changeSummary: "Initial starter draft",
+        expectedBaseVersionNumber: null,
+      });
+
+      expect(result.success).toBe(true);
+      expect(saveSiteDraftConfiguration).toHaveBeenCalledWith(
+        mockSupabaseWithUser,
+        mockUserId,
+        expect.objectContaining({
+          siteId: mockSiteId,
+          expectedBaseVersionNumber: null,
+        }),
+      );
     });
 
     it("successfully saves draft configuration and triggers path revalidation", async () => {
@@ -201,6 +255,7 @@ describe("VO-040 Website Server Actions", () => {
         siteId: mockSiteId,
         configuration: sampleConfig,
         changeSummary: "Draft updated via editor",
+        expectedBaseVersionNumber: 1,
       });
 
       expect(result.success).toBe(true);
@@ -210,6 +265,7 @@ describe("VO-040 Website Server Actions", () => {
         expect.objectContaining({
           siteId: mockSiteId,
           changeSummary: "Draft updated via editor",
+          expectedBaseVersionNumber: 1,
         }),
       );
       expect(revalidatePath).toHaveBeenCalledWith("/dashboard/website");
