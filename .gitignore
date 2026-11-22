@@ -57,6 +57,7 @@ test-results/
 # Caches and Build Artifacts
 .turbo/
 .cache/
+.wrangler/
 *.tsbuildinfo
 
 # Operating System and IDE Artifacts
