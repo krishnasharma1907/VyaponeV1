@@ -1758,6 +1758,7 @@ export interface Database {
           p_configuration: Json;
           p_change_summary?: string | null;
           p_referenced_media_ids?: string[] | null;
+          p_expected_base_version_number?: number | null;
         };
         Returns: Json;
       };

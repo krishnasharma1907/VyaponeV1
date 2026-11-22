@@ -1,7 +1,7 @@
 import React from "react";
 import type { Metadata } from "next";
 import { Badge } from "@/components/ui";
-import { ConstrainedWebsiteEditor } from "@/components/websites/editor";
+import { OwnerWebsiteWorkspace } from "@/components/websites/editor";
 import { buildInitialWebsiteConfiguration } from "@/lib/websites/defaults";
 import type { SiteRow, SiteVersionRow } from "@/lib/websites/types";
 
@@ -77,11 +77,11 @@ export default function OwnerWebsitePage() {
         </div>
       </header>
 
-      <ConstrainedWebsiteEditor
+      <OwnerWebsiteWorkspace
         initialSite={defaultSite}
         initialVersion={defaultVersion}
         initialConfiguration={defaultConfig}
-        context={{
+        initialContext={{
           business: {
             id: defaultSite.business_id,
             name: "Sharma Kirana & Sweets",

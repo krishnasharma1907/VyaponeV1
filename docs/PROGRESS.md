@@ -20,29 +20,32 @@
 
 - **Target:** VO-044 — Integrate constrained visual editor
 - **Phase:** P4 — Website engine, templates and publishing
-- **Status:** COMPLETED & VERIFIED
-- **Key Deliverables Implemented & Hardened:**
-  1. **Constrained Component Architecture (`src/components/websites/editor/`):**
-     - Evaluated visual editor strategies in accordance with ADR-005. Designed a native, lightweight, zero-dependency visual editor tailored for VyapOne's canonical design system, completely bypassing third-party bundle bloat and React 19 peer-dependency conflicts while strictly enforcing block constraints.
-     - **AddSectionModal (`add-section-modal.tsx`):** Constrained component selector that exclusively exposes the 13 canonical approved blocks from `APPROVED_BLOCK_REGISTRY` (PRD FINAL v2 §15.3, §6.14). Categorizes blocks into Essential Core, Store & Commerce, Content & Story, Customer Action, and Navigation & Footer. Features instant search and category filtering with full keyboard accessibility (`Escape` dismissal, focus trapping).
-     - **SectionNavigator (`section-navigator.tsx`):** Ordered section list displaying current page sections sequentially. Provides reordering controls (Move Up / Move Down with boundary disabling), visibility toggling (Hide/Show with visual muted states), delete confirmation, and quick selection.
-     - **SectionInspector (`section-inspector.tsx`):** Form controls tailored to block-specific schemas with real-time feedback. Includes layout variant selector dynamically populated from `metadata.allowedVariants`. Employs `sanitizeLinkUrl` to prevent unsafe `javascript:` or `data:` URL injection, and displays dynamic server-binding notices for catalogue and location blocks protecting server-owned statutory facts.
-     - **EditorTopBar (`editor-top-bar.tsx`):** Identity banner displaying site subdomain, draft version badge (`Draft v{versionNumber}`), change summary note input (max 200 chars), save status badges (`Unsaved Changes`, `Saving...`, `Draft Saved`, `Version Conflict`, `Save Failed`), responsive view mode switcher (`Split`, `Sections`, `Live Preview`), and atomic "Save Draft" button.
-     - **PageSelector (`page-selector.tsx`):** Multi-page tab bar supporting active page switching and inline new page creation with slug validation and normalization (`normalizePageSlug`).
-     - **ConstrainedWebsiteEditor (`constrained-website-editor.tsx`):** Master client component coordinating configuration state, section manipulation (`handleAddBlock`, `handleRemoveSection`, `handleToggleSectionEnabled`, `handleMoveSection`, `handleUpdateSectionProps`), live draft preview via `PublicWebsiteRenderer` (with `context.previewMode = true`), and atomic server persistence via `saveSiteDraftConfigurationAction`.
-  2. **Draft Preview Isolation (PRD FINAL v2 §6.14, §15.3, §16, §17):**
+- **Status:** COMPLETED & AUDITED
+- **Key Deliverables Implemented, Audited & Hardened:**
+  1. **Canonical Block Identifier Compatibility (Audit A):**
+     - Aligned `APPROVED_BLOCK_REGISTRY` in `src/components/websites/blocks/block-registry.ts` with the 13 canonical approved block identifiers: `hero`, `about`, `menu`, `catalogue_grid`, `gallery`, `booking_form`, `pricing`, `reviews`, `offers`, `location_map`, `contact`, `faq`, `footer`.
+     - Display names (e.g. "Contact Channels", "Food & Dining Menu") remain user-facing labels (`metadata.name`), while internal identifiers (`metadata.type`) are strictly canonical.
+     - Section inspector and default props validate against canonical Zod schemas, rendering through `BlockRenderer`.
+     - Strictly rejects unapproved, speculative, or legacy block types (`header_nav`, `features`, `trust`, `testimonials`, `contact_channels`, `custom_iframe`, `script_widget`).
+  2. **Business and Draft Workspace Initialization (Audit B & D):**
+     - Implemented `loadOwnerWebsiteWorkspace` in `src/lib/websites/service.ts` and `loadOwnerWebsiteWorkspaceAction` in `src/lib/websites/actions.ts`: enforces authentication via `assertAuthenticatedUser`, validates tenant authorization via `assertBusinessAccess`, queries tenant-scoped locations and active `catalogue_items` (`id, title, price_minor, currency_code, is_available`), and returns `OwnerWebsiteWorkspaceData`.
+     - Created `src/components/websites/editor/owner-website-workspace.tsx` client component wrapper that calls `loadOwnerWebsiteWorkspaceAction` on mount. Surfaces `Starter Draft` badge when `isStarterDraft: true`, and renders an `Access Denied` error alert if tenant authorization fails.
+     - Updated `src/app/(owner)/dashboard/website/page.tsx` to render `<OwnerWebsiteWorkspace />` with fallback starter props while preserving `<h1 ...>Storefront Website Builder</h1>` for route shell tests.
+  3. **Server-Enforced Optimistic Concurrency (Audit C):**
+     - Created migration `supabase/migrations/20261122000001_website_draft_concurrency_and_optimistic_lock.sql` and appended to `combined_migrations.sql`.
+     - Upgraded `public.save_site_draft_configuration_atomic` with `p_expected_base_version_number INT DEFAULT NULL`. Under `FOR UPDATE` lock, checks `v_current_draft_version_number <> p_expected_base_version_number` and raises `SQLSTATE 'VY049'`.
+     - Updated `saveSiteDraftInputSchema` in `schemas.ts` and `saveSiteDraftConfiguration` in `service.ts` to map `VY049` to `CONFLICT` (`statusCode: 409`).
+     - Updated editor state machine in `constrained-website-editor.tsx` to preserve working draft state when a conflict occurs.
+  4. **Draft Preview & Publication Isolation (Audit D & E):**
      - The editor embeds `PublicWebsiteRenderer` in an isolated preview container with `context.previewMode = true`.
-     - Displays a persistent "Private Draft Preview" badge informing the business owner that customers only see published versions.
+     - Displays a persistent "Private Draft Preview" badge informing the business owner that customers only see published versions. Draft preview is strictly authenticated and non-indexable.
      - Draft persistence exclusively invokes `saveSiteDraftConfigurationAction` / `saveSiteDraftConfiguration`, which updates `sites.current_draft_version_id` and inserts into `site_versions` without ever touching `sites.published_version_id` or `sites.status`.
-  3. **Optimistic Concurrency & Conflict Protection:**
-     - Tracks `baseVersionNumber` across edits. When the server detects that another session has saved a newer draft (`CONFLICT` code or version mismatch), the editor surfaces a clear `⚠ Version Conflict` banner and prevents silent data overwrite, requiring the user to refresh before persisting.
-  4. **Arbitrary Code Injection Prevention:**
-     - Rejecting arbitrary HTML, scripts, iframes, and unapproved component types at the inspector, renderer, and database validation layers.
   5. **Verification Evidence & Quality Gates:**
-     - Unit & Integration Test Suite (`tests/unit/websites/constrained-editor.test.tsx`, 22 tests): 100% passing.
-     - Website test suite (`tests/unit/websites/`, 8 test files, 136 tests): 100% passing.
+     - Constrained Visual Editor Unit Suite (`tests/unit/websites/constrained-editor.test.tsx`, 27 tests): 100% passing.
+     - Website test suite (`tests/unit/websites/`, 8 test files, 144 tests): 100% passing.
+     - Database migration test suite (`tests/unit/database/`, 15 test files, 156 tests): 100% passing.
      - Route shells suite (`tests/unit/routing/route-shells.test.tsx`, 34 tests): 100% passing.
-     - Full test suite (`pnpm test`, 99 test files, 1,196 tests): 100% passing.
+     - Full test suite (`pnpm vitest run`, 99 test files, 1,205 tests): 100% passing.
      - TypeScript strict check (`tsc --noEmit`): 0 errors.
      - ESLint check (`pnpm lint`): 0 errors, 0 warnings.
      - Prettier code style check: All files formatted cleanly.

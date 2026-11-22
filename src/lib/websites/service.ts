@@ -11,7 +11,8 @@
 
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database, Json } from "@/lib/supabase/types";
-import { assertBusinessAccess } from "@/lib/auth/tenant-access";
+import { assertAuthenticatedUser, assertBusinessAccess } from "@/lib/auth/tenant-access";
+import { buildInitialWebsiteConfiguration } from "./defaults";
 import { saveSiteDraftInputSchema, type SaveSiteDraftInput } from "./schemas";
 import type { SaveSiteDraftResult, SiteRow, SiteVersionRow, WebsiteConfiguration } from "./types";
 import { migrateWebsiteConfiguration } from "./versioning";
@@ -291,11 +292,19 @@ export async function saveSiteDraftConfiguration(
       p_configuration: validated.configuration as unknown as Json,
       p_change_summary: validated.changeSummary || null,
       p_referenced_media_ids: referencedMediaIds.length > 0 ? referencedMediaIds : null,
+      p_expected_base_version_number: validated.expectedBaseVersionNumber || null,
     },
   );
 
   if (rpcError || !rpcData) {
     const errorMsg = rpcError?.message || "Failed to save draft configuration atomically";
+    if (
+      errorMsg.includes("Concurrency conflict") ||
+      errorMsg.includes("conflict") ||
+      rpcError?.code === "VY049"
+    ) {
+      throw new WebsiteError(errorMsg, "CONFLICT", 409);
+    }
     if (
       errorMsg.includes("caller does not match authenticated session") ||
       rpcError?.code === "VY020"
@@ -323,5 +332,212 @@ export async function saveSiteDraftConfiguration(
     site: result.site,
     version: result.version,
     configuration: validated.configuration,
+  };
+}
+
+export interface OwnerWebsiteWorkspaceData {
+  business: {
+    id: string;
+    name: string;
+    tradeName: string;
+    phone?: string;
+    whatsappNumber?: string;
+    primaryLocation?: {
+      addressLine1: string;
+      addressLine2?: string;
+      city: string;
+      state: string;
+      postalCode: string;
+      operatingHours?: Record<string, string>;
+    };
+  };
+  site: SiteRow;
+  version: SiteVersionRow;
+  configuration: WebsiteConfiguration;
+  catalogueItems: Array<{
+    id: string;
+    name: string;
+    priceMinor: number;
+    currency: string;
+    isAvailable: boolean;
+  }>;
+  isStarterDraft: boolean;
+}
+
+/**
+ * Loads the authenticated owner's website editor workspace.
+ * Enforces server session authentication and strict business tenancy isolation (VO-044 Audit B & D).
+ * Resolves authoritative business facts, catalogue items, and current draft configuration.
+ */
+export async function loadOwnerWebsiteWorkspace(
+  supabase: SupabaseClient<Database>,
+  targetBusinessId?: string,
+): Promise<OwnerWebsiteWorkspaceData> {
+  // 1. Enforce authenticated caller identity
+  const caller = await assertAuthenticatedUser(supabase);
+
+  // 2. Resolve active business ID
+  let resolvedBusinessId = targetBusinessId;
+  if (!resolvedBusinessId) {
+    const { data: memberBiz } = await supabase
+      .from("business_members")
+      .select("business_id")
+      .eq("user_id", caller.id)
+      .eq("status", "active")
+      .limit(1)
+      .maybeSingle();
+
+    if (memberBiz?.business_id) {
+      resolvedBusinessId = memberBiz.business_id;
+    } else {
+      const { data: ownedBiz } = await supabase
+        .from("businesses")
+        .select("id")
+        .eq("sovereign_owner_id", caller.id)
+        .limit(1)
+        .maybeSingle();
+      if (ownedBiz?.id) {
+        resolvedBusinessId = ownedBiz.id;
+      }
+    }
+  }
+
+  if (!resolvedBusinessId) {
+    throw new WebsiteError("No active business found for this merchant", "NO_BUSINESS_FOUND", 404);
+  }
+
+  // 3. Strictly assert tenant/business authorization (rejects cross-tenant access)
+  const { business } = await assertBusinessAccess(supabase, resolvedBusinessId);
+
+  // 4. Fetch primary location (if exists)
+  const { data: location } = await supabase
+    .from("locations")
+    .select("address_line1, city, state, postal_code")
+    .eq("business_id", business.id)
+    .eq("is_primary", true)
+    .maybeSingle();
+
+  // 5. Fetch active catalogue items (strictly tenant-scoped)
+  const { data: catalogueRecords } = await supabase
+    .from("catalogue_items")
+    .select("id, title, price_minor, currency_code, is_available")
+    .eq("business_id", business.id)
+    .eq("is_available", true)
+    .limit(50);
+
+  const catalogueItems = (catalogueRecords || []).map((item) => ({
+    id: item.id,
+    name: item.title || ((item as unknown as { name?: string }).name as string) || "",
+    priceMinor: Number(item.price_minor),
+    currency: item.currency_code || "INR",
+    isAvailable: item.is_available ?? true,
+  }));
+
+  // 6. Fetch or initialize site
+  let site = await getSiteByBusinessId(supabase, business.id);
+  let version: SiteVersionRow;
+  let configuration: WebsiteConfiguration;
+  let isStarterDraft = false;
+
+  if (site && site.current_draft_version_id) {
+    try {
+      const configResult = await getSiteConfiguration(supabase, site.id);
+      version = configResult.version;
+      configuration = configResult.configuration;
+    } catch {
+      isStarterDraft = true;
+      configuration = buildInitialWebsiteConfiguration({
+        siteId: site.id,
+        businessId: business.id,
+        tradeName: business.trade_name,
+        subdomain: site.subdomain,
+        nicheSlug: business.category || "retail",
+        description: business.description || undefined,
+      });
+      version = {
+        id: "00000000-0000-4000-8000-000000000001",
+        site_id: site.id,
+        business_id: business.id,
+        version_number: 1,
+        schema_version: "v1",
+        configuration: configuration as unknown as Json,
+        created_by: caller.id,
+        change_summary: "Starter draft",
+        published_at: null,
+        created_at: new Date().toISOString(),
+      };
+    }
+  } else {
+    isStarterDraft = true;
+    const siteId = site?.id || "00000000-0000-4000-8000-000000000001";
+    const subdomain = site?.subdomain || business.slug || "my-store";
+    configuration = buildInitialWebsiteConfiguration({
+      siteId,
+      businessId: business.id,
+      tradeName: business.trade_name,
+      subdomain,
+      nicheSlug: business.category || "retail",
+      description: business.description || undefined,
+    });
+    version = {
+      id: "00000000-0000-4000-8000-000000000001",
+      site_id: siteId,
+      business_id: business.id,
+      version_number: 1,
+      schema_version: "v1",
+      configuration: configuration as unknown as Json,
+      created_by: caller.id,
+      change_summary: "Starter draft",
+      published_at: null,
+      created_at: new Date().toISOString(),
+    };
+    if (!site) {
+      site = {
+        id: siteId,
+        business_id: business.id,
+        subdomain,
+        primary_domain: null,
+        status: "draft",
+        current_draft_version_id: version.id,
+        published_version_id: null,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      };
+    }
+  }
+
+  const contactConfig =
+    business.contact_configuration &&
+    typeof business.contact_configuration === "object" &&
+    !Array.isArray(business.contact_configuration)
+      ? (business.contact_configuration as Record<string, unknown>)
+      : null;
+
+  return {
+    business: {
+      id: business.id,
+      name: business.legal_name || business.trade_name,
+      tradeName: business.trade_name,
+      phone: (contactConfig?.primary_phone as string) || undefined,
+      whatsappNumber: (contactConfig?.whatsapp_number as string) || undefined,
+      primaryLocation:
+        location &&
+        location.address_line1 &&
+        location.city &&
+        location.state &&
+        location.postal_code
+          ? {
+              addressLine1: location.address_line1,
+              city: location.city,
+              state: location.state,
+              postalCode: location.postal_code,
+            }
+          : undefined,
+    },
+    site,
+    version,
+    configuration,
+    catalogueItems,
+    isStarterDraft,
   };
 }

@@ -12,8 +12,10 @@ import { saveSiteDraftInputSchema, type SaveSiteDraftInput } from "./schemas";
 import {
   getSiteByBusinessId,
   getSiteConfiguration,
+  loadOwnerWebsiteWorkspace,
   saveSiteDraftConfiguration,
   WebsiteError,
+  type OwnerWebsiteWorkspaceData,
 } from "./service";
 import type {
   SaveSiteDraftResult,
@@ -77,6 +79,23 @@ export async function getSiteConfigurationAction(
 
     const result = await getSiteConfiguration(supabase, siteId, versionNumber);
     return { success: true, data: result };
+  } catch (error) {
+    return { success: false, ...sanitizeError(error) };
+  }
+}
+
+/**
+ * Loads the authenticated owner's website workspace.
+ * Resolves verified business facts, locations, catalogue items, and current draft.
+ * Prevents unauthorized or cross-business access (VO-044 Audit B & D).
+ */
+export async function loadOwnerWebsiteWorkspaceAction(
+  businessId?: string,
+): Promise<WebsiteActionResult<OwnerWebsiteWorkspaceData>> {
+  try {
+    const supabase = await createServerSupabaseClient();
+    const data = await loadOwnerWebsiteWorkspace(supabase, businessId);
+    return { success: true, data };
   } catch (error) {
     return { success: false, ...sanitizeError(error) };
   }

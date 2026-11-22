@@ -34,6 +34,12 @@ describe("VO-040 Website Configuration Migration Verification", () => {
     "migrations",
     "20261120000003_revoke_column_insert_and_enforce_restrictive_rls.sql",
   );
+  const concurrencyMigrationPath = path.join(
+    rootDir,
+    "supabase",
+    "migrations",
+    "20261122000001_website_draft_concurrency_and_optimistic_lock.sql",
+  );
   const combinedPath = path.join(rootDir, "supabase", "combined_migrations.sql");
 
   const migrationSql = fs.readFileSync(migrationPath, "utf-8");
@@ -41,6 +47,7 @@ describe("VO-040 Website Configuration Migration Verification", () => {
   const pointerAuditSql = fs.readFileSync(pointerAuditMigrationPath, "utf-8");
   const sitesRevokeSql = fs.readFileSync(sitesRevokeMigrationPath, "utf-8");
   const columnRevokeSql = fs.readFileSync(columnRevokeMigrationPath, "utf-8");
+  const concurrencySql = fs.readFileSync(concurrencyMigrationPath, "utf-8");
   const combinedSql = fs.readFileSync(combinedPath, "utf-8");
 
   it("verifies migration files exist and are populated with deterministic timestamps", () => {
@@ -63,6 +70,10 @@ describe("VO-040 Website Configuration Migration Verification", () => {
     expect(fs.existsSync(columnRevokeMigrationPath)).toBe(true);
     expect(path.basename(columnRevokeMigrationPath)).toMatch(/^\d{14}_[a-z0-9_]+\.sql$/);
     expect(columnRevokeSql.length).toBeGreaterThan(500);
+
+    expect(fs.existsSync(concurrencyMigrationPath)).toBe(true);
+    expect(path.basename(concurrencyMigrationPath)).toMatch(/^\d{14}_[a-z0-9_]+\.sql$/);
+    expect(concurrencySql.length).toBeGreaterThan(1000);
   });
 
   it("verifies preflight hardening revokes service_role on atomic business creation and import RPCs", () => {
@@ -339,5 +350,30 @@ describe("VO-040 Website Configuration Migration Verification", () => {
     expect(combinedSql).toContain("sites_restrictive_insert_deny");
     expect(combinedSql).toContain("sites_restrictive_delete_deny");
     expect(combinedSql).toContain("AS RESTRICTIVE");
+    expect(combinedSql).toContain(
+      "p_expected_base_version_number INT DEFAULT NULL",
+    );
+    expect(combinedSql).toContain(
+      "ERRCODE = 'VY049'",
+    );
+  });
+
+  it("verifies server-enforced optimistic concurrency RPC migration (20261122000001)", () => {
+    expect(fs.existsSync(concurrencyMigrationPath)).toBe(true);
+    expect(concurrencySql).toContain(
+      "DROP FUNCTION IF EXISTS public.save_site_draft_configuration_atomic(UUID, UUID, UUID, TEXT, JSONB, TEXT, UUID[]);",
+    );
+    expect(concurrencySql).toContain(
+      "p_expected_base_version_number INT DEFAULT NULL",
+    );
+    expect(concurrencySql).toContain(
+      "v_current_draft_version_number <> p_expected_base_version_number",
+    );
+    expect(concurrencySql).toContain(
+      "USING ERRCODE = 'VY049';",
+    );
+    expect(concurrencySql).toContain(
+      "GRANT EXECUTE ON FUNCTION public.save_site_draft_configuration_atomic(UUID, UUID, UUID, TEXT, JSONB, TEXT, UUID[], INT) TO authenticated;",
+    );
   });
 });

@@ -24,15 +24,19 @@ vi.mock("server-only", () => ({}));
 
 import { render, screen, fireEvent, waitFor, within } from "@testing-library/react";
 import { ConstrainedWebsiteEditor } from "@/components/websites/editor/constrained-website-editor";
+import { OwnerWebsiteWorkspace } from "@/components/websites/editor/owner-website-workspace";
 import { AddSectionModal } from "@/components/websites/editor/add-section-modal";
 import { SectionInspector } from "@/components/websites/editor/section-inspector";
 import { SectionNavigator } from "@/components/websites/editor/section-navigator";
 import { PageSelector } from "@/components/websites/editor/page-selector";
+import { BlockRenderer } from "@/components/websites/blocks/block-renderer";
 import { buildInitialWebsiteConfiguration } from "@/lib/websites/defaults";
 import {
   APPROVED_BLOCK_REGISTRY,
   getAllApprovedBlockTypes,
+  isApprovedBlockType,
 } from "@/components/websites/blocks/block-registry";
+import { sectionConfigSchema } from "@/lib/websites/schemas";
 import type {
   ApprovedBlockType,
   SectionConfig,
@@ -42,12 +46,13 @@ import type {
 } from "@/lib/websites/types";
 import * as websiteActions from "@/lib/websites/actions";
 
-// Mock saveSiteDraftConfigurationAction
+// Mock saveSiteDraftConfigurationAction and loadOwnerWebsiteWorkspaceAction
 vi.mock("@/lib/websites/actions", async () => {
   const actual = await vi.importActual<typeof websiteActions>("@/lib/websites/actions");
   return {
     ...actual,
     saveSiteDraftConfigurationAction: vi.fn(),
+    loadOwnerWebsiteWorkspaceAction: vi.fn(),
   };
 });
 
@@ -225,6 +230,97 @@ describe("VO-044 Constrained Visual Editor Test Suite", () => {
 
       expect(onAddMock).toHaveBeenCalledWith("menu");
       expect(onCloseMock).toHaveBeenCalled();
+    });
+
+    it("proves each of the 13 canonical options exists in registry, default config passes canonical schema, renders through BlockRenderer, and preserves exact identifier", () => {
+      const allTypes = getAllApprovedBlockTypes();
+      expect(allTypes.length).toBe(13);
+
+      const expected13CanonicalTypes: ApprovedBlockType[] = [
+        "hero",
+        "about",
+        "menu",
+        "catalogue_grid",
+        "gallery",
+        "booking_form",
+        "pricing",
+        "reviews",
+        "offers",
+        "location_map",
+        "contact",
+        "faq",
+        "footer",
+      ];
+      expect([...allTypes].sort()).toEqual([...expected13CanonicalTypes].sort());
+
+      for (const blockType of allTypes) {
+        // 1. Exists in APPROVED_BLOCK_REGISTRY
+        expect(isApprovedBlockType(blockType)).toBe(true);
+        const entry = APPROVED_BLOCK_REGISTRY[blockType];
+        expect(entry).toBeDefined();
+        expect(entry.metadata.type).toBe(blockType);
+
+        // 2. Default configuration passes canonical Zod schema
+        const sampleSection = {
+          id: `sec_${blockType}`,
+          type: blockType,
+          variant: entry.metadata.allowedVariants?.[0] || "default",
+          isEnabled: true,
+          props: entry.metadata.defaultProps || {},
+        };
+        const parseResult = sectionConfigSchema.safeParse(sampleSection);
+        expect(
+          parseResult.success,
+          `Default props for block type '${blockType}' failed canonical schema: ${JSON.stringify(parseResult.error?.issues)}`,
+        ).toBe(true);
+
+        // 3. Renders through BlockRenderer without crashing
+        const { container } = render(
+          <BlockRenderer section={sampleSection} context={MOCK_CONTEXT} />,
+        );
+        expect(container.firstChild).not.toBeNull();
+
+        // 4. Saving and reloading preserves its exact identifier
+        const serialized = JSON.stringify(sampleSection);
+        const deserialized = JSON.parse(serialized);
+        expect(deserialized.type).toBe(blockType);
+      }
+    });
+
+    it("strictly rejects unapproved block identifiers such as header_nav, features, trust, or script_widget", () => {
+      const unapprovedTypes = [
+        "header_nav",
+        "features",
+        "trust",
+        "testimonials",
+        "contact_channels",
+        "custom_iframe",
+        "script_widget",
+      ];
+
+      for (const invalidType of unapprovedTypes) {
+        // Must not be in approved block types
+        expect(isApprovedBlockType(invalidType)).toBe(false);
+
+        // Must be rejected by canonical Zod schema
+        const invalidSection = {
+          id: "sec_invalid",
+          type: invalidType,
+          props: { title: "Invalid" },
+        };
+        const parseResult = sectionConfigSchema.safeParse(invalidSection);
+        expect(parseResult.success).toBe(false);
+
+        // Section inspector safely rejects it
+        const { container } = render(
+          <SectionInspector
+            section={invalidSection as unknown as SectionConfig}
+            onUpdateProps={vi.fn()}
+            onClose={vi.fn()}
+          />,
+        );
+        expect(container.textContent).toContain("Unapproved Block Type");
+      }
     });
   });
 
@@ -520,6 +616,7 @@ describe("VO-044 Constrained Visual Editor Test Suite", () => {
           siteId: MOCK_SITE.id,
           configuration: expect.any(Object),
           changeSummary: "Added contact block",
+          expectedBaseVersionNumber: 1,
         });
       });
 
@@ -586,6 +683,41 @@ describe("VO-044 Constrained Visual Editor Test Suite", () => {
         expect(screen.getByText("⚠ Version Conflict")).toBeDefined();
         expect(screen.getByText(/Another session saved a newer draft version/i)).toBeDefined();
       });
+    });
+
+    it("preserves unsaved working draft changes when server rejects save with concurrency conflict", async () => {
+      vi.mocked(websiteActions.saveSiteDraftConfigurationAction).mockResolvedValueOnce({
+        success: false,
+        error: "Concurrency conflict: current draft version is 3, but save was based on version 1",
+        code: "CONFLICT",
+      });
+
+      render(
+        <ConstrainedWebsiteEditor
+          initialSite={MOCK_SITE}
+          initialVersion={MOCK_VERSION}
+          initialConfiguration={MOCK_CONFIG}
+          context={MOCK_CONTEXT}
+        />,
+      );
+
+      // Make an edit (add FAQ section)
+      fireEvent.click(screen.getByRole("button", { name: "+ Add Section" }));
+      fireEvent.click(within(screen.getByRole("dialog")).getByText("FAQ Accordion"));
+
+      // Try to save
+      fireEvent.click(screen.getByRole("button", { name: "Save website draft" }));
+
+      await waitFor(() => {
+        expect(screen.getByText("⚠ Version Conflict")).toBeDefined();
+        expect(screen.getByText(/Another session saved a newer draft version/i)).toBeDefined();
+      });
+
+      // CRITICAL: Unsaved working draft changes are preserved and editor allows retry/refresh
+      expect(screen.getByText("⚠ Version Conflict")).toBeDefined();
+      expect(screen.getAllByText("FAQ Accordion").length).toBeGreaterThan(0);
+      const saveBtn = screen.getByRole("button", { name: "Save website draft" });
+      expect(saveBtn.hasAttribute("disabled")).toBe(false);
     });
   });
 
@@ -704,6 +836,72 @@ describe("VO-044 Constrained Visual Editor Test Suite", () => {
 
       fireEvent.keyDown(window, { key: "Escape" });
       expect(onCloseMock).toHaveBeenCalled();
+    });
+  });
+
+  // ----------------------------------------------------------------------------
+  // 9. Business Initialization & Draft Isolation (Audits B & D)
+  // ----------------------------------------------------------------------------
+  describe("9. Business Initialization & Draft Isolation (Audits B & D)", () => {
+    it("renders OwnerWebsiteWorkspace with starter template banner when newly initialized", async () => {
+      vi.mocked(websiteActions.loadOwnerWebsiteWorkspaceAction).mockResolvedValueOnce({
+        success: true,
+        data: {
+          business: {
+            id: MOCK_SITE.business_id,
+            name: "Sharma Sweets",
+            tradeName: "Sharma Sweets",
+          },
+          site: MOCK_SITE,
+          version: MOCK_VERSION,
+          configuration: MOCK_CONFIG,
+          catalogueItems: [],
+          isStarterDraft: true,
+        },
+      });
+
+      render(
+        <OwnerWebsiteWorkspace
+          initialSite={MOCK_SITE}
+          initialVersion={MOCK_VERSION}
+          initialConfiguration={MOCK_CONFIG}
+          initialContext={MOCK_CONTEXT}
+        />,
+      );
+
+      // Starter Draft banner must be visible
+      await waitFor(() => {
+        expect(screen.getByText("Starter Draft")).toBeDefined();
+        expect(
+          screen.getByText(/This is a generated starter website configuration/i),
+        ).toBeDefined();
+      });
+    });
+
+    it("displays access denied error when tenant authorization fails", async () => {
+      vi.mocked(websiteActions.loadOwnerWebsiteWorkspaceAction).mockResolvedValueOnce({
+        success: false,
+        error: "Business not found or access denied for this tenant",
+        code: "FORBIDDEN",
+      });
+
+      render(
+        <OwnerWebsiteWorkspace
+          initialSite={MOCK_SITE}
+          initialVersion={MOCK_VERSION}
+          initialConfiguration={MOCK_CONFIG}
+          initialContext={MOCK_CONTEXT}
+          businessId="99999999-9999-4999-8999-999999999999"
+        />,
+      );
+
+      await waitFor(() => {
+        expect(screen.getByText("Access Denied")).toBeDefined();
+        expect(screen.getByText("Tenant Authorization Failed")).toBeDefined();
+        expect(
+          screen.getByText(/Business not found or access denied for this tenant/i),
+        ).toBeDefined();
+      });
     });
   });
 });

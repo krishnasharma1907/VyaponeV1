@@ -4,25 +4,41 @@ Record implementation changes by task ID. Do not record planned work as complete
 
 ## Unreleased
 
-### [VO-044] — Integrate Constrained Visual Editor (2026-11-21)
+### [VO-044] — Integrate Constrained Visual Editor (2026-11-22)
 - Built the constrained visual website builder strictly restricted to the 13 canonical approved blocks from `APPROVED_BLOCK_REGISTRY` (PRD FINAL v2 §15.3, §6.14):
+  - **Canonical Block Schema Compatibility (Audit A):**
+    - Standardized `APPROVED_BLOCK_REGISTRY` to strictly expose the 13 canonical approved block identifiers: `hero`, `about`, `menu`, `catalogue_grid`, `gallery`, `booking_form`, `pricing`, `reviews`, `offers`, `location_map`, `contact`, `faq`, `footer`.
+    - Display labels in `AddSectionModal` (`add-section-modal.tsx`) and `SectionNavigator` (`section-navigator.tsx`) map 1:1 to canonical identifiers with valid Zod default props and `BlockRenderer` integration.
+    - Strictly rejects unapproved, legacy, or speculative block identifiers (`header_nav`, `features`, `trust`, `testimonials`, `contact_channels`, `custom_iframe`, `script_widget`) at modal selection, section inspector, renderer, and schema validation layers.
   - **Constrained Editor Component Architecture (`src/components/websites/editor/`):**
-    - `AddSectionModal (`add-section-modal.tsx`):` Accessible dialog exposing all 13 canonical approved blocks (`hero`, `header_nav`, `footer`, `catalogue`, `menu`, `pricing`, `offers`, `story_media`, `features`, `faq`, `trust`, `testimonials`, `contact_channels`). Includes category filters (`core`, `commerce`, `content`, `interaction`, `navigation`), live keyword search, and keyboard accessibility (`Escape` key dismissal, focus management).
-    - `SectionNavigator (`section-navigator.tsx`):` Ordered section list supporting Move Up and Move Down reordering (with boundary disabling for first/last elements), visibility toggle (`isEnabled` hide/show with muted styling), and section deletion with confirmation.
-    - `SectionInspector (`section-inspector.tsx`):` Block-specific property form controls strictly adhering to approved block Zod schemas. Supports visual layout variant selection dynamically derived from `metadata.allowedVariants`. Enforces `sanitizeLinkUrl` to neutralize unsafe `javascript:` or `data:` URL schemes, and displays dynamic server-binding notices for catalogue and location blocks protecting server-owned statutory data.
-    - `EditorTopBar (`editor-top-bar.tsx`):` Subdomain badge, draft version indicator (`Draft v{versionNumber}`), change summary note input (max 200 chars), save state indicators (`Unsaved Changes`, `Saving...`, `Draft Saved`, `Version Conflict`, `Save Failed`), view mode toggle (`Split`, `Sections`, `Live Preview`), and atomic "Save Draft" button.
-    - `PageSelector (`page-selector.tsx`):` Multi-page tab bar supporting active page switching and inline new page creation with slug validation and normalization (`normalizePageSlug`).
-    - `ConstrainedWebsiteEditor (`constrained-website-editor.tsx`):` Master client workspace integrating top bar, page tabs, section navigator, section inspector, and live draft preview via `PublicWebsiteRenderer` (`context.previewMode = true`).
-  - **Draft Preview & Concurrency Isolation (PRD FINAL v2 §6.14, §15.3, §16, §17):**
-     - Draft editing exclusively interacts with `saveSiteDraftConfigurationAction`, updating `sites.current_draft_version_id` and creating immutable `site_versions` rows without mutating `sites.published_version_id` or publication status.
-     - Live preview displays a prominent "Private Draft Preview" alert informing the business owner that customers only see published versions.
-     - Optimistic concurrency protection: Tracks `baseVersionNumber` across saves; safely detects concurrent edits and displays `⚠ Version Conflict` banner, preventing silent data overwrite.
+    - `AddSectionModal` (`add-section-modal.tsx`): Accessible dialog exposing all 13 canonical approved blocks. Categorized into Essential Core, Store & Commerce, Content & Story, Customer Action, and Navigation & Footer with live search, keyboard accessibility (`Escape` key dismissal), and focus trapping.
+    - `SectionNavigator` (`section-navigator.tsx`): Ordered section list supporting Move Up and Move Down reordering (with boundary disabling for first/last elements), visibility toggle (`isEnabled` hide/show with muted styling), and section deletion with confirmation.
+    - `SectionInspector` (`section-inspector.tsx`): Block-specific property form controls strictly adhering to approved block Zod schemas. Supports visual layout variant selection dynamically derived from `metadata.allowedVariants`. Enforces `sanitizeLinkUrl` to neutralize unsafe `javascript:` or `data:` URL schemes, and displays dynamic server-binding notices for catalogue and location blocks protecting server-owned statutory data.
+    - `EditorTopBar` (`editor-top-bar.tsx`): Subdomain badge, draft version indicator (`Draft v{versionNumber}`), change summary note input (max 200 chars), save state indicators (`Unsaved Changes`, `Saving...`, `Draft Saved`, `Version Conflict`, `Save Failed`), view mode toggle (`Split`, `Sections`, `Live Preview`), and atomic "Save Draft" button.
+    - `PageSelector` (`page-selector.tsx`): Multi-page tab bar supporting active page switching and inline new page creation with slug validation and normalization (`normalizePageSlug`).
+    - `ConstrainedWebsiteEditor` (`constrained-website-editor.tsx`): Master client workspace integrating top bar, page tabs, section navigator, section inspector, and live draft preview via `PublicWebsiteRenderer` (`context.previewMode = true`).
+  - **Business and Draft Workspace Initialization (Audit B & D):**
+    - Created `loadOwnerWebsiteWorkspace` (`src/lib/websites/service.ts`) and `loadOwnerWebsiteWorkspaceAction` (`src/lib/websites/actions.ts`): authenticated server action enforcing `assertAuthenticatedUser` and `assertBusinessAccess`.
+    - Returns tenant-isolated business profile, primary location, active catalogue items (`id, title, price_minor, currency_code, is_available`), and the site's current draft configuration.
+    - When no site or draft version exists, safely builds a fallback initial configuration with a prominent `Starter Draft` badge.
+    - Created `<OwnerWebsiteWorkspace />` (`owner-website-workspace.tsx`) client boundary mounted in `/dashboard/website`, handling workspace loading states, permission-denied alerts, and passing live data to the editor.
+  - **Server-Enforced Optimistic Concurrency (Audit C):**
+    - Created migration `20261122000001_website_draft_concurrency_and_optimistic_lock.sql` updating `public.save_site_draft_configuration_atomic` with `p_expected_base_version_number INT DEFAULT NULL`.
+    - Locks the site record `FOR UPDATE`. If `p_expected_base_version_number` is supplied and does not match `v_current_draft_version_number`, raises `SQLSTATE 'VY049'` (`Optimistic concurrency conflict`).
+    - Mapped `VY049` in `saveSiteDraftConfiguration` to `CONFLICT` (`statusCode: 409`).
+    - Updated editor state machine to preserve user's unsaved working draft when a concurrency conflict occurs, allowing them to review changes and avoid silent overwrite.
+  - **Draft Preview & Publication Isolation (Audit D & E):**
+    - Live preview displays a prominent "Private Draft Preview" alert informing the business owner that customers only see published versions. Draft preview is strictly authenticated and non-indexable.
+    - Draft persistence exclusively invokes `saveSiteDraftConfigurationAction`, updating `sites.current_draft_version_id` and creating immutable `site_versions` rows without mutating `sites.published_version_id` or publication status.
   - **Zero Arbitrary Code Injection:**
-     - Pure native React 19 architecture without third-party editor bundle bloat or React 19 peer-dependency conflicts.
-     - Rejects arbitrary HTML, scripts, custom styles, iframes, and unknown component types at the inspector, renderer, and database validation layers.
+    - Pure native React 19 architecture without third-party editor bundle bloat or React 19 peer-dependency conflicts.
+    - Rejects arbitrary HTML, scripts, custom styles, iframes, and unknown component types at the inspector, renderer, and database validation layers.
   - **Verification:**
-    - 22 unit & integration tests in `tests/unit/websites/constrained-editor.test.tsx` verifying draft initialization, approved block registry integration (all 13 blocks), category filtering, keyword searching, section reordering, visibility toggling, property inspector, variant selection, link sanitization, unapproved block rejection, draft persistence, error states, optimistic concurrency conflict detection, draft preview isolation, and multi-page creation.
-    - 100% pass across all 99 workspace test files (1,196 tests). Strict TypeScript mode (0 errors), ESLint (0 errors, 0 warnings), Prettier formatted, Next.js production build passing (all 40 routes).
+    - 27 unit & integration tests in `tests/unit/websites/constrained-editor.test.tsx` verifying draft initialization, all 13 canonical approved blocks, unapproved block rejection, category filtering, keyword searching, section reordering, visibility toggling, property inspector, variant selection, link sanitization, draft persistence, error states, optimistic concurrency conflict detection, draft preservation on conflict, draft preview isolation, and multi-page creation.
+    - 144 tests in `tests/unit/websites/` (8 files) passing 100%.
+    - 156 database tests in `tests/unit/database/` (15 files) passing 100%.
+    - 34 route shell tests in `tests/unit/routing/route-shells.test.tsx` passing 100%.
+    - 100% pass across all 99 workspace test files (1,205 tests). Strict TypeScript mode (0 errors), ESLint (0 errors, 0 warnings), Prettier formatted, Next.js production build passing (all 40 routes).
 
 ### [VO-043] — Implement Navigation, SEO and Metadata (2026-11-21)
 - Built storefront multi-page navigation, dynamic SEO metadata, canonical URL generator, sitemap and robots.txt engine with zero draft or statutory data leakage (PRD FINAL v2 §6.14, §15.3, §16, §17):

@@ -280,6 +280,7 @@ export function ConstrainedWebsiteEditor({
         siteId: initialSite.id,
         configuration,
         changeSummary: changeSummary.trim() || undefined,
+        expectedBaseVersionNumber: currentVersionNumber,
       });
 
       if (!response.success) {

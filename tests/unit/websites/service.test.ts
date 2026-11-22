@@ -4,9 +4,10 @@ import {
   getSiteById,
   getSiteConfiguration,
   getSiteVersions,
+  loadOwnerWebsiteWorkspace,
   saveSiteDraftConfiguration,
 } from "@/lib/websites/service";
-import { assertBusinessAccess } from "@/lib/auth/tenant-access";
+import { assertAuthenticatedUser, assertBusinessAccess } from "@/lib/auth/tenant-access";
 import { buildInitialWebsiteConfiguration } from "@/lib/websites/defaults";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/lib/supabase/types";
@@ -14,6 +15,7 @@ import type { BusinessMemberRow, BusinessRow } from "@/lib/businesses/types";
 
 vi.mock("@/lib/auth/tenant-access", () => ({
   assertBusinessAccess: vi.fn(),
+  assertAuthenticatedUser: vi.fn(),
 }));
 
 describe("VO-040 Website Service Layer", () => {
@@ -668,6 +670,161 @@ describe("VO-040 Website Service Layer", () => {
         code: "MEDIA_VALIDATION_FAILED",
         statusCode: 400,
       });
+    });
+
+    it("handles concurrency conflict error (VY049) and returns CONFLICT code (VO-044 Audit C)", async () => {
+      const mockSupabase = {
+        from: vi.fn(() => ({
+          select: vi.fn(() => ({
+            eq: vi.fn(() => ({
+              maybeSingle: vi.fn(async () => ({ data: sampleSite, error: null })),
+            })),
+          })),
+        })),
+        rpc: vi.fn(async () => ({
+          data: null,
+          error: {
+            message:
+              "Concurrency conflict: current draft version is 3, but save was based on version 1",
+            code: "VY049",
+          },
+        })),
+      } as unknown as SupabaseClient<Database>;
+
+      await expect(
+        saveSiteDraftConfiguration(mockSupabase, mockUserId, {
+          siteId: mockSiteId,
+          configuration: sampleConfig,
+          expectedBaseVersionNumber: 1,
+        }),
+      ).rejects.toMatchObject({
+        code: "CONFLICT",
+        statusCode: 409,
+      });
+    });
+  });
+
+  describe("VO-044 Owner Website Workspace Loader", () => {
+    it("loads tenant-scoped business, locations, catalogue items, site, and configuration for authorized owner", async () => {
+      const sampleBusiness = {
+        id: mockBusinessId,
+        trade_name: "Sharma Sweets",
+        legal_name: "Sharma Sweets Private Limited",
+        category: "sweets",
+        description: "Fresh sweets daily",
+        workspace_id: mockWorkspaceId,
+        contact_configuration: {
+          primary_phone: "+919876543210",
+          whatsapp_number: "+919876543210",
+        },
+      } as unknown as BusinessRow;
+
+      vi.mocked(assertAuthenticatedUser).mockResolvedValueOnce({ id: mockUserId });
+      vi.mocked(assertBusinessAccess).mockResolvedValueOnce({
+        business: sampleBusiness,
+        callerUserId: mockUserId,
+        isSovereignOwner: true,
+        effectiveRole: "owner",
+        member: null,
+        locationId: null,
+      });
+
+      const mockSupabase = {
+        from: vi.fn((table: string) => {
+          if (table === "locations") {
+            return {
+              select: vi.fn(() => ({
+                eq: vi.fn(() => ({
+                  eq: vi.fn(() => ({
+                    maybeSingle: vi.fn(async () => ({
+                      data: {
+                        address_line1: "100 MG Road",
+                        city: "Bengaluru",
+                        state: "Karnataka",
+                        postal_code: "560001",
+                      },
+                      error: null,
+                    })),
+                  })),
+                })),
+              })),
+            };
+          }
+          if (table === "catalogue_items") {
+            return {
+              select: vi.fn(() => ({
+                eq: vi.fn(() => ({
+                  eq: vi.fn(() => ({
+                    limit: vi.fn(async () => ({
+                      data: [
+                        {
+                          id: "cat-1",
+                          title: "Kaju Katli",
+                          name: "Kaju Katli",
+                          price_minor: 25000n,
+                          currency_code: "INR",
+                          is_available: true,
+                        },
+                      ],
+                      error: null,
+                    })),
+                  })),
+                })),
+              })),
+            };
+          }
+          if (table === "sites") {
+            return {
+              select: vi.fn(() => ({
+                eq: vi.fn(() => ({
+                  maybeSingle: vi.fn(async () => ({ data: sampleSite, error: null })),
+                })),
+              })),
+            };
+          }
+          if (table === "site_versions") {
+            return {
+              select: vi.fn(() => ({
+                eq: vi.fn(() => ({
+                  eq: vi.fn(() => ({
+                    maybeSingle: vi.fn(async () => ({ data: sampleVersion, error: null })),
+                  })),
+                })),
+              })),
+            };
+          }
+          return {
+            select: vi.fn(() => ({
+              eq: vi.fn(() => ({
+                maybeSingle: vi.fn(async () => ({ data: null, error: null })),
+              })),
+            })),
+          };
+        }),
+      } as unknown as SupabaseClient<Database>;
+
+      const result = await loadOwnerWebsiteWorkspace(mockSupabase, mockBusinessId);
+
+      expect(result.business.id).toBe(mockBusinessId);
+      expect(result.business.tradeName).toBe("Sharma Sweets");
+      expect(result.site.id).toBe(mockSiteId);
+      expect(result.version.id).toBe(mockVersionId);
+      expect(result.catalogueItems).toHaveLength(1);
+      expect(result.catalogueItems[0].name).toBe("Kaju Katli");
+      expect(result.business.primaryLocation?.city).toBe("Bengaluru");
+    });
+
+    it("rejects unauthorized cross-tenant workspace access attempts", async () => {
+      vi.mocked(assertAuthenticatedUser).mockResolvedValueOnce({ id: mockUserId });
+      vi.mocked(assertBusinessAccess).mockRejectedValueOnce(
+        new Error("Business not found or access denied"),
+      );
+
+      const mockSupabase = {} as unknown as SupabaseClient<Database>;
+
+      await expect(
+        loadOwnerWebsiteWorkspace(mockSupabase, "99999999-9999-4999-8999-999999999999"),
+      ).rejects.toThrow("Business not found or access denied");
     });
   });
 });
