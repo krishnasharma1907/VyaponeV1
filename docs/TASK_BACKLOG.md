@@ -344,13 +344,13 @@
 
 **Status:** `DONE`
 
-### [ ] VO-049 — Implement pre-publish validation, domains and QR
+### [x] VO-049 — Implement pre-publish validation, domains and QR
 
 **Scope:** Check required facts, links, media, plan capacity, permissions and module readiness; publish to platform URL; add custom domain adapter boundary and permanent dynamic QR redirects.
 
 **Acceptance:** Publish blocked on critical errors; successful publish creates stable URL and scan-tested QR. Custom-domain provider remains configurable.
 
-**Status:** `NOT_STARTED`
+**Status:** `DONE`
 
 ## P5 — Vya AI gateway and website builder
 

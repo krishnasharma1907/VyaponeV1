@@ -360,6 +360,107 @@ export type WebsiteActionResult<T> =
   | { success: true; data: T }
   | { success: false; error: string; code?: string; validationErrors?: Record<string, string[]> };
 
+export type SiteDomainRow = Database["public"]["Tables"]["site_domains"]["Row"];
+export type SiteDomainInsert = Database["public"]["Tables"]["site_domains"]["Insert"];
+export type SiteDomainUpdate = Database["public"]["Tables"]["site_domains"]["Update"];
+
+export type QrCodeRow = Database["public"]["Tables"]["qr_codes"]["Row"];
+export type QrCodeInsert = Database["public"]["Tables"]["qr_codes"]["Insert"];
+export type QrCodeUpdate = Database["public"]["Tables"]["qr_codes"]["Update"];
+
+/**
+ * Pre-publish check severity level [VO-049].
+ */
+export type PrePublishCheckSeverity = "error" | "warning";
+
+/**
+ * Pre-publish check category [VO-049].
+ */
+export type PrePublishCheckCategory =
+  | "business_facts"
+  | "site_metadata"
+  | "navigation"
+  | "media"
+  | "blocks"
+  | "modules"
+  | "plan_capacity";
+
+/**
+ * Individual pre-publish validation check result [VO-049].
+ */
+export interface PrePublishCheckItem {
+  id: string;
+  category: PrePublishCheckCategory;
+  severity: PrePublishCheckSeverity;
+  title: string;
+  message: string;
+  navigationPath?: string;
+  details?: Record<string, unknown>;
+}
+
+/**
+ * Complete pre-publish validation result [VO-049].
+ */
+export interface PrePublishValidationResult {
+  isValid: boolean;
+  canPublish: boolean;
+  errorCount: number;
+  warningCount: number;
+  checks: PrePublishCheckItem[];
+  validatedAt: string;
+  siteId: string;
+  draftVersionId?: string;
+  planCapacity?: {
+    currentPublishedSites: number;
+    maxPublishedSites: number;
+    allowed: boolean;
+    reason?: string;
+  };
+}
+
+/**
+ * Result of publishing a site draft [VO-049].
+ */
+export interface PublishSiteResult {
+  site: SiteRow;
+  publishedVersion: SiteVersionRow;
+  mainQrCode?: QrCodeRow;
+  platformUrl: string;
+  customDomainUrl?: string;
+  qrSvg?: string;
+}
+
+/**
+ * Custom domain verification and status types [VO-049].
+ */
+export type DomainVerificationMethod = "dns_txt" | "dns_cname";
+export type DomainStatus = "pending_verification" | "verified" | "active" | "failed" | "suspended";
+
+export interface DomainDnsInstructions {
+  domain: string;
+  recordType: "TXT" | "CNAME";
+  host: string;
+  value: string;
+  status: DomainStatus;
+}
+
+/**
+ * QR Code dynamic destination configuration [VO-049].
+ */
+export type QrCodeType = "main_storefront" | "page" | "custom_destination";
+export type QrCodeStatus = "active" | "inactive" | "archived";
+
+export interface QrDestinationConfig {
+  type: "storefront" | "page" | "internal_path";
+  path?: string;
+  pageSlug?: string;
+  utmParams?: {
+    source?: string;
+    medium?: string;
+    campaign?: string;
+  };
+}
+
 /**
  * Lightweight summary of a site version for listing history [VO-048].
  */

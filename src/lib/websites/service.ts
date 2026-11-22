@@ -15,9 +15,11 @@ import { assertAuthenticatedUser, assertBusinessAccess } from "@/lib/auth/tenant
 import { CANONICAL_MODULES } from "@/lib/niches/constants";
 import { buildInitialWebsiteConfiguration } from "./defaults";
 import {
+  publishSiteDraftInputSchema,
   restoreVersionToDraftInputSchema,
   rollbackPublishedVersionInputSchema,
   saveSiteDraftInputSchema,
+  type PublishSiteDraftInput,
   type RestoreVersionToDraftInput,
   type RollbackPublishedVersionInput,
   type SaveSiteDraftInput,
@@ -27,6 +29,8 @@ import type {
   MediaItemSummary,
   ModuleOperationalStatus,
   ModuleRenderStatus,
+  PublishSiteResult,
+  QrCodeRow,
   RestoreVersionToDraftResult,
   RollbackPublishedVersionResult,
   SaveSiteDraftResult,
@@ -35,6 +39,8 @@ import type {
   SiteVersionSummary,
   WebsiteConfiguration,
 } from "./types";
+import { validateSiteForPublishing } from "./pre-publish-validation";
+import { generateScanSafeQrSvg } from "./qr/service";
 import { migrateWebsiteConfiguration } from "./versioning";
 
 export class WebsiteError extends Error {
@@ -560,6 +566,119 @@ export async function restoreVersionToDraft(
     site: saveResult.site,
     version: saveResult.version,
     configuration: saveResult.configuration,
+  };
+}
+
+/**
+ * Atomically publishes the working site draft [VO-049].
+ *
+ * 1. Validates inputs with `publishSiteDraftInputSchema`.
+ * 2. Asserts tenant access on business and site.
+ * 3. Runs comprehensive server-authoritative pre-publish validation.
+ * 4. Invokes atomic PostgreSQL RPC `publish_site_draft_atomic`:
+ *    - Row locking (`FOR UPDATE OF s`)
+ *    - Enforces optimistic concurrency on draft version number
+ *    - Enforces workspace plan live website capacity
+ *    - Stamped published_at on version row
+ *    - Updates sites.published_version_id and sites.status = 'published'
+ *    - Provisions permanent main storefront QR code
+ *    - Emits site.published audit log
+ */
+export async function publishSiteDraft(
+  supabase: SupabaseClient<Database>,
+  callerUserId: string,
+  input: PublishSiteDraftInput,
+): Promise<PublishSiteResult> {
+  const validated = publishSiteDraftInputSchema.parse(input);
+
+  // 1. Authorize site and business access
+  const site = await getSiteById(supabase, validated.siteId);
+  const { business } = await assertBusinessAccess(supabase, site.business_id);
+
+  // 2. Run pre-publish validation
+  const validationResult = await validateSiteForPublishing(supabase, site.id);
+  if (!validationResult.canPublish) {
+    const errorMessages = validationResult.checks
+      .filter((c) => c.severity === "error")
+      .map((c) => c.message)
+      .join("; ");
+    throw new WebsiteError(
+      `Pre-publish validation failed: ${errorMessages}`,
+      "PRE_PUBLISH_VALIDATION_FAILED",
+      400,
+    );
+  }
+
+  // 3. Resolve target version ID if not explicitly specified
+  const targetVersionId = validated.targetVersionId || site.current_draft_version_id;
+  if (!targetVersionId) {
+    throw new WebsiteError("No draft version available to publish", "DRAFT_VERSION_NOT_FOUND", 404);
+  }
+
+  // 4. Invoke atomic publishing RPC
+  const { data: rpcData, error: rpcError } = await supabase.rpc("publish_site_draft_atomic", {
+    p_site_id: site.id,
+    p_business_id: business.id,
+    p_caller_user_id: callerUserId,
+    p_target_version_id: targetVersionId,
+    p_expected_draft_version_number: validated.expectedDraftVersionNumber,
+  });
+
+  if (rpcError || !rpcData) {
+    const errorMsg = rpcError?.message || "Failed to publish site draft";
+    if (
+      errorMsg.includes("conflict") ||
+      errorMsg.includes("Draft has changed") ||
+      rpcError?.code === "VY049"
+    ) {
+      throw new WebsiteError(errorMsg, "CONFLICT", 409);
+    }
+    if (
+      errorMsg.includes("limit reached") ||
+      errorMsg.includes("Capacity limit") ||
+      rpcError?.code === "VY042"
+    ) {
+      throw new WebsiteError(errorMsg, "CAPACITY_EXCEEDED", 403);
+    }
+    if (
+      errorMsg.includes("Access denied") ||
+      errorMsg.includes("Unauthorized") ||
+      rpcError?.code === "VY020"
+    ) {
+      throw new WebsiteError(errorMsg, "UNAUTHORIZED", 403);
+    }
+    if (errorMsg.includes("not found") || rpcError?.code === "VY040") {
+      throw new WebsiteError(errorMsg, "NOT_FOUND", 404);
+    }
+    throw new WebsiteError(errorMsg, "PUBLISH_FAILED", 500);
+  }
+
+  const rawResult = rpcData as unknown as {
+    site: SiteRow;
+    publishedVersion: SiteVersionRow;
+    mainQrCode?: QrCodeRow;
+  };
+
+  const platformUrl = `https://${rawResult.site.subdomain}.vyapone.in`;
+  const customDomainUrl = rawResult.site.primary_domain
+    ? `https://${rawResult.site.primary_domain}`
+    : undefined;
+
+  let qrSvg: string | undefined;
+  try {
+    const targetUrl = customDomainUrl || platformUrl;
+    qrSvg = await generateScanSafeQrSvg(targetUrl);
+  } catch {
+    // Non-blocking fallback
+  }
+
+  return {
+    site: rawResult.site,
+    publishedVersion: rawResult.publishedVersion,
+    mainQrCode: rawResult.mainQrCode,
+    platformUrl,
+    customDomainUrl,
+    qrSvg,
   };
 }
 

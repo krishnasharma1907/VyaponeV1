@@ -9,13 +9,25 @@
 import { revalidatePath } from "next/cache";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 import {
+  addCustomDomainInputSchema,
   getSiteVersionsQuerySchema,
+  publishSiteDraftInputSchema,
+  removeCustomDomainInputSchema,
   restoreVersionToDraftInputSchema,
   rollbackPublishedVersionInputSchema,
   saveSiteDraftInputSchema,
+  updateQrDestinationInputSchema,
+  validatePrePublishInputSchema,
+  verifyCustomDomainInputSchema,
+  type AddCustomDomainInput,
+  type PublishSiteDraftInput,
+  type RemoveCustomDomainInput,
   type RestoreVersionToDraftInput,
   type RollbackPublishedVersionInput,
   type SaveSiteDraftInput,
+  type UpdateQrDestinationInput,
+  type ValidatePrePublishInput,
+  type VerifyCustomDomainInput,
 } from "./schemas";
 import {
   getSiteByBusinessId,
@@ -23,17 +35,32 @@ import {
   getSiteConfigurationById,
   getSiteVersionHistory,
   loadOwnerWebsiteWorkspace,
+  publishSiteDraft,
   restoreVersionToDraft,
   rollbackPublishedVersion,
   saveSiteDraftConfiguration,
   WebsiteError,
   type OwnerWebsiteWorkspaceData,
 } from "./service";
+import { validateSiteForPublishing } from "./pre-publish-validation";
+import {
+  addCustomDomain,
+  getSiteDomains,
+  removeCustomDomain,
+  verifyCustomDomain,
+  type AddDomainResult,
+  type VerifyDomainResult,
+} from "./domains/service";
+import { getOrCreateMainStorefrontQr, updateQrDestination } from "./qr/service";
 import type {
   GetSiteVersionsResult,
+  PrePublishValidationResult,
+  PublishSiteResult,
+  QrCodeRow,
   RestoreVersionToDraftResult,
   RollbackPublishedVersionResult,
   SaveSiteDraftResult,
+  SiteDomainRow,
   SiteRow,
   SiteVersionRow,
   WebsiteActionResult,
@@ -305,6 +332,285 @@ export async function restoreVersionToDraftAction(
 
     revalidatePath("/dashboard/website");
     revalidatePath("/workspace/clients");
+
+    return { success: true, data: result };
+  } catch (error) {
+    return { success: false, ...sanitizeError(error) };
+  }
+}
+
+/**
+ * Validates a website draft against all pre-publishing rules [VO-049].
+ */
+export async function validateSitePrePublishAction(
+  rawInput: ValidatePrePublishInput,
+): Promise<WebsiteActionResult<PrePublishValidationResult>> {
+  try {
+    const supabase = await createServerSupabaseClient();
+    const {
+      data: { user },
+      error: authError,
+    } = await supabase.auth.getUser();
+
+    if (authError || !user) {
+      return { success: false, error: "Authentication required", code: "UNAUTHENTICATED" };
+    }
+
+    const parsed = validatePrePublishInputSchema.parse(rawInput);
+    const result = await validateSiteForPublishing(supabase, parsed.siteId);
+
+    return { success: true, data: result };
+  } catch (error) {
+    return { success: false, ...sanitizeError(error) };
+  }
+}
+
+/**
+ * Publishes the working draft of a site atomically [VO-049].
+ */
+export async function publishSiteDraftAction(
+  rawInput: PublishSiteDraftInput,
+): Promise<WebsiteActionResult<PublishSiteResult>> {
+  try {
+    const supabase = await createServerSupabaseClient();
+    const {
+      data: { user },
+      error: authError,
+    } = await supabase.auth.getUser();
+
+    if (authError || !user) {
+      return { success: false, error: "Authentication required", code: "UNAUTHENTICATED" };
+    }
+
+    const parseResult = publishSiteDraftInputSchema.safeParse(rawInput);
+    if (!parseResult.success) {
+      const fieldErrors: Record<string, string[]> = {};
+      for (const issue of parseResult.error.issues) {
+        const path = issue.path.join(".");
+        if (!fieldErrors[path]) fieldErrors[path] = [];
+        fieldErrors[path].push(issue.message);
+      }
+      return {
+        success: false,
+        error: "Validation failed: please check publish parameters",
+        code: "VALIDATION_FAILED",
+        validationErrors: fieldErrors,
+      };
+    }
+
+    const result = await publishSiteDraft(supabase, user.id, parseResult.data);
+
+    revalidatePath("/dashboard/website");
+    revalidatePath("/workspace/clients");
+    revalidatePath(`/s/${result.site.subdomain}`, "layout");
+
+    return { success: true, data: result };
+  } catch (error) {
+    return { success: false, ...sanitizeError(error) };
+  }
+}
+
+/**
+ * Adds a custom domain to a website [VO-049].
+ */
+export async function addCustomDomainAction(
+  rawInput: AddCustomDomainInput,
+): Promise<WebsiteActionResult<AddDomainResult>> {
+  try {
+    const supabase = await createServerSupabaseClient();
+    const {
+      data: { user },
+      error: authError,
+    } = await supabase.auth.getUser();
+
+    if (authError || !user) {
+      return { success: false, error: "Authentication required", code: "UNAUTHENTICATED" };
+    }
+
+    const parseResult = addCustomDomainInputSchema.safeParse(rawInput);
+    if (!parseResult.success) {
+      const fieldErrors: Record<string, string[]> = {};
+      for (const issue of parseResult.error.issues) {
+        const path = issue.path.join(".");
+        if (!fieldErrors[path]) fieldErrors[path] = [];
+        fieldErrors[path].push(issue.message);
+      }
+      return {
+        success: false,
+        error: "Validation failed: please check domain parameters",
+        code: "VALIDATION_FAILED",
+        validationErrors: fieldErrors,
+      };
+    }
+
+    const result = await addCustomDomain(supabase, parseResult.data);
+
+    revalidatePath("/dashboard/website");
+
+    return { success: true, data: result };
+  } catch (error) {
+    return { success: false, ...sanitizeError(error) };
+  }
+}
+
+/**
+ * Checks DNS verification for a custom domain [VO-049].
+ */
+export async function verifyCustomDomainAction(
+  rawInput: VerifyCustomDomainInput,
+): Promise<WebsiteActionResult<VerifyDomainResult>> {
+  try {
+    const supabase = await createServerSupabaseClient();
+    const {
+      data: { user },
+      error: authError,
+    } = await supabase.auth.getUser();
+
+    if (authError || !user) {
+      return { success: false, error: "Authentication required", code: "UNAUTHENTICATED" };
+    }
+
+    const parseResult = verifyCustomDomainInputSchema.safeParse(rawInput);
+    if (!parseResult.success) {
+      return {
+        success: false,
+        error: "Validation failed: please check domain parameters",
+        code: "VALIDATION_FAILED",
+      };
+    }
+
+    const result = await verifyCustomDomain(supabase, parseResult.data);
+
+    revalidatePath("/dashboard/website");
+
+    return { success: true, data: result };
+  } catch (error) {
+    return { success: false, ...sanitizeError(error) };
+  }
+}
+
+/**
+ * Removes a custom domain from a website [VO-049].
+ */
+export async function removeCustomDomainAction(
+  rawInput: RemoveCustomDomainInput,
+): Promise<WebsiteActionResult<{ success: boolean }>> {
+  try {
+    const supabase = await createServerSupabaseClient();
+    const {
+      data: { user },
+      error: authError,
+    } = await supabase.auth.getUser();
+
+    if (authError || !user) {
+      return { success: false, error: "Authentication required", code: "UNAUTHENTICATED" };
+    }
+
+    const parseResult = removeCustomDomainInputSchema.safeParse(rawInput);
+    if (!parseResult.success) {
+      return {
+        success: false,
+        error: "Validation failed: please check domain parameters",
+        code: "VALIDATION_FAILED",
+      };
+    }
+
+    const result = await removeCustomDomain(supabase, parseResult.data);
+
+    revalidatePath("/dashboard/website");
+
+    return { success: true, data: result };
+  } catch (error) {
+    return { success: false, ...sanitizeError(error) };
+  }
+}
+
+/**
+ * Retrieves all custom domains configured for a website [VO-049].
+ */
+export async function getSiteDomainsAction(
+  siteId: string,
+): Promise<WebsiteActionResult<SiteDomainRow[]>> {
+  try {
+    const supabase = await createServerSupabaseClient();
+    const {
+      data: { user },
+      error: authError,
+    } = await supabase.auth.getUser();
+
+    if (authError || !user) {
+      return { success: false, error: "Authentication required", code: "UNAUTHENTICATED" };
+    }
+
+    const result = await getSiteDomains(supabase, siteId);
+
+    return { success: true, data: result };
+  } catch (error) {
+    return { success: false, ...sanitizeError(error) };
+  }
+}
+
+/**
+ * Retrieves or lazily creates the permanent main storefront QR code [VO-049].
+ */
+export async function getMainStorefrontQrAction(
+  siteId: string,
+): Promise<WebsiteActionResult<QrCodeRow>> {
+  try {
+    const supabase = await createServerSupabaseClient();
+    const {
+      data: { user },
+      error: authError,
+    } = await supabase.auth.getUser();
+
+    if (authError || !user) {
+      return { success: false, error: "Authentication required", code: "UNAUTHENTICATED" };
+    }
+
+    const result = await getOrCreateMainStorefrontQr(supabase, siteId);
+
+    return { success: true, data: result };
+  } catch (error) {
+    return { success: false, ...sanitizeError(error) };
+  }
+}
+
+/**
+ * Updates dynamic destination configuration for a QR code [VO-049].
+ */
+export async function updateQrDestinationAction(
+  rawInput: UpdateQrDestinationInput,
+): Promise<WebsiteActionResult<QrCodeRow>> {
+  try {
+    const supabase = await createServerSupabaseClient();
+    const {
+      data: { user },
+      error: authError,
+    } = await supabase.auth.getUser();
+
+    if (authError || !user) {
+      return { success: false, error: "Authentication required", code: "UNAUTHENTICATED" };
+    }
+
+    const parseResult = updateQrDestinationInputSchema.safeParse(rawInput);
+    if (!parseResult.success) {
+      const fieldErrors: Record<string, string[]> = {};
+      for (const issue of parseResult.error.issues) {
+        const path = issue.path.join(".");
+        if (!fieldErrors[path]) fieldErrors[path] = [];
+        fieldErrors[path].push(issue.message);
+      }
+      return {
+        success: false,
+        error: "Validation failed: please check QR destination parameters",
+        code: "VALIDATION_FAILED",
+        validationErrors: fieldErrors,
+      };
+    }
+
+    const result = await updateQrDestination(supabase, parseResult.data);
+
+    revalidatePath("/dashboard/website");
 
     return { success: true, data: result };
   } catch (error) {

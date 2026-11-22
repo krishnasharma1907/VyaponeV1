@@ -25,6 +25,7 @@ import type {
   ApprovedBlockType,
   PageConfig,
   SectionConfig,
+  SiteRow,
   SiteVersionSummary,
   WebsiteConfiguration,
 } from "@/lib/websites/types";
@@ -54,6 +55,7 @@ import { SectionNavigator } from "./section-navigator";
 import { SectionInspector } from "./section-inspector";
 import { AddSectionModal } from "./add-section-modal";
 import { VersionHistoryModal } from "./version-history-modal";
+import { PublishModal } from "./publish-modal";
 import type {
   ConstrainedWebsiteEditorProps,
   EditorDeviceMode,
@@ -98,7 +100,9 @@ export function ConstrainedWebsiteEditor({
   );
 
   // Version history & rollback state [VO-048]
+  const [currentSite, setCurrentSite] = useState<SiteRow>(initialSite);
   const [isHistoryModalOpen, setIsHistoryModalOpen] = useState<boolean>(false);
+  const [isPublishModalOpen, setIsPublishModalOpen] = useState<boolean>(false);
   const [inspectedVersion, setInspectedVersion] = useState<{
     summary: SiteVersionSummary;
     configuration: WebsiteConfiguration;
@@ -709,6 +713,7 @@ export function ConstrainedWebsiteEditor({
         isInspectingHistory={inspectedVersion !== null}
         inspectedVersionNumber={inspectedVersion?.summary.versionNumber ?? null}
         onExitInspection={() => setInspectedVersion(null)}
+        onOpenPublish={() => setIsPublishModalOpen(true)}
       />
 
       {/* Local Transient Draft Recovery Banner [VO-047] */}
@@ -1024,6 +1029,18 @@ export function ConstrainedWebsiteEditor({
         onRollbackLiveSite={handleRollbackLiveSite}
         isRestoring={isRestoringVersion}
         isRollingBack={isRollingBackVersion}
+      />
+
+      {/* Pre-publish & Publishing Modal [VO-049] */}
+      <PublishModal
+        isOpen={isPublishModalOpen}
+        onClose={() => setIsPublishModalOpen(false)}
+        site={currentSite}
+        draftVersionNumber={currentVersionNumber || 1}
+        onPublishSuccess={(result) => {
+          setCurrentSite(result.site);
+          setCurrentPublishedVersionId(result.publishedVersion.id);
+        }}
       />
     </div>
   );

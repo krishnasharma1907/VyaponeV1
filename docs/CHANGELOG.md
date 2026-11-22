@@ -4,6 +4,39 @@ Record implementation changes by task ID. Do not record planned work as complete
 
 ## Unreleased
 
+### [VO-049] — Implement Pre-publish Validation, Domains and QR (2026-11-22)
+- Implemented server-authoritative pre-publish validation, custom domain provider adapter boundary, permanent dynamic QR redirect route, and atomic site publishing workflow (PRD FINAL v2 §5.5, §6.14, §15.3, §16, §17.3 FR-08, §17.3 FR-09, §17.3 FR-10, §21 item 11):
+  - **Database Migration & Atomic Publishing RPC (`20261122000003_website_publishing_domains_and_qr.sql`):**
+    - Schema tables: `public.site_domains` (custom domains, verification status, DNS challenge records, SSL status) and `public.qr_codes` (dynamic QR codes, public slugs, destination configuration, scan tracking).
+    - Atomic RPC: `public.publish_site_draft_atomic(p_site_id, p_business_id, p_caller_user_id, p_expected_draft_version_number)`.
+    - Row-level locking on `sites` (`FOR UPDATE OF s`) serializing concurrent publish/rollback operations.
+    - Concurrency check enforcing `p_expected_draft_version_number` against current draft version number (`VY049`).
+    - Subscription plan capacity enforcement: checks active live websites against `effective_limit` on `live_websites` limit key.
+    - Lazily provisions or attaches permanent dynamic QR code for the main storefront.
+    - Audit log emitted: `site.published`.
+  - **Pre-publish Validation Engine (`pre-publish-validation.ts`):**
+    - Server-authoritative validation checking business trade name, contact phone, primary location, site metadata, valid subdomain, favicon, meta description, navigation link targets, media assets verification on `media_items`, 13 canonical block schemas, required platform modules on `business_modules`, and plan capacity via `getCapacityUsage`.
+    - Structured result model with categorized checklist, clear distinction between blocking errors and non-blocking warnings, and direct edit navigation paths.
+  - **Custom Domain Adapter Boundary (`domains/`):**
+    - Provider-neutral adapter interface `CustomDomainProviderAdapter` with `MockCustomDomainAdapter`.
+    - Domain management operations: `addCustomDomain`, `verifyCustomDomain`, `removeCustomDomain`, `getSiteDomains`, `resolveSiteByDomain`.
+    - Generates DNS challenge records (`dns_txt`, `dns_cname`) and prevents duplicate or cross-tenant domain hijacking.
+  - **Permanent Dynamic QR Engine & Route Handler (`qr/service.ts`, `app/(public)/qr/[slug]/route.ts`):**
+    - Provisions permanent public slugs (e.g. `/qr/qr_abcd1234`) on stable QR codes.
+    - Dynamic destination updates without reprinting physical standees.
+    - Strict open-redirect protection sanitizing paths to internal relative routes or authorized storefronts.
+    - Route handler returns HTTP `307 Temporary Redirect` with `Cache-Control: no-store, no-cache, must-revalidate`.
+    - High-contrast, scan-safe SVG generator with minimum 4-module quiet zone.
+  - **Publish Modal & Editor Integration (`PublishModal`, `EditorTopBar`, `ConstrainedWebsiteEditor`):**
+    - Integrated "Publish" button in editor top bar opening accessible review modal.
+    - Categorized checklist with progress indicators, blocking error warnings, and live web addresses upon publishing.
+  - **Verification:**
+    - 14 database migration unit tests in `tests/unit/database/website-publishing-migration.test.ts`.
+    - 24 pre-publish and publishing unit tests in `tests/unit/websites/pre-publish-and-publishing.test.tsx`.
+    - 245 website suite unit tests in `tests/unit/websites/` passing 100%.
+    - Full repository test suite (107 files, 1,345 tests) passing 100%.
+    - Strict TypeScript check (`tsc --noEmit`), linter (`pnpm lint`), and production build (`pnpm build`) passing 100%.
+
 ### [VO-048] — Implement Site Versions and Rollback (2026-11-22)
 - Implemented immutable site version history, read-only preview inspection, conflict-safe live rollback, and historical version restore in the constrained website editor (PRD FINAL v2 §5.5, §6.14, §15.3, §16, §17.3 FR-07, §21 item 11):
   - **PostgreSQL Migration & Atomic Rollback RPC (`20261122000002_website_rollback_rpc.sql`):**

@@ -619,6 +619,136 @@ export interface Database {
         ];
       };
 
+      site_domains: {
+        Row: {
+          id: string;
+          site_id: string;
+          business_id: string;
+          domain: string;
+          status: "pending_verification" | "verified" | "active" | "failed" | "suspended";
+          verification_method: "dns_txt" | "dns_cname";
+          verification_token: string;
+          verification_target: string;
+          verified_at: string | null;
+          last_checked_at: string | null;
+          ssl_status: "pending" | "active" | "failed";
+          error_message: string | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          site_id: string;
+          business_id: string;
+          domain: string;
+          status?: "pending_verification" | "verified" | "active" | "failed" | "suspended";
+          verification_method?: "dns_txt" | "dns_cname";
+          verification_token: string;
+          verification_target: string;
+          verified_at?: string | null;
+          last_checked_at?: string | null;
+          ssl_status?: "pending" | "active" | "failed";
+          error_message?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          site_id?: string;
+          business_id?: string;
+          domain?: string;
+          status?: "pending_verification" | "verified" | "active" | "failed" | "suspended";
+          verification_method?: "dns_txt" | "dns_cname";
+          verification_token?: string;
+          verification_target?: string;
+          verified_at?: string | null;
+          last_checked_at?: string | null;
+          ssl_status?: "pending" | "active" | "failed";
+          error_message?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "site_domains_site_id_fkey";
+            columns: ["site_id"];
+            isOneToOne: false;
+            referencedRelation: "sites";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "site_domains_business_id_fkey";
+            columns: ["business_id"];
+            isOneToOne: false;
+            referencedRelation: "businesses";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+
+      qr_codes: {
+        Row: {
+          id: string;
+          site_id: string;
+          business_id: string;
+          type: "main_storefront" | "page" | "catalogue" | "table" | "booking" | "offer" | "custom";
+          public_slug: string;
+          title: string;
+          destination_configuration: Json;
+          status: "active" | "inactive" | "archived";
+          scan_count: number;
+          last_scanned_at: string | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          site_id: string;
+          business_id: string;
+          type?:
+            "main_storefront" | "page" | "catalogue" | "table" | "booking" | "offer" | "custom";
+          public_slug: string;
+          title?: string;
+          destination_configuration?: Json;
+          status?: "active" | "inactive" | "archived";
+          scan_count?: number;
+          last_scanned_at?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          site_id?: string;
+          business_id?: string;
+          type?:
+            "main_storefront" | "page" | "catalogue" | "table" | "booking" | "offer" | "custom";
+          public_slug?: string;
+          title?: string;
+          destination_configuration?: Json;
+          status?: "active" | "inactive" | "archived";
+          scan_count?: number;
+          last_scanned_at?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "qr_codes_site_id_fkey";
+            columns: ["site_id"];
+            isOneToOne: false;
+            referencedRelation: "sites";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "qr_codes_business_id_fkey";
+            columns: ["business_id"];
+            isOneToOne: false;
+            referencedRelation: "businesses";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+
       catalogue_items: {
         Row: {
           id: string;
@@ -1769,6 +1899,16 @@ export interface Database {
           p_caller_user_id: string;
           p_target_version_id: string;
           p_expected_current_published_version_id: string | null;
+        };
+        Returns: Json;
+      };
+      publish_site_draft_atomic: {
+        Args: {
+          p_site_id: string;
+          p_business_id: string;
+          p_caller_user_id: string;
+          p_target_version_id: string;
+          p_expected_draft_version_number: number | null;
         };
         Returns: Json;
       };

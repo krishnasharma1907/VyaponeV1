@@ -40,6 +40,7 @@ export function EditorTopBar({
   isInspectingHistory = false,
   inspectedVersionNumber = null,
   onExitInspection,
+  onOpenPublish,
   className = "",
 }: EditorTopBarProps) {
   const formattedSavedTime = lastSavedAt
@@ -363,6 +364,20 @@ export function EditorTopBar({
         >
           {isInspectingHistory ? "Read-Only" : isSaving ? "Saving..." : "Save Draft"}
         </Button>
+
+        {/* Publish Action Button [VO-049] */}
+        {onOpenPublish && (
+          <Button
+            variant="primary"
+            size="sm"
+            onClick={onOpenPublish}
+            disabled={isSaving || isInspectingHistory}
+            aria-label="Open publish checklist"
+            className="font-medium bg-emerald-600 hover:bg-emerald-700 text-white"
+          >
+            Publish
+          </Button>
+        )}
       </div>
 
       {/* Conflict / Error Banner */}

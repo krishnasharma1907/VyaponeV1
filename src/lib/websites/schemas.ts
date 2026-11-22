@@ -439,3 +439,107 @@ export const getSiteVersionsQuerySchema = z.object({
 });
 
 export type GetSiteVersionsQuery = z.infer<typeof getSiteVersionsQuerySchema>;
+
+/**
+ * Input schema for pre-publish validation [VO-049].
+ */
+export const validatePrePublishInputSchema = z.object({
+  siteId: z.string().uuid("Invalid site ID"),
+});
+
+export type ValidatePrePublishInput = z.infer<typeof validatePrePublishInputSchema>;
+
+/**
+ * Input schema for atomic site publishing [VO-049].
+ */
+export const publishSiteDraftInputSchema = z.object({
+  siteId: z.string().uuid("Invalid site ID"),
+  expectedDraftVersionNumber: z
+    .number()
+    .int()
+    .positive("Expected draft version number must be positive"),
+  targetVersionId: z.string().uuid("Invalid target version ID").optional(),
+});
+
+export type PublishSiteDraftInput = z.infer<typeof publishSiteDraftInputSchema>;
+
+/**
+ * Input schema for adding a custom domain [VO-049].
+ */
+export const addCustomDomainInputSchema = z.object({
+  siteId: z.string().uuid("Invalid site ID"),
+  domain: z
+    .string()
+    .trim()
+    .toLowerCase()
+    .min(4, "Domain must be at least 4 characters")
+    .max(253, "Domain exceeds maximum length")
+    .regex(
+      /^(?!:\/\/)([a-zA-Z0-9-_]+\.)+[a-zA-Z]{2,}$/,
+      "Must be a valid fully-qualified domain name (e.g. store.example.com)",
+    )
+    .refine((d) => !d.endsWith(".vyapone.in") && !d.endsWith(".localhost") && d !== "localhost", {
+      message:
+        "Platform domains (*.vyapone.in) and localhost cannot be registered as custom domains",
+    })
+    .refine((d) => !/^(\d{1,3}\.){3}\d{1,3}$/.test(d), {
+      message: "IP addresses cannot be registered as custom domains",
+    }),
+});
+
+export type AddCustomDomainInput = z.infer<typeof addCustomDomainInputSchema>;
+
+/**
+ * Input schema for verifying a custom domain [VO-049].
+ */
+export const verifyCustomDomainInputSchema = z.object({
+  domainId: z.string().uuid("Invalid domain ID"),
+  siteId: z.string().uuid("Invalid site ID"),
+});
+
+export type VerifyCustomDomainInput = z.infer<typeof verifyCustomDomainInputSchema>;
+
+/**
+ * Input schema for removing a custom domain [VO-049].
+ */
+export const removeCustomDomainInputSchema = z.object({
+  domainId: z.string().uuid("Invalid domain ID"),
+  siteId: z.string().uuid("Invalid site ID"),
+});
+
+export type RemoveCustomDomainInput = z.infer<typeof removeCustomDomainInputSchema>;
+
+/**
+ * Destination configuration schema for dynamic QR codes [VO-049].
+ */
+export const qrDestinationConfigSchema = z.object({
+  type: z.enum(["storefront", "page", "internal_path"]),
+  path: z
+    .string()
+    .regex(/^\/[a-zA-Z0-9_\-\/]*$/, "Path must start with '/'")
+    .optional(),
+  pageSlug: z
+    .string()
+    .regex(/^\/[a-zA-Z0-9_\-\/]*$/, "Page slug must start with '/'")
+    .optional(),
+  utmParams: z
+    .object({
+      source: z.string().trim().max(50).optional(),
+      medium: z.string().trim().max(50).optional(),
+      campaign: z.string().trim().max(50).optional(),
+    })
+    .optional(),
+});
+
+export type ValidatedQrDestinationConfig = z.infer<typeof qrDestinationConfigSchema>;
+
+/**
+ * Input schema for updating QR code destination [VO-049].
+ */
+export const updateQrDestinationInputSchema = z.object({
+  qrCodeId: z.string().uuid("Invalid QR code ID"),
+  siteId: z.string().uuid("Invalid site ID"),
+  destinationConfiguration: qrDestinationConfigSchema,
+});
+
+export type UpdateQrDestinationInput = z.infer<typeof updateQrDestinationInputSchema>;

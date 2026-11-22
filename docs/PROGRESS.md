@@ -1,10 +1,10 @@
 # VyapOne Build Progress
 
-**Current phase:** P4 — Website engine, templates and publishing (`IN_PROGRESS`)  
-**Completed tasks:** VO-000, VO-001, VO-002, VO-003, VO-004, VO-005, VO-006, VO-010, VO-011, VO-012, VO-013, VO-014, VO-015, VO-016, VO-017, VO-018, VO-019, VO-020, VO-021, VO-022, VO-023, VO-024, VO-025, VO-026, VO-027, VO-028, VO-030, VO-031, VO-032, VO-033, VO-034, VO-040, VO-041, VO-042, VO-043, VO-044, VO-045, VO-046, VO-047, VO-048  
-**Latest task:** VO-048 — Implement site versions and rollback  
-**Next task:** VO-049 — Implement pre-publish validation, domains and QR  
-**Project status:** IMMUTABLE SITE VERSION HISTORY, READ-ONLY PREVIEW INSPECTION, CONFLICT-SAFE LIVE ROLLBACK, AND HISTORICAL VERSION RESTORE INTEGRATED INTO CONSTRAINED WEBSITE EDITOR / PHASE P4 IN PROGRESS  
+**Current phase:** P4 — Website engine, templates and publishing (`COMPLETE`)  
+**Completed tasks:** VO-000, VO-001, VO-002, VO-003, VO-004, VO-005, VO-006, VO-010, VO-011, VO-012, VO-013, VO-014, VO-015, VO-016, VO-017, VO-018, VO-019, VO-020, VO-021, VO-022, VO-023, VO-024, VO-025, VO-026, VO-027, VO-028, VO-030, VO-031, VO-032, VO-033, VO-034, VO-040, VO-041, VO-042, VO-043, VO-044, VO-045, VO-046, VO-047, VO-048, VO-049  
+**Latest task:** VO-049 — Implement pre-publish validation, domains and QR  
+**Next task:** VO-050 — Create provider-neutral AI gateway  
+**Project status:** SERVER-AUTHORITATIVE PRE-PUBLISH VALIDATION, CUSTOM DOMAIN ADAPTER BOUNDARY, PERMANENT DYNAMIC QR REDIRECTS, AND ATOMIC SITE PUBLISHING RPC FULLY INTEGRATED / PHASE P4 COMPLETE  
 
 ## Phase status
 
@@ -14,7 +14,57 @@
 | P1 — Repository, design system and application shell | COMPLETE | All tasks VO-010 to VO-019 verified and done; Phase P1 gate passed |
 | P2 — Platform identity, authentication and multi-tenancy | COMPLETE | All tasks VO-020 to VO-028 verified and done; Phase P2 gate passed |
 | P3 — Niche registry, presets and business onboarding | COMPLETE | All tasks VO-030 to VO-034 verified and done; Phase P3 complete |
-| P4 — Website engine, templates and publishing | IN_PROGRESS | VO-040 through VO-048 complete; VO-049 next |
+| P4 — Website engine, templates and publishing | COMPLETE | All tasks VO-040 through VO-049 verified and done; Phase P4 complete |
+
+## Task Report: VO-049 — Implement Pre-publish Validation, Domains and QR
+
+- **Target:** VO-049 — Implement pre-publish validation, domains and QR
+- **Phase:** P4 — Website engine, templates and publishing
+- **Status:** COMPLETED & VERIFIED
+- **Key Deliverables Implemented & Verified:**
+  1. **PostgreSQL Migration & Atomic Publishing RPC (`20261122000003_website_publishing_domains_and_qr.sql`):**
+     - Schema extensions: `public.site_domains` (custom domains, verification status, DNS challenge records, SSL status) and `public.qr_codes` (dynamic QR codes, public slugs, destination configuration, scan tracking).
+     - Atomic RPC: `public.publish_site_draft_atomic(p_site_id, p_business_id, p_caller_user_id, p_expected_draft_version_number)`.
+     - Strict `SECURITY DEFINER` with fixed `search_path = ''`.
+     - Row-level lock (`FOR UPDATE OF s`) serializing concurrent publishing operations.
+     - Enforces optimistic concurrency (`VY049`) against expected draft version number to prevent publishing stale edits.
+     - Subscription plan capacity enforcement: checks active live websites against `effective_limit` on `live_websites` limit key.
+     - Lazily provisions or attaches permanent dynamic QR code for the main storefront.
+     - Emits structured audit log: `site.published`.
+     - Direct execution revoked from anon and PUBLIC; granted to authenticated and service_role.
+  2. **Server-Authoritative Pre-publish Validation Engine (`pre-publish-validation.ts`):**
+     - Comprehensive validation checks:
+       - Business facts: trade name, contact phone, primary business location.
+       - Site metadata & SEO: page title, valid subdomain format, favicon, meta description.
+       - Navigation: all links have valid targets, no orphan pages.
+       - Media assets: verifies all referenced media exists in `media_items`, belongs to business tenant, is public, and is in `ready` status.
+       - Approved blocks: strictly validates all sections against 13 canonical block schemas.
+       - Business modules: verifies required platform modules are enabled in `business_modules`.
+       - Plan capacity: verifies business has available `live_websites` capacity via `getCapacityUsage`.
+     - Structured response model with clear distinction between blocking errors and non-blocking warnings, navigation edit paths, and detailed error messages.
+  3. **Custom Domain Adapter Boundary (`domains/`):**
+     - Provider-neutral adapter interface `CustomDomainProviderAdapter` with `MockCustomDomainAdapter` implementation.
+     - Full domain management lifecycle: `addCustomDomain`, `verifyCustomDomain`, `removeCustomDomain`, `getSiteDomains`, `resolveSiteByDomain`.
+     - Generates DNS challenge instructions (`dns_txt` and `dns_cname`) and prevents duplicate or cross-tenant domain hijacking.
+  4. **Permanent Dynamic QR Code Engine & Route Handler (`qr/service.ts`, `app/(public)/qr/[slug]/route.ts`):**
+     - Generates permanent public slugs (e.g. `/qr/qr_abcd1234`) on stable QR codes.
+     - Dynamic destination updating without reprinting physical standees.
+     - Strict open-redirect protection (sanitizes targets to internal relative routes or authorized storefronts).
+     - Route handler returns HTTP `307 Temporary Redirect` with `Cache-Control: no-store, no-cache, must-revalidate` ensuring camera apps and browsers never cache temporary redirect destinations.
+     - High-contrast, scan-safe SVG generator with $\ge 4$-module quiet zone.
+  5. **UI & Constrained Website Editor Integration (`PublishModal`, `EditorTopBar`, `ConstrainedWebsiteEditor`):**
+     - Top bar "Publish" button opens accessible review modal.
+     - Categorized pre-publish checklist with status badges, error indicators, and direct edit navigation.
+     - Prevents publishing when blocking errors exist.
+     - Post-publish success view displaying live platform URL, custom domain URL, and high-contrast dynamic QR standee preview.
+  6. **Verification Evidence & Quality Gates:**
+     - Database migration unit suite (`tests/unit/database/website-publishing-migration.test.ts`, 14 tests): 100% passing.
+     - Pre-publish and publishing unit suite (`tests/unit/websites/pre-publish-and-publishing.test.tsx`, 24 tests): 100% passing.
+     - Full website test suite (`tests/unit/websites/`, 13 test files, 245 tests): 100% passing.
+     - Full repository test suite (`pnpm test`, 107 test files, 1,345 tests): 100% passing.
+     - Strict TypeScript check (`tsc --noEmit`): 0 errors.
+     - Linter check (`pnpm lint`): 0 errors, 0 warnings.
+     - Production build (`pnpm build`): all routes compiled cleanly including dynamic `/qr/[slug]`.
 
 ## Task Report: VO-048 — Implement Site Versions and Rollback
 

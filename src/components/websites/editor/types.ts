@@ -96,6 +96,7 @@ export interface EditorTopBarProps {
   isInspectingHistory?: boolean;
   inspectedVersionNumber?: number | null;
   onExitInspection?: () => void;
+  onOpenPublish?: () => void;
   className?: string;
 }
 
