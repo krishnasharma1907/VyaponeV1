@@ -12,9 +12,18 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database, Json } from "@/lib/supabase/types";
 import { assertAuthenticatedUser, assertBusinessAccess } from "@/lib/auth/tenant-access";
+import { CANONICAL_MODULES } from "@/lib/niches/constants";
 import { buildInitialWebsiteConfiguration } from "./defaults";
 import { saveSiteDraftInputSchema, type SaveSiteDraftInput } from "./schemas";
-import type { SaveSiteDraftResult, SiteRow, SiteVersionRow, WebsiteConfiguration } from "./types";
+import type {
+  MediaItemSummary,
+  ModuleOperationalStatus,
+  ModuleRenderStatus,
+  SaveSiteDraftResult,
+  SiteRow,
+  SiteVersionRow,
+  WebsiteConfiguration,
+} from "./types";
 import { migrateWebsiteConfiguration } from "./versioning";
 
 export class WebsiteError extends Error {
@@ -361,7 +370,84 @@ export interface OwnerWebsiteWorkspaceData {
     currency: string;
     isAvailable: boolean;
   }>;
+  availableMedia: MediaItemSummary[];
+  availableModules: Record<string, ModuleRenderStatus>;
+  mediaUrls: Record<string, string>;
   isStarterDraft: boolean;
+}
+
+/**
+ * Validates all media referenced in a website configuration document against the business media library.
+ * Surfaces broken, cross-tenant, unverified, or non-publishable references (VO-046).
+ */
+export async function validateWebsiteMediaReferences(
+  supabase: SupabaseClient<Database>,
+  businessId: string,
+  config: WebsiteConfiguration,
+): Promise<{
+  isValid: boolean;
+  brokenMediaIds: string[];
+  unverifiedMediaIds: string[];
+  crossTenantMediaIds: string[];
+  privateMediaIds: string[];
+}> {
+  const referencedIds = extractReferencedMediaIds(config);
+  if (referencedIds.length === 0) {
+    return {
+      isValid: true,
+      brokenMediaIds: [],
+      unverifiedMediaIds: [],
+      crossTenantMediaIds: [],
+      privateMediaIds: [],
+    };
+  }
+
+  const { data: mediaItems, error } = await supabase
+    .from("media_items")
+    .select("id, business_id, status, verified_at, is_public, category, bucket")
+    .in("id", referencedIds);
+
+  if (error) {
+    throw new WebsiteError("Failed to check media references", "MEDIA_CHECK_FAILED", 500);
+  }
+
+  const mediaMap = new Map((mediaItems || []).map((m) => [m.id, m]));
+  const brokenMediaIds: string[] = [];
+  const unverifiedMediaIds: string[] = [];
+  const crossTenantMediaIds: string[] = [];
+  const privateMediaIds: string[] = [];
+
+  for (const id of referencedIds) {
+    const item = mediaMap.get(id);
+    if (!item) {
+      brokenMediaIds.push(id);
+      continue;
+    }
+    if (item.business_id !== businessId) {
+      crossTenantMediaIds.push(id);
+      continue;
+    }
+    if (item.status !== "ready" || !item.verified_at) {
+      unverifiedMediaIds.push(id);
+      continue;
+    }
+    if (!item.is_public || item.bucket !== "vyapone-public-media") {
+      privateMediaIds.push(id);
+    }
+  }
+
+  const isValid =
+    brokenMediaIds.length === 0 &&
+    unverifiedMediaIds.length === 0 &&
+    crossTenantMediaIds.length === 0;
+
+  return {
+    isValid,
+    brokenMediaIds,
+    unverifiedMediaIds,
+    crossTenantMediaIds,
+    privateMediaIds,
+  };
 }
 
 /**
@@ -433,7 +519,92 @@ export async function loadOwnerWebsiteWorkspace(
     isAvailable: item.is_available ?? true,
   }));
 
-  // 6. Fetch or initialize site
+  // 6. Fetch authorized verified media for business (VO-046)
+  const { data: mediaRows } = await supabase
+    .from("media_items")
+    .select(
+      "id, original_filename, category, file_size_bytes, width, height, is_public, status, bucket, object_key, verified_at, published_at",
+    )
+    .eq("business_id", business.id)
+    .eq("status", "ready")
+    .in("category", ["business_logo", "catalogue_image", "website_asset"])
+    .order("created_at", { ascending: false });
+
+  const mediaUrls: Record<string, string> = {};
+  const availableMedia: MediaItemSummary[] = (mediaRows || []).map((m) => {
+    const isFullUrl = m.object_key.startsWith("https://") || m.object_key.startsWith("http://");
+    const url = isFullUrl
+      ? m.object_key
+      : m.is_public
+        ? `https://cdn.vyapone.com/${m.bucket}/${m.object_key}`
+        : `https://cdn.vyapone.com/preview/${m.bucket}/${m.object_key}`;
+
+    if (m.verified_at) {
+      mediaUrls[m.id] = url;
+    }
+
+    return {
+      id: m.id,
+      originalFilename: m.original_filename,
+      category: m.category,
+      fileSizeBytes: Number(m.file_size_bytes),
+      width: m.width,
+      height: m.height,
+      isPublic: m.is_public,
+      status: m.status,
+      url,
+    };
+  });
+
+  // 7. Fetch business module operational availability (VO-046)
+  const { data: bizModules } = await supabase
+    .from("business_modules")
+    .select("module_key, is_enabled")
+    .eq("business_id", business.id);
+
+  const { data: platformModules } = await supabase
+    .from("platform_modules")
+    .select("key, name, category, status");
+
+  const enabledSet = new Set(
+    (bizModules || []).filter((bm) => bm.is_enabled).map((bm) => bm.module_key),
+  );
+
+  const availableModules: Record<string, ModuleRenderStatus> = {};
+  if (platformModules && platformModules.length > 0) {
+    for (const pm of platformModules) {
+      const isEnabled = enabledSet.has(pm.key);
+      let status: ModuleOperationalStatus = "disabled";
+
+      if (pm.status === "coming_soon") {
+        status = "coming_soon";
+      } else if (pm.status === "deprecated") {
+        status = "disabled";
+      } else if (isEnabled) {
+        status = "operational";
+      } else {
+        status = "informational";
+      }
+
+      availableModules[pm.key] = {
+        status,
+        isEnabled,
+        name: pm.name,
+        category: pm.category,
+      };
+    }
+  } else {
+    for (const cm of CANONICAL_MODULES) {
+      availableModules[cm.key] = {
+        status: cm.status === "coming_soon" ? "coming_soon" : "operational",
+        isEnabled: true,
+        name: cm.name,
+        category: cm.category,
+      };
+    }
+  }
+
+  // 8. Fetch or initialize site
   let site = await getSiteByBusinessId(supabase, business.id);
   let version: SiteVersionRow;
   let configuration: WebsiteConfiguration;
@@ -538,6 +709,9 @@ export async function loadOwnerWebsiteWorkspace(
     version,
     configuration,
     catalogueItems,
+    availableMedia,
+    availableModules,
+    mediaUrls,
     isStarterDraft,
   };
 }

@@ -19,6 +19,8 @@ import type { SectionInspectorProps } from "./types";
 
 export function SectionInspector({
   section,
+  availableMedia = [],
+  availableModules = {},
   onUpdateProps,
   onClose,
   validationErrors = {},
@@ -223,6 +225,54 @@ export function SectionInspector({
                   </div>
                 )}
               </div>
+
+              {/* Hero Banner Media Image */}
+              <div className="pt-2 border-t border-slate-100">
+                <label className="block text-xs font-semibold text-slate-700 mb-1">
+                  Featured Banner Image (Optional)
+                </label>
+                {propsState.imageMediaId ? (
+                  <div className="flex items-center justify-between p-2.5 bg-slate-50 border border-slate-200 rounded-lg">
+                    <span className="text-[11px] font-medium text-slate-800 truncate max-w-[200px]">
+                      {availableMedia.find((m) => m.id === propsState.imageMediaId)
+                        ?.originalFilename ||
+                        `Media ID: ${(propsState.imageMediaId as string).substring(0, 8)}...`}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => handlePropChange("imageMediaId", undefined)}
+                      className="text-xs text-rose-600 hover:text-rose-800 font-semibold px-2 py-0.5"
+                    >
+                      Remove
+                    </button>
+                  </div>
+                ) : (
+                  <select
+                    aria-label="Select hero image"
+                    value=""
+                    onChange={(e) => {
+                      if (e.target.value) {
+                        handlePropChange("imageMediaId", e.target.value);
+                      }
+                    }}
+                    className="w-full px-2.5 py-1.5 text-xs border border-slate-200 rounded-lg bg-white"
+                  >
+                    <option value="">Select from business media library...</option>
+                    {availableMedia
+                      .filter((m) =>
+                        ["website_asset", "catalogue_image", "business_logo"].includes(m.category),
+                      )
+                      .map((media) => (
+                        <option key={media.id} value={media.id}>
+                          {media.originalFilename} ({media.category})
+                        </option>
+                      ))}
+                  </select>
+                )}
+                <p className="text-[10px] text-slate-400 mt-1">
+                  Only verified business media items can be attached to website banners.
+                </p>
+              </div>
             </>
           )}
 
@@ -304,12 +354,72 @@ export function SectionInspector({
                   )}
                 </div>
               </div>
+
+              {/* About Photo Media Image */}
+              <div className="pt-2 border-t border-slate-100">
+                <label className="block text-xs font-semibold text-slate-700 mb-1">
+                  Story / Store Photo (Optional)
+                </label>
+                {propsState.imageMediaId ? (
+                  <div className="flex items-center justify-between p-2.5 bg-slate-50 border border-slate-200 rounded-lg">
+                    <span className="text-[11px] font-medium text-slate-800 truncate max-w-[200px]">
+                      {availableMedia.find((m) => m.id === propsState.imageMediaId)
+                        ?.originalFilename ||
+                        `Media ID: ${(propsState.imageMediaId as string).substring(0, 8)}...`}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => handlePropChange("imageMediaId", undefined)}
+                      className="text-xs text-rose-600 hover:text-rose-800 font-semibold px-2 py-0.5"
+                    >
+                      Remove
+                    </button>
+                  </div>
+                ) : (
+                  <select
+                    aria-label="Select about story photo"
+                    value=""
+                    onChange={(e) => {
+                      if (e.target.value) {
+                        handlePropChange("imageMediaId", e.target.value);
+                      }
+                    }}
+                    className="w-full px-2.5 py-1.5 text-xs border border-slate-200 rounded-lg bg-white"
+                  >
+                    <option value="">Select from business media library...</option>
+                    {availableMedia
+                      .filter((m) =>
+                        ["website_asset", "catalogue_image", "business_logo"].includes(m.category),
+                      )
+                      .map((media) => (
+                        <option key={media.id} value={media.id}>
+                          {media.originalFilename} ({media.category})
+                        </option>
+                      ))}
+                  </select>
+                )}
+              </div>
             </>
           )}
 
           {/* Menu / Catalogue Form */}
           {(section.type === "menu" || section.type === "catalogue_grid") && (
             <>
+              <div className="p-3 bg-emerald-50/70 border border-emerald-200/80 rounded-lg text-xs space-y-1">
+                <div className="flex items-center justify-between">
+                  <span className="font-semibold text-emerald-900">Server Data Binding</span>
+                  <Badge variant="success" className="text-[10px]">
+                    {availableModules.catalogue_services?.status === "operational"
+                      ? "Catalogue Active"
+                      : "Catalogue Informational"}
+                  </Badge>
+                </div>
+                <p className="text-[11px] text-emerald-800">
+                  Products, prices, and availability are server-owned facts dynamically rendered
+                  from the Catalogue.
+                </p>
+              </div>
+
               <div>
                 <label className="block text-xs font-semibold text-slate-700 mb-1">
                   Section Headline
@@ -386,12 +496,179 @@ export function SectionInspector({
                   <option value={4}>4 Columns</option>
                 </select>
               </div>
+
+              {/* Gallery Photos Manager */}
+              <div className="pt-2 border-t border-slate-100">
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-xs font-bold text-slate-800">
+                    Gallery Photos ({((propsState.images as Array<unknown>) || []).length} / 50)
+                  </span>
+                </div>
+
+                <div className="space-y-3">
+                  {(
+                    (propsState.images as Array<{
+                      mediaId: string;
+                      caption?: string;
+                      altText?: string;
+                    }>) || []
+                  ).map((img, idx) => (
+                    <div
+                      key={idx}
+                      className="p-3 bg-white border border-slate-200 rounded-lg space-y-2"
+                    >
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs font-semibold text-slate-700">
+                          Photo {idx + 1}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const currentImages = [
+                              ...((propsState.images as Array<{
+                                mediaId: string;
+                                caption?: string;
+                                altText?: string;
+                              }>) || []),
+                            ];
+                            currentImages.splice(idx, 1);
+                            handlePropChange("images", currentImages);
+                          }}
+                          className="text-xs text-rose-600 hover:text-rose-800 font-medium"
+                        >
+                          Remove
+                        </button>
+                      </div>
+                      <select
+                        aria-label={`Select media for photo ${idx + 1}`}
+                        value={img.mediaId}
+                        onChange={(e) => {
+                          const currentImages = [
+                            ...((propsState.images as Array<{
+                              mediaId: string;
+                              caption?: string;
+                              altText?: string;
+                            }>) || []),
+                          ];
+                          currentImages[idx] = { ...currentImages[idx], mediaId: e.target.value };
+                          handlePropChange("images", currentImages);
+                        }}
+                        className="w-full px-2.5 py-1 text-xs border border-slate-200 rounded-md bg-white"
+                      >
+                        {availableMedia
+                          .filter((m) => ["website_asset", "catalogue_image"].includes(m.category))
+                          .map((m) => (
+                            <option key={m.id} value={m.id}>
+                              {m.originalFilename} ({m.category})
+                            </option>
+                          ))}
+                        {!availableMedia.some((m) => m.id === img.mediaId) && (
+                          <option value={img.mediaId}>{img.mediaId.substring(0, 8)}...</option>
+                        )}
+                      </select>
+                      <div className="grid grid-cols-2 gap-2">
+                        <input
+                          type="text"
+                          placeholder="Caption (optional)"
+                          value={img.caption || ""}
+                          onChange={(e) => {
+                            const currentImages = [
+                              ...((propsState.images as Array<{
+                                mediaId: string;
+                                caption?: string;
+                                altText?: string;
+                              }>) || []),
+                            ];
+                            currentImages[idx] = { ...currentImages[idx], caption: e.target.value };
+                            handlePropChange("images", currentImages);
+                          }}
+                          className="px-2 py-1 text-xs border border-slate-200 rounded-md"
+                        />
+                        <input
+                          type="text"
+                          placeholder="Alt text"
+                          value={img.altText || ""}
+                          onChange={(e) => {
+                            const currentImages = [
+                              ...((propsState.images as Array<{
+                                mediaId: string;
+                                caption?: string;
+                                altText?: string;
+                              }>) || []),
+                            ];
+                            currentImages[idx] = { ...currentImages[idx], altText: e.target.value };
+                            handlePropChange("images", currentImages);
+                          }}
+                          className="px-2 py-1 text-xs border border-slate-200 rounded-md"
+                        />
+                      </div>
+                    </div>
+                  ))}
+
+                  {((propsState.images as Array<unknown>) || []).length < 50 && (
+                    <button
+                      type="button"
+                      disabled={availableMedia.length === 0}
+                      onClick={() => {
+                        if (availableMedia.length === 0) return;
+                        const firstPublishable =
+                          availableMedia.find((m) =>
+                            ["website_asset", "catalogue_image"].includes(m.category),
+                          ) || availableMedia[0];
+                        const currentImages = [
+                          ...((propsState.images as Array<{
+                            mediaId: string;
+                            caption?: string;
+                            altText?: string;
+                          }>) || []),
+                        ];
+                        currentImages.push({
+                          mediaId: firstPublishable.id,
+                          caption: "",
+                          altText: firstPublishable.originalFilename,
+                        });
+                        handlePropChange("images", currentImages);
+                      }}
+                      className="w-full py-2 px-3 border border-dashed border-slate-300 text-xs font-semibold text-emerald-800 bg-white hover:bg-slate-50 rounded-lg transition-colors disabled:opacity-50"
+                    >
+                      + Add Photo from Media Library
+                    </button>
+                  )}
+                </div>
+              </div>
             </>
           )}
 
           {/* Booking Form */}
           {section.type === "booking_form" && (
             <>
+              <div className="p-3 bg-slate-50 border border-slate-200 rounded-lg text-xs space-y-1">
+                <div className="flex items-center justify-between">
+                  <span className="font-semibold text-slate-700">Appointments Module</span>
+                  <Badge
+                    variant={
+                      availableModules.appointments?.status === "operational"
+                        ? "success"
+                        : availableModules.appointments?.status === "coming_soon"
+                          ? "default"
+                          : "warning"
+                    }
+                    className="text-[10px]"
+                  >
+                    {availableModules.appointments?.status === "operational"
+                      ? "Operational"
+                      : availableModules.appointments?.status === "coming_soon"
+                        ? "Coming Soon"
+                        : "Informational Mode"}
+                  </Badge>
+                </div>
+                <p className="text-[11px] text-slate-500">
+                  {availableModules.appointments?.status === "operational"
+                    ? "Direct slot booking connected to services catalogue."
+                    : "Runs in informational mode: customer booking requests are delivered as enquiries."}
+                </p>
+              </div>
+
               <div>
                 <label className="block text-xs font-semibold text-slate-700 mb-1">
                   Booking Headline

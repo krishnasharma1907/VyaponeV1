@@ -47,6 +47,8 @@ export function ConstrainedWebsiteEditor({
   initialVersion,
   initialConfiguration,
   context,
+  availableMedia = [],
+  availableModules = {},
   readOnly = false,
   initialDeviceMode = "desktop",
   className = "",
@@ -87,6 +89,17 @@ export function ConstrainedWebsiteEditor({
     return activePage.sections.find((s) => s.id === selectedSectionId) || null;
   }, [activePage, selectedSectionId]);
 
+  // Combine media URLs from context and available business media for draft preview
+  const previewMediaUrls = useMemo(() => {
+    const map = { ...(context?.mediaUrls || {}) };
+    for (const m of availableMedia) {
+      if (m.url && !map[m.id]) {
+        map[m.id] = m.url;
+      }
+    }
+    return map;
+  }, [context?.mediaUrls, availableMedia]);
+
   // Memoized preview context marked with previewMode: true
   const previewContext: WebsiteRenderContext = useMemo(() => {
     return {
@@ -97,9 +110,17 @@ export function ConstrainedWebsiteEditor({
           tradeName: configuration.metadata.title,
         },
       }),
+      mediaUrls: previewMediaUrls,
+      modules: availableModules || context?.modules,
       previewMode: true,
     };
-  }, [context, initialSite.business_id, configuration.metadata.title]);
+  }, [
+    context,
+    initialSite.business_id,
+    configuration.metadata.title,
+    previewMediaUrls,
+    availableModules,
+  ]);
 
   // Handler: Select Page
   const handleSelectPage = (slug: string) => {
@@ -365,6 +386,8 @@ export function ConstrainedWebsiteEditor({
             {selectedSection ? (
               <SectionInspector
                 section={selectedSection}
+                availableMedia={availableMedia}
+                availableModules={availableModules || context?.modules}
                 onUpdateProps={handleUpdateSectionProps}
                 onClose={() => setSelectedSectionId(null)}
                 validationErrors={validationErrors}

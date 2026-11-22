@@ -1,10 +1,10 @@
 # VyapOne Build Progress
 
 **Current phase:** P4 — Website engine, templates and publishing (`IN_PROGRESS`)  
-**Completed tasks:** VO-000, VO-001, VO-002, VO-003, VO-004, VO-005, VO-006, VO-010, VO-011, VO-012, VO-013, VO-014, VO-015, VO-016, VO-017, VO-018, VO-019, VO-020, VO-021, VO-022, VO-023, VO-024, VO-025, VO-026, VO-027, VO-028, VO-030, VO-031, VO-032, VO-033, VO-034, VO-040, VO-041, VO-042, VO-043, VO-044, VO-045  
-**Latest task:** VO-045 — Build responsive preview and device modes  
-**Next task:** VO-046 — Connect media and module data to website blocks  
-**Project status:** RESPONSIVE PREVIEW AND DEVICE MODES (DESKTOP, TABLET 768PX, MOBILE 390PX) INTEGRATED WITH DRAFT ISOLATION, SMOOTH SIZING TRANSITIONS AND ACCESSIBLE CONTROLS / PHASE P4 IN PROGRESS  
+**Completed tasks:** VO-000, VO-001, VO-002, VO-003, VO-004, VO-005, VO-006, VO-010, VO-011, VO-012, VO-013, VO-014, VO-015, VO-016, VO-017, VO-018, VO-019, VO-020, VO-021, VO-022, VO-023, VO-024, VO-025, VO-026, VO-027, VO-028, VO-030, VO-031, VO-032, VO-033, VO-034, VO-040, VO-041, VO-042, VO-043, VO-044, VO-045, VO-046  
+**Latest task:** VO-046 — Connect media and module data to website blocks  
+**Next task:** VO-047 — Implement draft autosave, undo and redo  
+**Project status:** MEDIA AND MODULE DATA FULLY BOUND TO APPROVED WEBSITE BLOCKS WITH TENANT ISOLATION, VERIFIED PUBLIC CDN URL RESOLUTION, OPERATIONAL/INFORMATIONAL MODULE AWARENESS, PRE-PUBLISH VALIDATION, AND DRAFT PREVIEW SUPPORT / PHASE P4 IN PROGRESS  
 
 ## Phase status
 
@@ -14,7 +14,44 @@
 | P1 — Repository, design system and application shell | COMPLETE | All tasks VO-010 to VO-019 verified and done; Phase P1 gate passed |
 | P2 — Platform identity, authentication and multi-tenancy | COMPLETE | All tasks VO-020 to VO-028 verified and done; Phase P2 gate passed |
 | P3 — Niche registry, presets and business onboarding | COMPLETE | All tasks VO-030 to VO-034 verified and done; Phase P3 complete |
-| P4 — Website engine, templates and publishing | IN_PROGRESS | VO-040, VO-041, VO-042, VO-043, VO-044, VO-045 complete; VO-046 next |
+| P4 — Website engine, templates and publishing | IN_PROGRESS | VO-040, VO-041, VO-042, VO-043, VO-044, VO-045, VO-046 complete; VO-047 next |
+
+## Task Report: VO-046 — Connect Media and Module Data to Website Blocks
+
+- **Target:** VO-046 — Connect media and module data to website blocks
+- **Phase:** P4 — Website engine, templates and publishing
+- **Status:** COMPLETED & VERIFIED
+- **Key Deliverables Implemented & Verified:**
+  1. **Strict Business Media Selection & Filtering (Tenant & Category Isolation):**
+     - Constrained SectionInspector to authorized business media belonging to `business_id` only.
+     - Enforces `PUBLISHABLE_CATEGORIES` (`business_logo`, `catalogue_image`, `website_asset`). Private, sensitive categories (`document_attachment`, `onboarding_upload`) are completely barred from selection and public storefront resolution.
+     - Only verified, ready media (`status === 'ready' && is_quarantined === false && verified_at !== null`) can be attached or published.
+     - SectionInspector provides user-friendly media selection dropdowns and removal actions for `Hero`, `About`, and `Gallery` blocks.
+  2. **Public CDN URL Resolution vs Draft Preview Isolation:**
+     - `resolvePublicMediaUrls` in `src/lib/websites/public-service.ts`: Exclusively resolves verified public media (`bucket === 'vyapone-public-media' && is_public === true`) using clean, public CDN URLs.
+     - Draft preview in authenticated editor (`src/components/websites/editor/constrained-website-editor.tsx`): Integrates tenant media items directly into `previewContext.mediaUrls` so merchants see real-time updates without mutating published version records or publishing unverified assets.
+  3. **Module Operational Status & Graceful Degradation:**
+     - Defined `ModuleOperationalStatus` (`operational | informational | coming_soon | disabled`) and `ModuleRenderStatus`.
+     - `resolvePublicModules` safely queries active business modules (`business_modules`) and platform module registry (`platform_modules`).
+     - `BookingFormBlock`: Dynamically inspects `context.modules.appointments`. If operational, renders the full interactive appointment booking form. If informational or coming soon, automatically switches to an enquiry mode displaying an explicit disclaimer badge ("Notice: Online booking is currently in enquiry mode...") and button "Submit Appointment Enquiry", avoiding any false pretence of an automated scheduling backend.
+     - Catalogue/Menu blocks (`MenuBlock`, `CatalogueGridBlock`): Seamlessly bind to business catalogue services; if empty, render accessible and stylish empty states ("No menu categories currently available" / "No catalogue items currently available") without crashing.
+     - Location Map (`LocationMapBlock`): Renders complete store address, hours, and direction CTA from authorized business location data; cleanly falls back when address details are unconfigured.
+  4. **Pre-Publish Media Validation (`validateWebsiteMediaReferences`):**
+     - Validates all media IDs referenced across sections (`hero.imageMediaId`, `about.imageMediaId`, `gallery.items[].mediaId`), site headers (`logoMediaId`), page metadata (`ogImageMediaId`, `faviconMediaId`).
+     - Detects missing IDs, cross-tenant references, unverified status, quarantine status, and non-publishable categories, returning clear error and warning descriptors before publication.
+  5. **Verification Evidence & Quality Gates:**
+     - Dedicated media & module binding suite (`tests/unit/websites/media-module-binding.test.tsx`, 18 tests): 100% passing.
+     - Website service suite (`tests/unit/websites/service.test.ts`, 22 tests): 100% passing.
+     - Website public renderer suite (`tests/unit/websites/public-renderer.test.tsx`, 23 tests): 100% passing.
+     - Constrained visual editor suite (`tests/unit/websites/constrained-editor.test.tsx`, 28 tests): 100% passing.
+     - Full website test suite (`tests/unit/websites/`, 10 test files, 180 tests): 100% passing.
+     - Database test suite (`tests/unit/database/`, 16 test files, 169 tests): 100% passing.
+     - Route shells suite (`tests/unit/routing/route-shells.test.tsx`, 34 tests): 100% passing.
+     - Full repository test suite (`pnpm vitest run`, 102 test files, 1,254 tests): 100% passing.
+     - TypeScript strict check (`tsc --noEmit`): 0 errors.
+     - ESLint check (`pnpm lint`): 0 errors, 0 warnings.
+     - Prettier code style check: All files formatted cleanly.
+     - Next.js production build (`pnpm build`): Successfully compiled all 40 routes without errors.
 
 ## Task Report: VO-045 — Build Responsive Preview and Device Modes
 

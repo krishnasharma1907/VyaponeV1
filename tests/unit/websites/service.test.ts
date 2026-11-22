@@ -892,12 +892,17 @@ describe("VO-040 Website Service Layer", () => {
               })),
             };
           }
+          const chainable: Record<string, unknown> = {
+            maybeSingle: vi.fn(async () => ({ data: null, error: null })),
+            then: (resolve: (val: unknown) => void) => resolve({ data: [], error: null }),
+          };
+          chainable.eq = vi.fn(() => chainable);
+          chainable.in = vi.fn(() => chainable);
+          chainable.order = vi.fn(() => chainable);
+          chainable.limit = vi.fn(() => chainable);
+
           return {
-            select: vi.fn(() => ({
-              eq: vi.fn(() => ({
-                maybeSingle: vi.fn(async () => ({ data: null, error: null })),
-              })),
-            })),
+            select: vi.fn(() => chainable),
           };
         }),
       } as unknown as SupabaseClient<Database>;

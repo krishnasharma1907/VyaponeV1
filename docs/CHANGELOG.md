@@ -4,6 +4,33 @@ Record implementation changes by task ID. Do not record planned work as complete
 
 ## Unreleased
 
+### [VO-046] — Connect Media and Module Data to Website Blocks (2026-11-22)
+- Connected approved website blocks with authorized business media and module data, establishing strict multi-tenant boundaries, safe URL resolution, and pre-publish validation (PRD FINAL v2 §6.14, §15.3, §15.5):
+  - **Authorized Business Media Selection & Filtering (Editor):**
+    - SectionInspector strictly queries media items belonging to the active `business_id` only.
+    - Category filtering: Constrained strictly to `PUBLISHABLE_CATEGORIES` (`business_logo`, `catalogue_image`, `website_asset`). Non-publishable or sensitive categories (`document_attachment`, `onboarding_upload`) are forbidden from selection and public storefront resolution.
+    - Media status validation: Only verified, non-quarantined assets (`status === 'ready' && is_quarantined === false && verified_at !== null`) are available for selection.
+    - Provides intuitive image selection and removal controls in `Hero`, `About`, and `Gallery` section inspectors.
+  - **Public CDN URL Resolution vs Draft Preview Isolation:**
+    - `resolvePublicMediaUrls` in `src/lib/websites/public-service.ts`: Enforces resolution exclusively for verified public assets in the `vyapone-public-media` bucket (`is_public === true`, `status === 'ready'`, `verified_at !== null`).
+    - Authenticated draft preview: Injects business media into `previewContext.mediaUrls` inside `ConstrainedWebsiteEditor`, allowing merchants to immediately visualize their selections in real-time without mutating published version records or publishing unverified assets.
+  - **Module Operational Status & Graceful Degradation:**
+    - Defined `ModuleOperationalStatus` (`operational | informational | coming_soon | disabled`) and `ModuleRenderStatus`.
+    - `resolvePublicModules` queries active business modules (`business_modules`) and platform module registry (`platform_modules`).
+    - `BookingFormBlock`: Dynamically inspects `context.modules.appointments`. If operational, renders the interactive booking form. If informational or coming soon, automatically switches to enquiry mode with an explicit disclaimer notice ("Notice: Online booking is currently in enquiry mode...") and button "Submit Appointment Enquiry", avoiding any false pretence of an automated scheduling backend.
+    - Catalogue and Menu blocks (`MenuBlock`, `CatalogueGridBlock`): Seamlessly bind to business catalogue services; if empty, render accessible and stylish empty states ("No menu categories currently available" / "No catalogue items currently available") without crashing.
+    - Location Map (`LocationMapBlock`): Renders complete store address, hours, and direction CTA from authorized business location data; cleanly falls back when address details are unconfigured.
+  - **Pre-Publish Media Validation (`validateWebsiteMediaReferences`):**
+    - Scans all media IDs referenced in section blocks (`hero.imageMediaId`, `about.imageMediaId`, `gallery.items[].mediaId`), site header (`logoMediaId`), and page metadata (`ogImageMediaId`, `faviconMediaId`).
+    - Detects missing IDs, cross-tenant references, unverified status, quarantine status, and non-publishable categories, returning clear error and warning descriptors before publication.
+  - **Verification:**
+    - 18 unit & integration tests in `tests/unit/websites/media-module-binding.test.tsx` verifying authorized media selection, cross-tenant exclusion, private category exclusion, public CDN URL resolution, operational vs informational booking, empty menu/catalogue states, location fallback, gallery placeholder, draft preview isolation, and responsive preview modes.
+    - Full website test suite (`tests/unit/websites/`, 10 test files, 180 tests) passing 100%.
+    - Route shells suite (`tests/unit/routing/route-shells.test.tsx`, 34 tests) passing 100%.
+    - Database migration test suite (`tests/unit/database/`, 16 test files, 169 tests) passing 100%.
+    - Complete Vitest suite across all 102 test files (1,254 tests) passing 100%.
+    - Quality gates passed: strict TypeScript (`tsc --noEmit`, 0 errors), ESLint (0 errors, 0 warnings), Prettier formatted, and Next.js production build (`next build`, all 40 routes).
+
 ### [VO-045] — Build Responsive Preview and Device Modes (2026-11-22)
 - Implemented responsive website preview and device modes in the constrained website editor (PRD FINAL v2 §5.5, §6.14):
   - **Canonical Device Viewports Grounded in Design Tokens:**

@@ -88,6 +88,19 @@ export interface CatalogueRenderItem {
 }
 
 /**
+ * Status and operational availability of a backing platform module for website rendering.
+ */
+export type ModuleOperationalStatus = "operational" | "informational" | "coming_soon" | "disabled";
+
+export interface ModuleRenderStatus {
+  status: ModuleOperationalStatus;
+  isEnabled: boolean;
+  name?: string;
+  category?: string;
+  notice?: string;
+}
+
+/**
  * Shared context provided to block components when rendering a website.
  */
 export interface WebsiteRenderContext {
@@ -95,6 +108,7 @@ export interface WebsiteRenderContext {
   business?: BusinessRenderFacts;
   catalogueItems?: CatalogueRenderItem[];
   mediaUrls?: Record<string, string>; // Maps mediaId -> resolved verified public/CDN URL
+  modules?: Record<string, ModuleRenderStatus>; // Backing module operational availability
   onAction?: (action: string, payload?: unknown) => void;
   previewMode?: boolean;
 }

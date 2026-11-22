@@ -325,6 +325,35 @@ export interface SaveSiteDraftResult {
 }
 
 /**
+ * Safe summary of an authorized media item for website editor selection.
+ * Excludes private storage tokens and sensitive metadata.
+ */
+export interface MediaItemSummary {
+  id: string;
+  originalFilename: string;
+  category: string;
+  fileSizeBytes: number;
+  width: number | null;
+  height: number | null;
+  isPublic: boolean;
+  status: string;
+  url?: string;
+}
+
+/**
+ * Backing platform module operational status for website blocks.
+ */
+export type ModuleOperationalStatus = "operational" | "informational" | "coming_soon" | "disabled";
+
+export interface ModuleRenderStatus {
+  status: ModuleOperationalStatus;
+  isEnabled: boolean;
+  name?: string;
+  category?: string;
+  notice?: string;
+}
+
+/**
  * Server Action result wrapper.
  */
 export type WebsiteActionResult<T> =

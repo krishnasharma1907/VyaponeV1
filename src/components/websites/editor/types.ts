@@ -10,6 +10,8 @@
 
 import type {
   ApprovedBlockType,
+  MediaItemSummary,
+  ModuleRenderStatus,
   SectionConfig,
   WebsiteConfiguration,
   SiteRow,
@@ -28,6 +30,8 @@ export interface ConstrainedWebsiteEditorProps {
   initialVersion?: SiteVersionRow | null;
   initialConfiguration: WebsiteConfiguration;
   context?: WebsiteRenderContext;
+  availableMedia?: MediaItemSummary[];
+  availableModules?: Record<string, ModuleRenderStatus>;
   readOnly?: boolean;
   initialDeviceMode?: EditorDeviceMode;
   className?: string;
@@ -47,6 +51,8 @@ export interface SectionNavigatorProps {
 
 export interface SectionInspectorProps {
   section: SectionConfig;
+  availableMedia?: MediaItemSummary[];
+  availableModules?: Record<string, ModuleRenderStatus>;
   onUpdateProps: (
     sectionId: string,
     updatedProps: Record<string, unknown>,

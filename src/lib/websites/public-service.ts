@@ -14,11 +14,14 @@
 
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/lib/supabase/types";
+import { CANONICAL_MODULES } from "@/lib/niches/constants";
 import { isSupportedSchemaVersion, migrateWebsiteConfiguration } from "./versioning";
 import type { WebsiteConfiguration } from "./types";
 import type {
   BusinessRenderFacts,
   CatalogueRenderItem,
+  ModuleOperationalStatus,
+  ModuleRenderStatus,
   WebsiteRenderContext,
 } from "@/components/websites/blocks/types";
 
@@ -297,17 +300,14 @@ async function resolvePublicMediaUrls(
   }
 
   const urlMap: Record<string, string> = {};
-  const allowedCategories = [
-    "business_logo",
-    "catalogue_image",
-    "website_asset",
-    "onboarding_upload",
-  ];
+  // Strictly allow only verified, public publishable categories (VO-032 / VO-046)
+  const allowedCategories = ["business_logo", "catalogue_image", "website_asset"];
 
   for (const item of mediaItems) {
-    // Invariant: Media must be public, ready, verified, and in an approved category
+    // Invariant: Media must be public, ready, verified, in public bucket, and in an approved category
     if (
       item.is_public === true &&
+      item.bucket === "vyapone-public-media" &&
       item.status === "ready" &&
       item.verified_at !== null &&
       allowedCategories.includes(item.category)
@@ -325,6 +325,58 @@ async function resolvePublicMediaUrls(
   }
 
   return urlMap;
+}
+
+/**
+ * Resolves safe public module operational statuses for the published storefront.
+ * Excludes internal workspace metadata, subscription keys, and sensitive audit records.
+ */
+async function resolvePublicModules(
+  supabase: SupabaseClient<Database>,
+  businessId: string,
+): Promise<Record<string, ModuleRenderStatus>> {
+  const { data: bizModules } = await supabase
+    .from("business_modules")
+    .select("module_key, is_enabled")
+    .eq("business_id", businessId);
+
+  const { data: platformModules } = await supabase
+    .from("platform_modules")
+    .select("key, name, category, status");
+
+  const enabledSet = new Set(
+    (bizModules || []).filter((bm) => bm.is_enabled).map((bm) => bm.module_key),
+  );
+
+  const moduleMap: Record<string, ModuleRenderStatus> = {};
+  if (platformModules && platformModules.length > 0) {
+    for (const pm of platformModules) {
+      const isEnabled = enabledSet.has(pm.key);
+      let status: ModuleOperationalStatus = "disabled";
+      if (pm.status === "coming_soon") {
+        status = "coming_soon";
+      } else if (pm.status === "active") {
+        status = isEnabled ? "operational" : "informational";
+      }
+      moduleMap[pm.key] = {
+        status,
+        isEnabled,
+        name: pm.name,
+        category: pm.category,
+      };
+    }
+  } else {
+    for (const cm of CANONICAL_MODULES) {
+      moduleMap[cm.key] = {
+        status: cm.status === "coming_soon" ? "coming_soon" : "operational",
+        isEnabled: true,
+        name: cm.name,
+        category: cm.category,
+      };
+    }
+  }
+
+  return moduleMap;
 }
 
 /**
@@ -422,12 +474,14 @@ export async function resolvePublishedStorefrontBySubdomain(
   const catalogueItems = await resolvePublicCatalogueItems(supabase, site.business_id);
   const referencedMediaIds = extractReferencedMediaIds(validatedConfig);
   const mediaUrls = await resolvePublicMediaUrls(supabase, site.business_id, referencedMediaIds);
+  const modules = await resolvePublicModules(supabase, site.business_id);
 
   const context: WebsiteRenderContext = {
     theme: validatedConfig.theme,
     business: businessFacts,
     catalogueItems,
     mediaUrls,
+    modules,
     previewMode: false,
   };
 

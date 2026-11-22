@@ -16,6 +16,12 @@ export function BookingFormBlock({
   const buttonRadius = getButtonRadiusClass(theme?.radii);
   const cardRadius = getCardRadiusClass(theme?.radii);
 
+  // Module operational status check (VO-046)
+  const appointmentsMod = context?.modules?.appointments;
+  const isOperational = appointmentsMod ? appointmentsMod.status === "operational" : true;
+  const isComingSoon = appointmentsMod ? appointmentsMod.status === "coming_soon" : false;
+  const isInformational = appointmentsMod ? appointmentsMod.status === "informational" : false;
+
   // Available services from catalogue or fallback
   const availableServices =
     props.serviceIds && props.serviceIds.length > 0
@@ -62,13 +68,14 @@ export function BookingFormBlock({
 
     // Action callback or simulated submission
     if (context?.onAction) {
-      context.onAction("booking_submitted", {
+      context.onAction(isOperational ? "booking_submitted" : "appointment_enquiry_submitted", {
         serviceId,
         name,
         phone,
         date,
         timeSlot,
         notes,
+        isOperational,
       });
     }
 
@@ -92,7 +99,13 @@ export function BookingFormBlock({
         <div className="text-center space-y-2">
           <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-emerald-50 text-emerald-800">
             <CalendarIcon size={14} />
-            <span>Online Booking</span>
+            <span>
+              {isComingSoon
+                ? "Appointments Coming Soon"
+                : isInformational
+                  ? "Appointment Enquiry"
+                  : "Online Booking"}
+            </span>
           </div>
           <h2
             id={`${id}-title`}
@@ -102,9 +115,28 @@ export function BookingFormBlock({
             {props.title || "Book an Appointment"}
           </h2>
           <p className="text-sm sm:text-base text-slate-600">
-            Reserve your slot in seconds. We confirm all appointments promptly.
+            {isOperational
+              ? "Reserve your slot in seconds. We confirm all appointments promptly."
+              : "Submit your appointment request. We will contact you directly to confirm availability."}
           </p>
         </div>
+
+        {/* Informational Mode Notice */}
+        {(isInformational || isComingSoon) && (
+          <div
+            className={`p-4 bg-sky-50 border border-sky-200 text-sky-900 text-xs sm:text-sm space-y-1 ${cardRadius}`}
+          >
+            <p className="font-semibold">
+              {isComingSoon
+                ? "Note: Automated appointment scheduling is coming soon."
+                : "Note: Direct appointment confirmation via store consultation."}
+            </p>
+            <p className="text-sky-800/90 text-xs">
+              Requests submitted here are received as enquiries and confirmed directly via WhatsApp
+              or phone.
+            </p>
+          </div>
+        )}
 
         {props.notice && (
           <div
@@ -280,7 +312,11 @@ export function BookingFormBlock({
               className={`w-full py-3 px-4 text-sm font-semibold text-white shadow-xs transition-opacity hover:opacity-95 focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 ${buttonRadius}`}
               style={{ backgroundColor: theme?.colors.primary || "#0B6E4F" }}
             >
-              {status === "submitting" ? "Submitting Request..." : "Request Appointment"}
+              {status === "submitting"
+                ? "Submitting Request..."
+                : isOperational
+                  ? "Request Appointment"
+                  : "Submit Appointment Enquiry"}
             </button>
           </form>
         )}

@@ -12,7 +12,13 @@ import React, { useEffect, useState } from "react";
 import { Badge } from "@/components/ui";
 import { ConstrainedWebsiteEditor } from "./constrained-website-editor";
 import { loadOwnerWebsiteWorkspaceAction } from "@/lib/websites/actions";
-import type { SiteRow, SiteVersionRow, WebsiteConfiguration } from "@/lib/websites/types";
+import type {
+  MediaItemSummary,
+  ModuleRenderStatus,
+  SiteRow,
+  SiteVersionRow,
+  WebsiteConfiguration,
+} from "@/lib/websites/types";
 import type { WebsiteRenderContext } from "@/components/websites/blocks/types";
 
 export interface OwnerWebsiteWorkspaceProps {
@@ -34,6 +40,8 @@ export function OwnerWebsiteWorkspace({
   const [version, setVersion] = useState<SiteVersionRow>(initialVersion);
   const [configuration, setConfiguration] = useState<WebsiteConfiguration>(initialConfiguration);
   const [context, setContext] = useState<WebsiteRenderContext>(initialContext);
+  const [availableMedia, setAvailableMedia] = useState<MediaItemSummary[]>([]);
+  const [availableModules, setAvailableModules] = useState<Record<string, ModuleRenderStatus>>({});
   const [isStarter, setIsStarter] = useState<boolean>(true);
   const [authError, setAuthError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(false);
@@ -49,9 +57,13 @@ export function OwnerWebsiteWorkspace({
           setSite(res.data.site);
           setVersion(res.data.version);
           setConfiguration(res.data.configuration);
+          setAvailableMedia(res.data.availableMedia || []);
+          setAvailableModules(res.data.availableModules || {});
           setContext({
             business: res.data.business,
             catalogueItems: res.data.catalogueItems,
+            mediaUrls: res.data.mediaUrls || {},
+            modules: res.data.availableModules || {},
             previewMode: true,
           });
           setIsStarter(res.data.isStarterDraft);
@@ -118,6 +130,8 @@ export function OwnerWebsiteWorkspace({
         initialVersion={version}
         initialConfiguration={configuration}
         context={context}
+        availableMedia={availableMedia}
+        availableModules={availableModules}
       />
     </div>
   );

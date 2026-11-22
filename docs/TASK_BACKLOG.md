@@ -320,13 +320,13 @@
 
 **Status:** `DONE`
 
-### [ ] VO-046 — Connect media and module data to website blocks
+### [x] VO-046 — Connect media and module data to website blocks
 
 **Scope:** Bind uploaded images and business catalogue/services data to approved blocks with explicit empty/loading states.
 
 **Acceptance:** No cross-tenant media/data leakage; broken references are surfaced before publish.
 
-**Status:** `NOT_STARTED`
+**Status:** `DONE`
 
 ### [ ] VO-047 — Implement draft autosave, undo and redo
 

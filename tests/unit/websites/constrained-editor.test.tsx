@@ -912,6 +912,9 @@ describe("VO-044 Constrained Visual Editor Test Suite", () => {
           version: MOCK_VERSION,
           configuration: MOCK_CONFIG,
           catalogueItems: [],
+          availableMedia: [],
+          availableModules: {},
+          mediaUrls: {},
           isStarterDraft: true,
         },
       });

@@ -335,6 +335,37 @@ function createMockSupabase(options: MockDbOptions): SupabaseClient<Database> {
         };
       }
 
+      if (table === "business_modules") {
+        return {
+          select: vi.fn(() => ({
+            eq: vi.fn(async () => ({
+              data: [
+                { module_key: "website_engine", is_enabled: true },
+                { module_key: "catalogue_services", is_enabled: true },
+              ],
+              error: null,
+            })),
+          })),
+        };
+      }
+
+      if (table === "platform_modules") {
+        return {
+          select: vi.fn(async () => ({
+            data: [
+              { key: "website_engine", name: "Website Engine", category: "core", status: "active" },
+              {
+                key: "catalogue_services",
+                name: "Catalogue & Services",
+                category: "commerce",
+                status: "active",
+              },
+            ],
+            error: null,
+          })),
+        };
+      }
+
       throw new Error(`Unexpected table queried: ${table}`);
     }),
   } as unknown as SupabaseClient<Database>;
