@@ -312,13 +312,13 @@
 
 **Status:** `DONE`
 
-### [ ] VO-045 — Build responsive preview and device modes
+### [x] VO-045 — Build responsive preview and device modes
 
 **Scope:** Provide phone/tablet/desktop preview and protect editing controls from mobile keyboard/safe-area overlap.
 
 **Acceptance:** Preview matches renderer at target viewport sizes and is usable on a phone.
 
-**Status:** `NOT_STARTED`
+**Status:** `DONE`
 
 ### [ ] VO-046 — Connect media and module data to website blocks
 

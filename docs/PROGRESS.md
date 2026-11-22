@@ -1,10 +1,10 @@
 # VyapOne Build Progress
 
 **Current phase:** P4 — Website engine, templates and publishing (`IN_PROGRESS`)  
-**Completed tasks:** VO-000, VO-001, VO-002, VO-003, VO-004, VO-005, VO-006, VO-010, VO-011, VO-012, VO-013, VO-014, VO-015, VO-016, VO-017, VO-018, VO-019, VO-020, VO-021, VO-022, VO-023, VO-024, VO-025, VO-026, VO-027, VO-028, VO-030, VO-031, VO-032, VO-033, VO-034, VO-040, VO-041, VO-042, VO-043, VO-044  
-**Latest task:** VO-044 — Integrate constrained visual editor  
-**Next task:** VO-045 — Build responsive preview and device modes  
-**Project status:** CONSTRAINED VISUAL WEBSITE EDITOR INTEGRATED WITH APPROVED BLOCKS, DRAFT ISOLATION, OPTIMISTIC CONCURRENCY AND LIVE PREVIEW / PHASE P4 IN PROGRESS  
+**Completed tasks:** VO-000, VO-001, VO-002, VO-003, VO-004, VO-005, VO-006, VO-010, VO-011, VO-012, VO-013, VO-014, VO-015, VO-016, VO-017, VO-018, VO-019, VO-020, VO-021, VO-022, VO-023, VO-024, VO-025, VO-026, VO-027, VO-028, VO-030, VO-031, VO-032, VO-033, VO-034, VO-040, VO-041, VO-042, VO-043, VO-044, VO-045  
+**Latest task:** VO-045 — Build responsive preview and device modes  
+**Next task:** VO-046 — Connect media and module data to website blocks  
+**Project status:** RESPONSIVE PREVIEW AND DEVICE MODES (DESKTOP, TABLET 768PX, MOBILE 390PX) INTEGRATED WITH DRAFT ISOLATION, SMOOTH SIZING TRANSITIONS AND ACCESSIBLE CONTROLS / PHASE P4 IN PROGRESS  
 
 ## Phase status
 
@@ -14,7 +14,48 @@
 | P1 — Repository, design system and application shell | COMPLETE | All tasks VO-010 to VO-019 verified and done; Phase P1 gate passed |
 | P2 — Platform identity, authentication and multi-tenancy | COMPLETE | All tasks VO-020 to VO-028 verified and done; Phase P2 gate passed |
 | P3 — Niche registry, presets and business onboarding | COMPLETE | All tasks VO-030 to VO-034 verified and done; Phase P3 complete |
-| P4 — Website engine, templates and publishing | IN_PROGRESS | VO-040, VO-041, VO-042, VO-043, VO-044 complete; VO-045 next |
+| P4 — Website engine, templates and publishing | IN_PROGRESS | VO-040, VO-041, VO-042, VO-043, VO-044, VO-045 complete; VO-046 next |
+
+## Task Report: VO-045 — Build Responsive Preview and Device Modes
+
+- **Target:** VO-045 — Build responsive preview and device modes
+- **Phase:** P4 — Website engine, templates and publishing
+- **Status:** COMPLETED & VERIFIED
+- **Key Deliverables Implemented & Verified:**
+  1. **Canonical Device Viewports Grounded in Design Tokens:**
+     - Grounded in `src/design-system/tokens.ts` and PRD FINAL v2 §5.5, §6.14:
+       - **Desktop Viewport:** Full responsive width canvas (`w-full max-w-[1200px] rounded-xl border border-slate-300 shadow-lg min-h-[500px]`).
+       - **Tablet Viewport:** Canonical 768px width (`w-[768px] max-w-full rounded-2xl border-4 border-slate-700/80 shadow-xl min-h-[640px]`), matching `breakpoints.md = "768px"` (counter mode and tablet).
+       - **Mobile Viewport:** Canonical 390px width (`w-[390px] max-w-full rounded-[32px] border-[6px] border-slate-800 shadow-2xl min-h-[720px]`), matching `breakpoints.sm = "390px"` (the primary mobile design validation target).
+     - Mobile realistic device simulator: Includes a subtle camera notch/speaker bezel (`data-testid="mobile-notch"`, rounded pill, camera dot) providing an authentic device frame without obscuring page content.
+  2. **Smooth Sizing Transitions & Viewport Wrapping:**
+     - Applied `transition-all duration-300 ease-in-out` on canvas container for smooth visual transitions when toggling device modes.
+     - Viewport container uses independent vertical scrolling with horizontal containment (`overflow-x-auto overflow-y-auto w-full flex-1 flex justify-center py-6 px-4 bg-slate-200/70`).
+     - Preserves mobile safe area padding `pb-[env(safe-area-inset-bottom,0px)]` to protect interactive elements from virtual keyboard / home bar overlap.
+  3. **Accessible Device Mode Controls in Top Bar:**
+     - Implemented semantic radiogroup in `EditorTopBar` (`role="radiogroup" aria-label="Preview Device Mode"`).
+     - Three accessible radio options with semantic SVG icons and tooltips:
+       - Desktop: `aria-label="Desktop Preview Mode"`
+       - Tablet: `aria-label="Tablet Preview Mode (768px)"`
+       - Mobile: `aria-label="Mobile Preview Mode (390px)"`
+     - Accessible state: `aria-checked="true"` on active mode with distinct Emerald active styling (`bg-white text-emerald-800 shadow-xs font-semibold`).
+     - Touch targets: All controls adhere to minimum 44px mobile touch targets (`min-h-[44px]`).
+     - Visual badge in preview header: `data-testid="preview-device-badge"` dynamically displays the active viewport mode (`Desktop Viewport (Responsive)`, `Tablet Viewport (768px)`, `Mobile Viewport (390px)`).
+  4. **Strict Draft Isolation & Data Integrity Invariant:**
+     - Device mode switching is purely presentation state in React (`useState<EditorDeviceMode>`).
+     - Zero side effects: Switching between Desktop, Tablet, and Mobile never mutates `configuration`, never alters `current_draft_version_id`, `published_version_id`, or `sites.status`, and never triggers database saves, RPCs, or network calls.
+     - Preserves all unsaved working draft changes and preserves VO-044 optimistic concurrency tracking (`expectedBaseVersionNumber`).
+  5. **Verification Evidence & Quality Gates:**
+     - Responsive preview unit suite (`tests/unit/websites/responsive-preview.test.tsx`, 12 tests): 100% passing across viewport sizing, device mode switching, draft isolation, preservation of unsaved edits, optimistic concurrency tracking, canonical block rendering, and radiogroup accessibility.
+     - Constrained visual editor unit suite (`tests/unit/websites/constrained-editor.test.tsx`, 28 tests): 100% passing.
+     - Full website test suite (`tests/unit/websites/`, 9 test files, 162 tests): 100% passing.
+     - Route shells suite (`tests/unit/routing/route-shells.test.tsx`, 34 tests): 100% passing.
+     - Database migration test suite (`tests/unit/database/`, 16 test files, 169 tests): 100% passing.
+     - Full workspace test suite (`pnpm vitest run`, 101 test files, 1,236 tests): 100% passing.
+     - TypeScript strict check (`tsc --noEmit`): 0 errors.
+     - ESLint check (`pnpm lint`): 0 errors, 0 warnings.
+     - Prettier code style check: All files formatted cleanly.
+     - Next.js production build (`pnpm build`): Successfully compiled all 40 routes without errors.
 
 ## Task Report: VO-044 — Integrate Constrained Visual Editor
 

@@ -4,6 +4,39 @@ Record implementation changes by task ID. Do not record planned work as complete
 
 ## Unreleased
 
+### [VO-045] — Build Responsive Preview and Device Modes (2026-11-22)
+- Implemented responsive website preview and device modes in the constrained website editor (PRD FINAL v2 §5.5, §6.14):
+  - **Canonical Device Viewports Grounded in Design Tokens:**
+    - Integrated canonical breakpoints from `src/design-system/tokens.ts`:
+      - **Desktop Viewport:** Full-width responsive canvas (`max-w-[1200px] w-full rounded-xl border border-slate-300 shadow-lg min-h-[500px]`).
+      - **Tablet Viewport:** Canonical 768px width (`w-[768px] max-w-full rounded-2xl border-4 border-slate-700/80 shadow-xl min-h-[640px]`), matching `breakpoints.md = "768px"` (counter mode and tablet).
+      - **Mobile Viewport:** Canonical 390px width (`w-[390px] max-w-full rounded-[32px] border-[6px] border-slate-800 shadow-2xl min-h-[720px]`), matching `breakpoints.sm = "390px"` (the primary mobile design validation target).
+    - Realistic mobile device simulator: Includes a subtle camera notch / speaker bezel (`data-testid="mobile-notch"`, rounded pill with camera dot) providing an authentic device frame without obscuring content.
+  - **Smooth Sizing Transitions & Viewport Wrapping:**
+    - Applied `transition-all duration-300 ease-in-out` on preview canvas container for smooth animated width transitions between device modes.
+    - Viewport container uses independent vertical scrolling with horizontal containment (`overflow-x-auto overflow-y-auto w-full flex-1 flex justify-center py-6 px-4 bg-slate-200/70`).
+    - Preserves mobile safe area padding `pb-[env(safe-area-inset-bottom,0px)]` to protect interactive elements from virtual keyboard / home bar overlap.
+  - **Accessible Device Mode Controls in Top Bar:**
+    - Implemented semantic radiogroup in `EditorTopBar` (`role="radiogroup" aria-label="Preview Device Mode"`).
+    - Three accessible radio options with semantic SVG icons and tooltips:
+      - Desktop: `aria-label="Desktop Preview Mode"`
+      - Tablet: `aria-label="Tablet Preview Mode (768px)"`
+      - Mobile: `aria-label="Mobile Preview Mode (390px)"`
+    - Accessible state: `aria-checked="true"` on active mode with distinct Emerald active styling (`bg-white text-emerald-800 shadow-xs font-semibold`).
+    - Touch targets: All controls adhere to minimum 44px mobile touch targets (`min-h-[44px]`).
+    - Visual badge in preview header: `data-testid="preview-device-badge"` dynamically displays the active viewport mode (`Desktop Viewport (Responsive)`, `Tablet Viewport (768px)`, `Mobile Viewport (390px)`).
+  - **Strict Draft Isolation & Data Integrity Invariant:**
+    - Device mode switching is purely presentation state in React (`useState<EditorDeviceMode>`).
+    - Zero side effects: Switching between Desktop, Tablet, and Mobile never mutates `configuration`, never alters `current_draft_version_id`, `published_version_id`, or `sites.status`, and never triggers database saves, RPCs, or network calls.
+    - Preserves all unsaved working draft changes and preserves VO-044 optimistic concurrency tracking (`expectedBaseVersionNumber`).
+  - **Verification:**
+    - 12 unit & integration tests in `tests/unit/websites/responsive-preview.test.tsx` verifying default desktop mode, tablet 768px mode, mobile 390px mode + notch, `initialDeviceMode` prop, draft configuration preservation, unsaved changes preservation, zero save RPC calls or pointer alteration, VO-044 optimistic concurrency base version preservation, responsive block rendering, and radiogroup accessibility.
+    - Full website test suite (`tests/unit/websites/`, 9 test files, 162 tests) passing 100%.
+    - Route shells suite (`tests/unit/routing/route-shells.test.tsx`, 34 tests) passing 100%.
+    - Database migration test suite (`tests/unit/database/`, 16 test files, 169 tests) passing 100%.
+    - Complete Vitest suite across all 101 test files (1,236 tests) passing 100%.
+    - Quality gates passed: strict TypeScript (`tsc --noEmit`, 0 errors), ESLint (0 errors, 0 warnings), Prettier formatted, and Next.js production build (`next build`, all 40 routes).
+
 ### [VO-044] — Integrate Constrained Visual Editor (2026-11-22)
 - Built the constrained visual website builder strictly restricted to the 13 canonical approved blocks from `APPROVED_BLOCK_REGISTRY` (PRD FINAL v2 §15.3, §6.14):
   - **Canonical Block Schema Compatibility (Audit A):**

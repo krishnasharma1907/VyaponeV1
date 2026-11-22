@@ -35,7 +35,12 @@ import { PageSelector } from "./page-selector";
 import { SectionNavigator } from "./section-navigator";
 import { SectionInspector } from "./section-inspector";
 import { AddSectionModal } from "./add-section-modal";
-import type { ConstrainedWebsiteEditorProps, EditorSaveStatus, EditorViewMode } from "./types";
+import type {
+  ConstrainedWebsiteEditorProps,
+  EditorDeviceMode,
+  EditorSaveStatus,
+  EditorViewMode,
+} from "./types";
 
 export function ConstrainedWebsiteEditor({
   initialSite,
@@ -43,6 +48,7 @@ export function ConstrainedWebsiteEditor({
   initialConfiguration,
   context,
   readOnly = false,
+  initialDeviceMode = "desktop",
   className = "",
 }: ConstrainedWebsiteEditorProps) {
   // Working draft configuration state
@@ -64,6 +70,7 @@ export function ConstrainedWebsiteEditor({
 
   // UI view controls
   const [viewMode, setViewMode] = useState<EditorViewMode>("split");
+  const [deviceMode, setDeviceMode] = useState<EditorDeviceMode>(initialDeviceMode);
   const [isAddModalOpen, setIsAddModalOpen] = useState<boolean>(false);
   const [validationErrors, setValidationErrors] = useState<Record<string, string[]>>({});
 
@@ -317,7 +324,7 @@ export function ConstrainedWebsiteEditor({
 
   return (
     <div
-      className={`flex flex-col h-[calc(100vh-140px)] min-h-[640px] bg-slate-100 rounded-2xl overflow-hidden border border-slate-300 shadow-md ${className}`.trim()}
+      className={`flex flex-col h-[calc(100vh-140px)] min-h-[640px] bg-slate-100 rounded-2xl overflow-hidden border border-slate-300 shadow-md pb-[env(safe-area-inset-bottom,0px)] ${className}`.trim()}
     >
       {/* Top Bar Controls */}
       <EditorTopBar
@@ -332,6 +339,8 @@ export function ConstrainedWebsiteEditor({
         hasUnsavedChanges={hasUnsavedChanges}
         viewMode={viewMode}
         onChangeViewMode={setViewMode}
+        deviceMode={deviceMode}
+        onChangeDeviceMode={setDeviceMode}
       />
 
       {/* Page Tabs */}
@@ -381,20 +390,62 @@ export function ConstrainedWebsiteEditor({
         {(viewMode === "split" || viewMode === "preview") && (
           <div className="flex-1 flex flex-col h-full bg-slate-200/80 overflow-hidden">
             {/* Draft Preview Header Banner */}
-            <div className="bg-amber-100/90 border-b border-amber-200 px-4 py-1.5 flex items-center justify-between text-xs text-amber-950 font-medium">
-              <div className="flex items-center gap-1.5">
-                <span className="w-2 h-2 rounded-full bg-amber-500 animate-pulse" />
-                <span>Private Draft Preview</span>
-                <span className="text-amber-700/80 font-normal hidden sm:inline">
-                  — Updates immediately as you edit. Customers only see published versions.
+            <div className="bg-amber-100/90 border-b border-amber-200 px-4 py-2 flex flex-wrap items-center justify-between gap-2 text-xs text-amber-950 font-medium">
+              <div className="flex items-center gap-2 flex-wrap">
+                <div className="flex items-center gap-1.5">
+                  <span className="w-2 h-2 rounded-full bg-amber-500 animate-pulse" />
+                  <span>Private Draft Preview</span>
+                </div>
+                <span
+                  data-testid="preview-device-badge"
+                  className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-mono font-medium bg-amber-200/70 text-amber-900 border border-amber-300"
+                >
+                  {deviceMode === "mobile"
+                    ? "Mobile Viewport (390px)"
+                    : deviceMode === "tablet"
+                      ? "Tablet Viewport (768px)"
+                      : "Desktop Viewport (Responsive)"}
+                </span>
+                <span className="text-amber-700/80 font-normal hidden lg:inline">
+                  — Customers only see published versions.
                 </span>
               </div>
-              <span className="text-[11px] text-amber-800 font-mono">{selectedSlug}</span>
+              <div className="flex items-center gap-2">
+                <span className="text-[11px] text-amber-800 font-mono bg-amber-200/50 px-2 py-0.5 rounded-xs">
+                  {selectedSlug}
+                </span>
+              </div>
             </div>
 
-            {/* Scrollable Storefront Frame */}
-            <div className="flex-1 overflow-y-auto p-2 sm:p-4 md:p-6 flex justify-center">
-              <div className="w-full max-w-[1200px] bg-white rounded-xl shadow-lg border border-slate-300 overflow-hidden min-h-[500px]">
+            {/* Scrollable Storefront Frame Area */}
+            <div
+              data-testid="preview-viewport-wrapper"
+              className="flex-1 overflow-y-auto overflow-x-auto p-2 sm:p-4 md:p-6 flex justify-center items-start"
+            >
+              <div
+                data-testid="preview-canvas"
+                data-device-mode={deviceMode}
+                className={`bg-white transition-all duration-300 ease-in-out shrink-0 overflow-hidden ${
+                  deviceMode === "mobile"
+                    ? "w-[390px] max-w-full rounded-[32px] border-[6px] border-slate-800 shadow-2xl min-h-[720px]"
+                    : deviceMode === "tablet"
+                      ? "w-[768px] max-w-full rounded-2xl border-4 border-slate-700/80 shadow-xl min-h-[640px]"
+                      : "w-full max-w-[1200px] rounded-xl border border-slate-300 shadow-lg min-h-[500px]"
+                }`}
+              >
+                {/* Mobile Camera Notch / Bezel Simulator */}
+                {deviceMode === "mobile" && (
+                  <div
+                    data-testid="mobile-notch"
+                    className="w-full bg-slate-800 h-5 flex items-center justify-center rounded-t-[24px] select-none pointer-events-none"
+                    aria-hidden="true"
+                  >
+                    <div className="w-16 h-3 bg-slate-900 rounded-full flex items-center justify-end px-1.5">
+                      <div className="w-1.5 h-1.5 rounded-full bg-slate-700" />
+                    </div>
+                  </div>
+                )}
+
                 <PublicWebsiteRenderer
                   configuration={configuration}
                   context={previewContext}

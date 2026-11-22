@@ -27,6 +27,8 @@ export function EditorTopBar({
   hasUnsavedChanges,
   viewMode,
   onChangeViewMode,
+  deviceMode = "desktop",
+  onChangeDeviceMode,
   className = "",
 }: EditorTopBarProps) {
   return (
@@ -85,8 +87,103 @@ export function EditorTopBar({
         />
       </div>
 
-      {/* Right: View Mode Toggle & Save Button */}
-      <div className="flex items-center gap-2">
+      {/* Right: Device Mode Selector, View Mode Toggle & Save Button */}
+      <div className="flex items-center gap-2 flex-wrap">
+        {/* Device Mode Selector (Desktop, Tablet, Mobile) */}
+        {onChangeDeviceMode && (
+          <div
+            role="radiogroup"
+            aria-label="Preview Device Mode"
+            className="flex items-center rounded-md border border-slate-200 p-0.5 bg-slate-50 text-[11px]"
+          >
+            <button
+              type="button"
+              role="radio"
+              aria-checked={deviceMode === "desktop"}
+              aria-label="Desktop Preview Mode"
+              title="Desktop Viewport (Responsive)"
+              onClick={() => onChangeDeviceMode("desktop")}
+              className={`px-2 py-0.5 rounded-xs font-medium flex items-center gap-1 transition-colors min-h-[32px] sm:min-h-[26px] ${
+                deviceMode === "desktop"
+                  ? "bg-white text-emerald-800 shadow-xs font-semibold"
+                  : "text-slate-600 hover:text-slate-900"
+              }`}
+            >
+              <svg
+                className="w-3.5 h-3.5"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                aria-hidden="true"
+              >
+                <rect width="20" height="14" x="2" y="3" rx="2" />
+                <line x1="8" x2="16" y1="21" y2="21" />
+                <line x1="12" x2="12" y1="17" y2="21" />
+              </svg>
+              <span className="hidden sm:inline">Desktop</span>
+            </button>
+            <button
+              type="button"
+              role="radio"
+              aria-checked={deviceMode === "tablet"}
+              aria-label="Tablet Preview Mode (768px)"
+              title="Tablet Viewport (768px)"
+              onClick={() => onChangeDeviceMode("tablet")}
+              className={`px-2 py-0.5 rounded-xs font-medium flex items-center gap-1 transition-colors min-h-[32px] sm:min-h-[26px] ${
+                deviceMode === "tablet"
+                  ? "bg-white text-emerald-800 shadow-xs font-semibold"
+                  : "text-slate-600 hover:text-slate-900"
+              }`}
+            >
+              <svg
+                className="w-3.5 h-3.5"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                aria-hidden="true"
+              >
+                <rect width="16" height="20" x="4" y="2" rx="2" />
+                <line x1="12" x2="12.01" y1="18" y2="18" />
+              </svg>
+              <span className="hidden sm:inline">Tablet</span>
+            </button>
+            <button
+              type="button"
+              role="radio"
+              aria-checked={deviceMode === "mobile"}
+              aria-label="Mobile Preview Mode (390px)"
+              title="Mobile Viewport (390px)"
+              onClick={() => onChangeDeviceMode("mobile")}
+              className={`px-2 py-0.5 rounded-xs font-medium flex items-center gap-1 transition-colors min-h-[32px] sm:min-h-[26px] ${
+                deviceMode === "mobile"
+                  ? "bg-white text-emerald-800 shadow-xs font-semibold"
+                  : "text-slate-600 hover:text-slate-900"
+              }`}
+            >
+              <svg
+                className="w-3.5 h-3.5"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                aria-hidden="true"
+              >
+                <rect width="14" height="20" x="5" y="2" rx="2" />
+                <line x1="12" x2="12.01" y1="18" y2="18" />
+              </svg>
+              <span className="hidden sm:inline">Mobile (390px)</span>
+            </button>
+          </div>
+        )}
+
         {/* View mode toggle (Responsive / Mobile-friendly) */}
         <div className="flex rounded-md border border-slate-200 p-0.5 bg-slate-50 text-[11px]">
           <button

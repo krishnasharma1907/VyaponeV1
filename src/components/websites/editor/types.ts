@@ -21,12 +21,15 @@ export type EditorSaveStatus = "idle" | "unsaved" | "saving" | "saved" | "error"
 
 export type EditorViewMode = "split" | "edit" | "preview";
 
+export type EditorDeviceMode = "desktop" | "tablet" | "mobile";
+
 export interface ConstrainedWebsiteEditorProps {
   initialSite: SiteRow;
   initialVersion?: SiteVersionRow | null;
   initialConfiguration: WebsiteConfiguration;
   context?: WebsiteRenderContext;
   readOnly?: boolean;
+  initialDeviceMode?: EditorDeviceMode;
   className?: string;
 }
 
@@ -72,6 +75,8 @@ export interface EditorTopBarProps {
   hasUnsavedChanges: boolean;
   viewMode: EditorViewMode;
   onChangeViewMode: (mode: EditorViewMode) => void;
+  deviceMode?: EditorDeviceMode;
+  onChangeDeviceMode?: (mode: EditorDeviceMode) => void;
   className?: string;
 }
 
