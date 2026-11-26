@@ -4,6 +4,12 @@ Record implementation changes by task ID. Do not record planned work as complete
 
 ## Unreleased
 
+### [CLOUD-011] — OpenNext Standalone Build Output Remediation & Cloudflare Packaging Fix (2026-11-26)
+
+- **Next.js Standalone Configuration (`next.config.ts`)**: Configured `output: "standalone"` to ensure Next.js creates `.next/standalone/` during `next build`. OpenNext relies on this standalone structure to package server handlers and bundle cache assets (`.next/standalone/.next/server/pages-manifest.json`).
+- **Build Script Standalone Guard (`scripts/build.mjs`)**: Added `NEXT_PRIVATE_STANDALONE: "true"` to child process environment when running `next build`. Matches OpenNext's internal standalone mode initializer, guaranteeing that the pre-packaged build produces the exact directory structure expected by `opennextjs-cloudflare build --skipNextBuild`.
+- **Build-Time ESLint Decoupling (`next.config.ts`, `.npmrc`)**: Added `eslint: { ignoreDuringBuilds: true }` in `next.config.ts` and created `.npmrc` with `public-hoist-pattern[]=*eslint*` to prevent pnpm strict-store peer-dependency resolution failures (`Cannot find module 'eslint-plugin-react-hooks'`) during Next.js production builds in containerized CI environments.
+
 ### [CLOUD-010] — Build-Time Environment Validation Remediation, Dynamic Routes & Wrangler Previews Block (2026-11-26)
 
 - **Wrangler Previews Configuration (`wrangler.jsonc`)**: Added top-level `"previews": { "vars": { "NEXT_PUBLIC_APP_ENV": "preview" } }` block to resolve Cloudflare Workers continuous deployment preview failure (`npx wrangler preview requires previews block`).

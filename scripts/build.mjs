@@ -17,11 +17,14 @@ import process from "node:process";
 
 console.log("[build] Executing Next.js production build...");
 
-// 1. Run Next.js production build
+// 1. Run Next.js production build with standalone mode enabled
 const nextBin = path.resolve("node_modules/next/dist/bin/next");
 const nextResult = spawnSync(process.execPath, [nextBin, "build"], {
   stdio: "inherit",
-  env: process.env,
+  env: {
+    ...process.env,
+    NEXT_PRIVATE_STANDALONE: "true",
+  },
 });
 
 if (nextResult.status !== 0) {
