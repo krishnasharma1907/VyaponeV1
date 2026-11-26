@@ -2,9 +2,20 @@
 
 **Current phase:** P4 — Website engine, templates and publishing (`COMPLETE`)  
 **Completed tasks:** VO-000, VO-001, VO-002, VO-003, VO-004, VO-005, VO-006, VO-010, VO-011, VO-012, VO-013, VO-014, VO-015, VO-016, VO-017, VO-018, VO-019, VO-020, VO-021, VO-022, VO-023, VO-024, VO-025, VO-026, VO-027, VO-028, VO-030, VO-031, VO-032, VO-033, VO-034, VO-040, VO-041, VO-042, VO-043, VO-044, VO-045, VO-046, VO-047, VO-048, VO-049  
-**Latest task:** CLOUD-012 — Brand Favicon Assets & Root Layout Icon Metadata Resolution  
+**Latest task:** CLOUD-013 — Storefront Website Editor & Blocks Layout Utility Stylesheet  
 **Next task:** Trigger Cloudflare Workers Build verification on GitHub / Operator staging setup & VO-050 handoff  
-**Project status:** FAVICON RESOLVED / STANDALONE CLOUDFLARE BUILD DEPLOYED / DEPLOYMENT REMAINS NO-GO PENDING VERIFICATION
+**Project status:** EDITOR STYLING REMEDIATED / CLOUDFLARE BUILD DEPLOYED / DEPLOYMENT REMAINS NO-GO PENDING VERIFICATION
+
+## Task Report: CLOUD-013 — Storefront Website Editor & Blocks Layout Utility Stylesheet
+
+- **Summary:** Resolved the visual unstyled rendering defect on the Storefront Website Builder dashboard (`/dashboard/website`). The editor workspace and block components were built with utility classes (`flex`, `grid`, `w-full`, `w-3.5 h-3.5`, `items-center`, `justify-between`, `gap-*`, `border-slate-200`, `bg-white`, responsive split widths `w-[380px]`, `md:w-[380px]`), but the application stylesheet only contained `.ui-*` token primitives. Created `src/app/editor-utilities.css` containing all necessary utility rules and imported it at the top of `src/app/globals.css`.
+- **Files created/modified:**
+  - `src/app/editor-utilities.css`
+  - `src/app/globals.css`
+  - `.gitignore`
+  - `docs/CHANGELOG.md`
+  - `docs/PROGRESS.md`
+- **Verification:** Verified CSS structure, verified git diff.
 
 ## Task Report: CLOUD-012 — Brand Favicon Assets & Root Layout Icon Metadata Resolution
 

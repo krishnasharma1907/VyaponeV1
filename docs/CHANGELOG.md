@@ -4,6 +4,10 @@ Record implementation changes by task ID. Do not record planned work as complete
 
 ## Unreleased
 
+### [CLOUD-013] — Storefront Website Editor & Blocks Layout Utility Stylesheet (2026-11-26)
+
+- **Editor & Blocks Utility Stylesheet (`src/app/editor-utilities.css`, `src/app/globals.css`)**: Implemented comprehensive layout, flexbox, grid, sizing, spacing, borders, and typography utility classes imported by `globals.css`. Resolves the unstyled layout defect on `/dashboard/website` where SVG icons (`w-3.5`, `w-4`) expanded unboundedly and editor controls (`EditorTopBar`, `SectionNavigator`, `PageSelector`, `ConstrainedWebsiteEditor` split view) collapsed into unstyled vertical stacks due to missing CSS utility rules.
+
 ### [CLOUD-012] — Brand Favicon Assets & Root Layout Icon Metadata Resolution (2026-11-26)
 
 - **Brand Favicon & SVG Icons (`public/favicon.ico`, `src/app/favicon.ico`, `public/icon.svg`, `src/app/icon.svg`)**: Created canonical VyapOne brand favicon (Emerald `#0F5132` background with Marigold `#D97706` "V" emblem) in both `public/` and `src/app/`. Resolves `404 Not Found` for `/favicon.ico` on Cloudflare Workers edge deployments.
