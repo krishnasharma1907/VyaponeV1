@@ -6,6 +6,12 @@ export const metadata: Metadata = {
   title: "VyapOne — Digital Operating Platform for Indian Businesses",
   description:
     "Mobile-first commerce, GST billing, and customer operations platform for Indian merchants and reseller agencies.",
+  icons: {
+    icon: [
+      { url: "/favicon.ico", sizes: "32x32" },
+      { url: "/icon.svg", type: "image/svg+xml" },
+    ],
+  },
 };
 
 export const viewport: Viewport = {

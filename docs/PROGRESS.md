@@ -2,9 +2,22 @@
 
 **Current phase:** P4 — Website engine, templates and publishing (`COMPLETE`)  
 **Completed tasks:** VO-000, VO-001, VO-002, VO-003, VO-004, VO-005, VO-006, VO-010, VO-011, VO-012, VO-013, VO-014, VO-015, VO-016, VO-017, VO-018, VO-019, VO-020, VO-021, VO-022, VO-023, VO-024, VO-025, VO-026, VO-027, VO-028, VO-030, VO-031, VO-032, VO-033, VO-034, VO-040, VO-041, VO-042, VO-043, VO-044, VO-045, VO-046, VO-047, VO-048, VO-049  
-**Latest task:** CLOUD-011 — OpenNext Standalone Build Output Remediation & Cloudflare Packaging Fix  
+**Latest task:** CLOUD-012 — Brand Favicon Assets & Root Layout Icon Metadata Resolution  
 **Next task:** Trigger Cloudflare Workers Build verification on GitHub / Operator staging setup & VO-050 handoff  
-**Project status:** STANDALONE OUTPUT REMEDIATED / CLOUDFLARE PACKAGING DEFECT RESOLVED / DEPLOYMENT REMAINS NO-GO PENDING VERIFICATION
+**Project status:** FAVICON RESOLVED / STANDALONE CLOUDFLARE BUILD DEPLOYED / DEPLOYMENT REMAINS NO-GO PENDING VERIFICATION
+
+## Task Report: CLOUD-012 — Brand Favicon Assets & Root Layout Icon Metadata Resolution
+
+- **Summary:** Resolved the browser console / network 404 error (`GET /favicon.ico 404 Not Found`) on deployed Cloudflare Worker (`https://vyapone.kssharma2022krish.workers.dev/dashboard/website`). The project lacked `favicon.ico` in both `public/` and `src/app/`, causing the Cloudflare Worker static assets binding (`.open-next/assets/`) and Next.js router to return 404. Generated canonical VyapOne brand `favicon.ico` and `icon.svg` (Emerald `#0F5132` + Marigold `#D97706`), placed in both `public/` and `src/app/`, and declared `icons` metadata in `src/app/layout.tsx`.
+- **Files created/modified:**
+  - `public/favicon.ico`
+  - `public/icon.svg`
+  - `src/app/favicon.ico`
+  - `src/app/icon.svg`
+  - `src/app/layout.tsx`
+  - `docs/CHANGELOG.md`
+  - `docs/PROGRESS.md`
+- **Verification:** Verified icon files exist with non-zero binary length, verified layout metadata diff.
 
 ## Task Report: CLOUD-011 — OpenNext Standalone Build Output Remediation & Cloudflare Packaging Fix
 

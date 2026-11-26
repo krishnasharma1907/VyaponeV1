@@ -4,6 +4,11 @@ Record implementation changes by task ID. Do not record planned work as complete
 
 ## Unreleased
 
+### [CLOUD-012] — Brand Favicon Assets & Root Layout Icon Metadata Resolution (2026-11-26)
+
+- **Brand Favicon & SVG Icons (`public/favicon.ico`, `src/app/favicon.ico`, `public/icon.svg`, `src/app/icon.svg`)**: Created canonical VyapOne brand favicon (Emerald `#0F5132` background with Marigold `#D97706` "V" emblem) in both `public/` and `src/app/`. Resolves `404 Not Found` for `/favicon.ico` on Cloudflare Workers edge deployments.
+- **Root Layout Icon Metadata (`src/app/layout.tsx`)**: Configured `icons` in RootLayout metadata pointing to `/favicon.ico` (32x32) and `/icon.svg` (`image/svg+xml`).
+
 ### [CLOUD-011] — OpenNext Standalone Build Output Remediation & Cloudflare Packaging Fix (2026-11-26)
 
 - **Next.js Standalone Configuration (`next.config.ts`)**: Configured `output: "standalone"` to ensure Next.js creates `.next/standalone/` during `next build`. OpenNext relies on this standalone structure to package server handlers and bundle cache assets (`.next/standalone/.next/server/pages-manifest.json`).
