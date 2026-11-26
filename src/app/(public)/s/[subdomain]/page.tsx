@@ -1,5 +1,7 @@
 import React from "react";
 import type { Metadata } from "next";
+
+export const dynamic = "force-dynamic";
 import { createAdminSupabaseClient } from "@/lib/supabase/admin";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 import { resolvePublishedStorefrontBySubdomain } from "@/lib/websites/public-service";

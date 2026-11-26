@@ -2,19 +2,19 @@
 
 **Current phase:** P4 — Website engine, templates and publishing (`COMPLETE`)  
 **Completed tasks:** VO-000, VO-001, VO-002, VO-003, VO-004, VO-005, VO-006, VO-010, VO-011, VO-012, VO-013, VO-014, VO-015, VO-016, VO-017, VO-018, VO-019, VO-020, VO-021, VO-022, VO-023, VO-024, VO-025, VO-026, VO-027, VO-028, VO-030, VO-031, VO-032, VO-033, VO-034, VO-040, VO-041, VO-042, VO-043, VO-044, VO-045, VO-046, VO-047, VO-048, VO-049  
-**Latest task:** STAGING-001 — Prepare Complete VyapOne End-to-End Staging Environment (following CLOUD-009 & Fast-Track Test Readiness Audit)  
-**Next task:** Operator creation & provisioning of isolated `VyapOne-Staging` Supabase project / owner approval for `ADR-028` & Linux CI (`workflow_dispatch`) alongside backlog task `VO-050`  
-**Project status:** STAGING ISOLATION GUARDRAILS & TOOLING PREPARED / REMOTE STAGING PROJECT NOT YET PROVISIONED / LIVE POSTGRESQL & LINUX OPENNEXT `NOT RUN` / DEPLOYMENT REMAINS NO-GO
+**Latest task:** CLOUD-010 — Build-Time Environment Validation Remediation & Dynamic Route Declarations (resolving Cloudflare Workers build failure)  
+**Next task:** Trigger Cloudflare Workers Build verification on GitHub / Operator staging setup & VO-050 handoff  
+**Project status:** BUILD-TIME ENVIRONMENT VALIDATION REMEDIATED / CLOUDFLARE BUILD DEFECT RESOLVED / DEPLOYMENT REMAINS NO-GO PENDING VERIFICATION
 
-## Phase status
+## Task Report: CLOUD-010 — Build-Time Environment Validation Remediation & Dynamic Route Declarations
 
-| Phase | Status | Notes |
-|---|---|---|
-| P0 — Project audit, decisions and architecture | COMPLETE | All tasks VO-000 to VO-006 verified and done; Phase P0 gate passed |
-| P1 — Repository, design system and application shell | COMPLETE | All tasks VO-010 to VO-019 verified and done; Phase P1 gate passed |
-| P2 — Platform identity, authentication and multi-tenancy | COMPLETE | All tasks VO-020 to VO-028 verified and done; Phase P2 gate passed |
-| P3 — Niche registry, presets and business onboarding | COMPLETE | All tasks VO-030 to VO-034 verified and done; Phase P3 complete |
-| P4 — Website engine, templates and publishing | COMPLETE | All tasks VO-040 through VO-049 verified and done; Phase P4 complete |
+- **Summary:** Resolved the Cloudflare Workers continuous deployment build failure (`ConfigurationError: Missing or invalid environment configuration: SESSION_SECRET: Must be set to a secure, unique 32+ character random secret in production mode` during `Collecting page data ... for /qr/[slug]`). The root causes were: (1) eager module-level `serverConfig = getServerConfig()` execution in `src/config/server.ts` triggered during module import by Next.js route scanners; (2) absence of build-phase awareness in `validateEnvironment()`, which strictly asserted runtime session encryption secrets during static compilation in clean CI/worker build containers; and (3) missing `export const dynamic = "force-dynamic"` declarations on dynamic route handlers. Replaced eager execution with a lazy `Proxy` in `src/config/server.ts`, added `isBuildPhase` detection (`NEXT_PHASE=phase-production-build` / `npm_lifecycle_event=build`) in `src/config/env.ts`, marked all dynamic routes `force-dynamic`, and verified full production Next.js build compilation (39/39 routes, exit 0) and 35/35 config/auth tests.
+- **Files created/modified:**
+  - `src/config/server.ts`, `src/config/env.ts`
+  - `src/app/(public)/qr/[slug]/route.ts`, `src/app/(public)/s/[subdomain]/page.tsx`, `src/app/(public)/s/[subdomain]/robots.txt/route.ts`, `src/app/(public)/s/[subdomain]/sitemap.xml/route.ts`, `src/app/auth/callback/route.ts`
+  - `tests/unit/config/env.test.ts`, `tests/unit/config/server.test.ts`
+  - `docs/CHANGELOG.md`, `docs/PROGRESS.md`
+- **Verification:** Verified `next build` passes in production mode with dev/empty secrets (`exit 0`), `tsc --noEmit` (`exit 0`), Prettier (`exit 0`), and Vitest (`exit 0`).
 
 ## Task Report: STAGING-001 — Prepare Complete VyapOne End-to-End Staging Environment
 

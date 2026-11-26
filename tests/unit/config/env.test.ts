@@ -278,4 +278,49 @@ describe("Application Configuration & Environment Handling [VO-016]", () => {
       expect(config.server.database.url).toContain("cf-pass");
     });
   });
+
+  describe("8. Build-Time Phase Compatibility & CI Build Isolation", () => {
+    it("allows next build static asset compilation in production without runtime SESSION_SECRET or DATABASE_URL", () => {
+      const buildTimeEnv: Record<string, string> = {
+        NODE_ENV: "production",
+        NEXT_PHASE: "phase-production-build",
+        NEXT_PUBLIC_APP_ENV: "production",
+        NEXT_PUBLIC_APP_URL: "https://vyapone.in",
+      };
+
+      const config = validateEnvironment(buildTimeEnv);
+
+      expect(config.server.isProduction).toBe(true);
+      expect(config.server.sessionSecret).toBe(
+        "dev-only-secret-do-not-use-in-production-min-32-chars",
+      );
+      expect(config.server.database.isConfigured).toBe(false);
+    });
+
+    it("allows build phase when npm_lifecycle_event is build", () => {
+      process.env.npm_lifecycle_event = "build";
+      const buildTimeEnv: Record<string, string> = {
+        NODE_ENV: "production",
+        NEXT_PUBLIC_APP_ENV: "production",
+        NEXT_PUBLIC_APP_URL: "https://vyapone.in",
+      };
+
+      const config = validateEnvironment(buildTimeEnv);
+
+      expect(config.server.isProduction).toBe(true);
+      expect(config.server.sessionSecret).toBe(
+        "dev-only-secret-do-not-use-in-production-min-32-chars",
+      );
+    });
+
+    it("enforces strict production invariants when not in build phase (runtime request mode)", () => {
+      const runtimeEnvWithoutSecrets: Record<string, string> = {
+        NODE_ENV: "production",
+        NEXT_PUBLIC_APP_ENV: "production",
+        NEXT_PUBLIC_APP_URL: "https://vyapone.in",
+      };
+
+      expect(() => validateEnvironment(runtimeEnvWithoutSecrets)).toThrow(ConfigurationError);
+    });
+  });
 });

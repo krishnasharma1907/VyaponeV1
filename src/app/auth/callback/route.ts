@@ -3,6 +3,8 @@ import { createServerSupabaseClient } from "@/lib/supabase/server";
 import { isValidInternalRedirect } from "@/lib/auth/security";
 import { ensureUserProfile } from "@/lib/auth/profile";
 
+export const dynamic = "force-dynamic";
+
 /**
  * Next.js Route Handler for Supabase Auth PKCE Callback
  *

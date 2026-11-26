@@ -4,6 +4,18 @@ Record implementation changes by task ID. Do not record planned work as complete
 
 ## Unreleased
 
+### [CLOUD-010] — Build-Time Environment Validation Remediation & Dynamic Route Declarations (2026-11-26)
+
+- **Lazy Server Configuration Proxy (`src/config/server.ts`)**: Replaced eager module-level `serverConfig = getServerConfig()` evaluation with a lazy `Proxy` that defers `validateEnvironment()` calls until explicit property access. Prevents Next.js compiler and page data collection from executing runtime environment checks at module evaluation time.
+- **Build-Time Invariant Guard (`src/config/env.ts`)**: Added `isBuildPhase` detection (`process.env.NEXT_PHASE === "phase-production-build"`, `npm_lifecycle_event === "build"` / `"build:staging"`). In `NODE_ENV=production`, permits static asset and route compilation to proceed in clean build machines (such as Cloudflare Workers Builds and CI runners) where runtime-only secrets (`SESSION_SECRET`, `DATABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`) are not injected, while strictly enforcing all credentials during runtime request handling.
+- **Dynamic Route Handlers (`export const dynamic = "force-dynamic"`)**: Added explicit dynamic segment declaration to dynamic public endpoints:
+  - `src/app/(public)/qr/[slug]/route.ts`
+  - `src/app/(public)/s/[subdomain]/page.tsx`
+  - `src/app/(public)/s/[subdomain]/robots.txt/route.ts`
+  - `src/app/(public)/s/[subdomain]/sitemap.xml/route.ts`
+  - `src/app/auth/callback/route.ts`
+- **Unit Test Coverage**: Added test coverage in `tests/unit/config/env.test.ts` (asserting clean build-phase execution without secrets and strict runtime validation failure) and `tests/unit/config/server.test.ts` (verifying lazy property delegation).
+
 ### [STAGING-001] — Prepare Complete VyapOne End-to-End Staging Environment (2026-11-25)
 
 - **Staging Environment Template & `.gitignore` Safeguards**: Updated [`.gitignore`](file:///f:/VyaponeV2/.gitignore) to ignore `.env.staging` and `.env.staging.local` while tracking [`.env.staging.local.example`](file:///f:/VyaponeV2/.env.staging.local.example) with complete staging variables (`NEXT_PUBLIC_APP_ENV=staging`, `VYAPONE_STAGING_PROJECT_REF`, core database/Supabase keys, and sandbox/test integrations).

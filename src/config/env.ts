@@ -542,8 +542,29 @@ export function validateEnvironment(
       publicData.NEXT_PUBLIC_APP_ENV === "staging" && (isProduction || isStrictStaging),
   });
 
+  // Check if execution is occurring during Next.js static asset compilation / build phase
+  const nextPhase =
+    readDictValue(rawEnv, "NEXT_PHASE") ||
+    (typeof process !== "undefined" && typeof process.env !== "undefined"
+      ? process.env.NEXT_PHASE
+      : "");
+  const lifecycleEvent =
+    typeof process !== "undefined" && typeof process.env !== "undefined"
+      ? process.env.npm_lifecycle_event
+      : "";
+  const isBuildPhase =
+    nextPhase === "phase-production-build" ||
+    lifecycleEvent === "build" ||
+    lifecycleEvent === "build:staging";
+
   // 4. Strict Production Invariants: Enforce required server credentials
-  if (isProduction) {
+  // In production runtime, all server credentials are mandatory.
+  // During static compilation/build phase (NEXT_PHASE=phase-production-build),
+  // runtime secrets that are only needed for live request handling (e.g. SESSION_SECRET,
+  // DATABASE_URL, SUPABASE_SERVICE_ROLE_KEY) are bypassed if not present, preventing
+  // build-time failure in clean CI/Cloudflare worker build environments where secrets
+  // are injected only at runtime.
+  if (isProduction && !isBuildPhase) {
     if (!serverData.DATABASE_URL) {
       issues.push({
         path: "DATABASE_URL",

@@ -3,6 +3,8 @@ import { createServerSupabaseClient } from "@/lib/supabase/server";
 import { resolvePublishedStorefrontBySubdomain } from "@/lib/websites/public-service";
 import { generateStorefrontSitemapXml } from "@/lib/websites/sitemap";
 
+export const dynamic = "force-dynamic";
+
 export async function GET(
   _request: Request,
   { params }: { params: Promise<{ subdomain: string }> },

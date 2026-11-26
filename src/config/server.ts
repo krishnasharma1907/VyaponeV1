@@ -41,8 +41,13 @@ export function getServerConfig(
 
 /**
  * Default server configuration singleton for standard server-side usage.
+ * Evaluated lazily on property access to avoid eager initialization during module import.
  */
-export const serverConfig = getServerConfig();
+export const serverConfig = new Proxy({} as ValidatedConfig["server"], {
+  get(_target, prop) {
+    return getServerConfig()[prop as keyof ValidatedConfig["server"]];
+  },
+});
 
 /**
  * For testing purposes only: clears the memoized server configuration.

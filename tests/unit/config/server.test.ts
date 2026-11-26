@@ -4,7 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 // In Vitest's JSDOM environment, we mock "server-only" to simulate the authorized Server Component runtime.
 vi.mock("server-only", () => ({}));
 
-import { getServerConfig, _resetServerConfigForTesting } from "@/config/server";
+import { getServerConfig, serverConfig, _resetServerConfigForTesting } from "@/config/server";
 
 describe("Server-Only Configuration [VO-016]", () => {
   const originalEnv = process.env;
@@ -46,5 +46,11 @@ describe("Server-Only Configuration [VO-016]", () => {
     });
 
     expect(custom.port).toBe(4000);
+  });
+
+  it("provides lazy serverConfig singleton that reflects active server configuration", () => {
+    _resetServerConfigForTesting();
+    process.env.PORT = "3500";
+    expect(serverConfig.port).toBe(3500);
   });
 });
