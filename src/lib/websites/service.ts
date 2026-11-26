@@ -302,9 +302,11 @@ export async function saveSiteDraftConfiguration(
 ): Promise<SaveSiteDraftResult> {
   const validated = saveSiteDraftInputSchema.parse(input);
 
-  // 1. Authorize site and business access
+  // 1. Authorize site and business management access
   const site = await getSiteById(supabase, validated.siteId);
-  const { business } = await assertBusinessAccess(supabase, site.business_id);
+  const { business } = await assertBusinessAccess(supabase, site.business_id, {
+    requiredPermission: "business:update_profile",
+  });
 
   // 2. Validate tenant consistency between configuration and database records
   if (validated.configuration.siteId !== site.id) {
@@ -462,9 +464,11 @@ export async function rollbackPublishedVersion(
 ): Promise<RollbackPublishedVersionResult> {
   const validated = rollbackPublishedVersionInputSchema.parse(input);
 
-  // 1. Authorize site and business access
+  // 1. Authorize site and business management access
   const site = await getSiteById(supabase, validated.siteId);
-  const { business } = await assertBusinessAccess(supabase, site.business_id);
+  const { business } = await assertBusinessAccess(supabase, site.business_id, {
+    requiredPermission: "business:update_profile",
+  });
 
   // 2. Execute atomic rollback RPC
   const { data: rpcData, error: rpcError } = await supabase.rpc(
@@ -481,6 +485,13 @@ export async function rollbackPublishedVersion(
   if (rpcError || !rpcData) {
     const errorMsg = rpcError?.message || "Failed to rollback published site version";
     if (
+      errorMsg.includes("limit reached") ||
+      errorMsg.includes("Capacity limit") ||
+      rpcError?.code === "VY001"
+    ) {
+      throw new WebsiteError(errorMsg, "CAPACITY_EXCEEDED", 403);
+    }
+    if (
       errorMsg.includes("conflict") ||
       errorMsg.includes("Rollback conflict") ||
       rpcError?.code === "VY049"
@@ -493,6 +504,12 @@ export async function rollbackPublishedVersion(
       rpcError?.code === "VY020"
     ) {
       throw new WebsiteError(errorMsg, "UNAUTHORIZED", 403);
+    }
+    if (errorMsg.includes("archived business") || rpcError?.code === "VY002") {
+      throw new WebsiteError(errorMsg, "BUSINESS_ARCHIVED", 400);
+    }
+    if (errorMsg.includes("Unknown or unsupported plan") || rpcError?.code === "VY005") {
+      throw new WebsiteError(errorMsg, "INVALID_PLAN", 400);
     }
     if (errorMsg.includes("not found") || rpcError?.code === "VY040") {
       throw new WebsiteError(errorMsg, "NOT_FOUND", 404);
@@ -591,9 +608,11 @@ export async function publishSiteDraft(
 ): Promise<PublishSiteResult> {
   const validated = publishSiteDraftInputSchema.parse(input);
 
-  // 1. Authorize site and business access
+  // 1. Authorize site and business management access
   const site = await getSiteById(supabase, validated.siteId);
-  const { business } = await assertBusinessAccess(supabase, site.business_id);
+  const { business } = await assertBusinessAccess(supabase, site.business_id, {
+    requiredPermission: "business:update_profile",
+  });
 
   // 2. Run pre-publish validation
   const validationResult = await validateSiteForPublishing(supabase, site.id);
@@ -627,6 +646,14 @@ export async function publishSiteDraft(
   if (rpcError || !rpcData) {
     const errorMsg = rpcError?.message || "Failed to publish site draft";
     if (
+      errorMsg.includes("limit reached") ||
+      errorMsg.includes("Capacity limit") ||
+      rpcError?.code === "VY001" ||
+      rpcError?.code === "VY042"
+    ) {
+      throw new WebsiteError(errorMsg, "CAPACITY_EXCEEDED", 403);
+    }
+    if (
       errorMsg.includes("conflict") ||
       errorMsg.includes("Draft has changed") ||
       rpcError?.code === "VY049"
@@ -634,18 +661,17 @@ export async function publishSiteDraft(
       throw new WebsiteError(errorMsg, "CONFLICT", 409);
     }
     if (
-      errorMsg.includes("limit reached") ||
-      errorMsg.includes("Capacity limit") ||
-      rpcError?.code === "VY042"
-    ) {
-      throw new WebsiteError(errorMsg, "CAPACITY_EXCEEDED", 403);
-    }
-    if (
       errorMsg.includes("Access denied") ||
       errorMsg.includes("Unauthorized") ||
       rpcError?.code === "VY020"
     ) {
       throw new WebsiteError(errorMsg, "UNAUTHORIZED", 403);
+    }
+    if (errorMsg.includes("archived business") || rpcError?.code === "VY002") {
+      throw new WebsiteError(errorMsg, "BUSINESS_ARCHIVED", 400);
+    }
+    if (errorMsg.includes("Unknown or unsupported plan") || rpcError?.code === "VY005") {
+      throw new WebsiteError(errorMsg, "INVALID_PLAN", 400);
     }
     if (errorMsg.includes("not found") || rpcError?.code === "VY040") {
       throw new WebsiteError(errorMsg, "NOT_FOUND", 404);

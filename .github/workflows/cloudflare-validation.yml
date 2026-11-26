@@ -1,0 +1,224 @@
+name: Cloudflare & Supabase Validation
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  quality-gates:
+    name: Quality Gates
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      NODE_ENV: test
+      NEXT_TELEMETRY_DISABLED: "1"
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@fc06bc1257f339d1d5d8b3a19a8cae5388b55320 # v5.0.0
+        with:
+          run_install: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: ".nvmrc"
+          cache: "pnpm"
+
+      - name: Verify Node.js and pnpm versions
+        run: |
+          node -v
+          pnpm -v
+          node -e "const major = Number(process.versions.node.split('.')[0]); if (major !== 24) { throw new Error('Expected Node 24, got ' + process.version); }"
+
+      - name: Install dependencies (frozen lockfile)
+        run: pnpm install --frozen-lockfile
+
+      - name: Verify formatting (Prettier)
+        run: pnpm format:check
+
+      - name: Run linter (ESLint)
+        run: pnpm lint
+
+      - name: Run TypeScript typecheck
+        run: pnpm typecheck
+
+      - name: Run full Vitest suite
+        run: pnpm test
+
+  opennext-build-and-runtime:
+    name: OpenNext Build & Local Worker Runtime
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      NODE_ENV: production
+      NEXT_TELEMETRY_DISABLED: "1"
+      NEXT_PUBLIC_APP_ENV: preview
+      NEXT_PUBLIC_APP_URL: http://127.0.0.1:8787
+      NEXT_PUBLIC_SUPABASE_URL: http://127.0.0.1:54321
+      NEXT_PUBLIC_SUPABASE_ANON_KEY: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZS1kZW1vIiwicm9sZSI6ImFub24iLCJleHAiOjE5ODM4MTI5OTZ9.CRXP1A7WOeoJeXxjNni43kdQwgnWNReilDMblYTn_I0
+      SUPABASE_SERVICE_ROLE_KEY: dummy-ci-service-role-key-not-for-production
+      SESSION_SECRET: ci-local-dummy-session-secret-minimum-32-chars
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@fc06bc1257f339d1d5d8b3a19a8cae5388b55320 # v5.0.0
+        with:
+          run_install: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: ".nvmrc"
+          cache: "pnpm"
+
+      - name: Install dependencies (frozen lockfile)
+        run: pnpm install --frozen-lockfile
+
+      - name: Assert clean repository before build (no manual node_modules patches)
+        run: |
+          test -z "$(git status --porcelain)"
+          ls -la open-next.config.ts wrangler.jsonc next.config.ts
+
+      - name: Inspect installed OpenNext Cloudflare CLI help
+        run: |
+          pnpm exec opennextjs-cloudflare --version
+          pnpm exec opennextjs-cloudflare --help
+          pnpm exec opennextjs-cloudflare preview --help
+
+      - name: Run Next.js production build
+        run: |
+          START_TS=$(date +%s)
+          pnpm build
+          END_TS=$(date +%s)
+          echo "next_build_seconds=$((END_TS - START_TS))" >> "$GITHUB_ENV"
+          echo "Next.js build completed in $((END_TS - START_TS))s"
+
+      - name: Run OpenNext Cloudflare build
+        run: |
+          START_TS=$(date +%s)
+          pnpm exec opennextjs-cloudflare build
+          END_TS=$(date +%s)
+          echo "opennext_build_seconds=$((END_TS - START_TS))" >> "$GITHUB_ENV"
+          echo "OpenNext Cloudflare build completed in $((END_TS - START_TS))s"
+
+      - name: Inspect generated .open-next artifacts and bundle sizes
+        run: |
+          test -f .open-next/worker.js
+          test -d .open-next/assets
+          ls -lh .open-next/worker.js
+          du -sh .open-next .open-next/assets .open-next/server-functions 2>/dev/null || du -sh .open-next/*
+          find .open-next -maxdepth 3 -type f -printf "%s\t%p\n" | sort -nr | head -n 20
+          {
+            echo "## OpenNext Build Summary"
+            echo "- Next.js build duration: ${next_build_seconds}s"
+            echo "- OpenNext build duration: ${opennext_build_seconds}s"
+            echo "- Worker entry size: $(wc -c < .open-next/worker.js) bytes"
+            echo "- Total .open-next size: $(du -sh .open-next | awk '{print $1}')"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Run local Cloudflare Worker runtime and verify routes
+        run: node scripts/ci/verify-opennext-runtime.mjs
+
+  supabase-migration-verification:
+    name: Isolated Supabase Migration Verification
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      SUPABASE_CLI_VERSION: "2.54.11"
+      DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:54322/postgres
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@fc06bc1257f339d1d5d8b3a19a8cae5388b55320 # v5.0.0
+        with:
+          run_install: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: ".nvmrc"
+          cache: "pnpm"
+
+      - name: Install dependencies (frozen lockfile)
+        run: pnpm install --frozen-lockfile
+
+      - name: Install pinned Supabase CLI and verify SHA-256 checksum
+        run: |
+          mkdir -p "$RUNNER_TEMP/supabase-bin"
+          BASE_URL="https://github.com/supabase/cli/releases/download/v${SUPABASE_CLI_VERSION}"
+          curl -fsSL "${BASE_URL}/supabase_linux_amd64.tar.gz" -o "$RUNNER_TEMP/supabase_linux_amd64.tar.gz"
+          if curl -fsSL "${BASE_URL}/supabase_${SUPABASE_CLI_VERSION}_checksums.txt" -o "$RUNNER_TEMP/checksums.txt"; then
+            echo "Downloaded versioned checksums file"
+          elif curl -fsSL "${BASE_URL}/checksums.txt" -o "$RUNNER_TEMP/checksums.txt"; then
+            echo "Downloaded checksums.txt"
+          else
+            echo "Failed to download checksums for Supabase CLI v${SUPABASE_CLI_VERSION}" >&2
+            exit 1
+          fi
+          grep "supabase_linux_amd64.tar.gz" "$RUNNER_TEMP/checksums.txt" | (cd "$RUNNER_TEMP" && sha256sum --check)
+          tar -xzf "$RUNNER_TEMP/supabase_linux_amd64.tar.gz" -C "$RUNNER_TEMP/supabase-bin"
+          chmod +x "$RUNNER_TEMP/supabase-bin/supabase"
+          echo "$RUNNER_TEMP/supabase-bin" >> "$GITHUB_PATH"
+
+      - name: Inspect Supabase CLI local-only command help
+        run: |
+          supabase --version
+          supabase start --help
+          supabase db reset --help
+          supabase migration list --help
+
+      - name: Start isolated local Supabase instance
+        run: |
+          set -o pipefail
+          supabase start 2>&1 | tee "$RUNNER_TEMP/supabase-start.log"
+
+      - name: Reset clean local database and list applied migrations
+        run: |
+          set -o pipefail
+          supabase db reset --local --yes 2>&1 | tee "$RUNNER_TEMP/supabase-reset.log"
+          supabase migration list --local
+
+      - name: Run pgTAP database integration tests
+        run: supabase test db
+
+      - name: Run PostgreSQL schema, privilege, and behavioral verification
+        run: node scripts/ci/verify-supabase-migrations.mjs
+
+      - name: Stop isolated local Supabase instance and summarize
+        if: always()
+        run: |
+          {
+            echo "## Supabase Migration Verification Logs"
+            if [ -f "$RUNNER_TEMP/supabase-start.log" ]; then
+              echo "### supabase start (last 40 lines)"
+              echo '```'
+              tail -n 40 "$RUNNER_TEMP/supabase-start.log"
+              echo '```'
+            fi
+            if [ -f "$RUNNER_TEMP/supabase-reset.log" ]; then
+              echo "### supabase db reset --local (last 40 lines)"
+              echo '```'
+              tail -n 40 "$RUNNER_TEMP/supabase-reset.log"
+              echo '```'
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+          supabase stop --no-backup || true

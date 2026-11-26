@@ -9,6 +9,7 @@ node_modules/
 out/
 build/
 dist/
+.open-next/
 
 # Environment Variables and Secrets
 .env
@@ -19,6 +20,8 @@ dist/
 .env.development
 .env.test
 .env.production
+.env.staging
+.env.staging.local
 .dev.vars
 .dev.vars.local
 *.pem
@@ -28,8 +31,9 @@ dist/
 *.pfx
 *.p12
 
-# Explicitly track sanitized example template
+# Explicitly track sanitized example templates
 !.env.example
+!.env.staging.local.example
 
 # Local Databases and State
 *.db

@@ -613,10 +613,24 @@ export async function acceptWorkspaceInvitation(
     }
 
     if (rpcError) {
-      if (rpcError.code === "VY001" || rpcError.message?.includes("Capacity exceeded")) {
+      if (
+        rpcError.code === "VY001" ||
+        rpcError.message?.includes("Capacity exceeded") ||
+        rpcError.message?.includes("Capacity limit")
+      ) {
         throw new WorkspaceError(
           "Team-seat capacity exceeded. Upgrade your plan to accept this invitation.",
           "CAPACITY_EXCEEDED",
+          403,
+        );
+      }
+      if (rpcError.code === "VY002") {
+        throw new WorkspaceError("Workspace not found or archived", "WORKSPACE_NOT_FOUND", 404);
+      }
+      if (rpcError.code === "VY003" || rpcError.code === "28000" || rpcError.code === "42501") {
+        throw new WorkspaceError(
+          rpcError.message || "Access denied to accept invitation",
+          "UNAUTHORIZED",
           403,
         );
       }

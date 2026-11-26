@@ -1,4 +1,4 @@
-import { publicEnvSchema, type PublicEnvInput } from "./env";
+import { assertStagingIsolation, publicEnvSchema, type PublicEnvInput } from "./env";
 
 /**
  * Public Client-Safe Configuration
@@ -30,7 +30,9 @@ function extractPublicEnv(): Record<AllowedPublicKey, string | undefined> {
   };
 }
 
-const parsed = publicEnvSchema.parse(extractPublicEnv());
+const parsedEnvInput = extractPublicEnv();
+assertStagingIsolation(parsedEnvInput);
+const parsed = publicEnvSchema.parse(parsedEnvInput);
 
 export interface PublicConfig {
   readonly appEnv: "development" | "preview" | "staging" | "production" | "test";
@@ -67,6 +69,7 @@ export function getPublicConfig(
     customExtract[key] = rawEnv[key];
   }
   const result = publicEnvSchema.parse(customExtract) as PublicEnvInput;
+  assertStagingIsolation(customExtract);
 
   return {
     appEnv: result.NEXT_PUBLIC_APP_ENV,

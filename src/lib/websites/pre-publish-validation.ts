@@ -133,8 +133,10 @@ export async function validateSiteForPublishing(
     throw new WebsiteError("Site not found or inaccessible", "SITE_NOT_FOUND", 404);
   }
 
-  // 2. Tenant isolation assertion
-  const { business } = await assertBusinessAccess(supabase, site.business_id);
+  // 2. Tenant isolation and management permission assertion
+  const { business } = await assertBusinessAccess(supabase, site.business_id, {
+    requiredPermission: "business:update_profile",
+  });
 
   // 3. Resolve target draft configuration
   let config: WebsiteConfiguration;

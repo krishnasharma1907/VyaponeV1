@@ -4,7 +4,7 @@ import { createServerClient, type CookieOptions } from "@supabase/ssr";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { cookies } from "next/headers";
 import { publicConfig } from "@/config/public";
-import { ConfigurationError, getEnvVar } from "@/config/env";
+import { assertStagingIsolation, ConfigurationError, getEnvVar } from "@/config/env";
 import type { Database } from "./types";
 
 /**
@@ -57,6 +57,15 @@ export async function createServerSupabaseClient(
     (typeof process !== "undefined" &&
       (process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || process.env.SUPABASE_ANON_KEY)) ||
     publicConfig.supabaseAnonKey;
+
+  assertStagingIsolation({
+    NEXT_PUBLIC_APP_ENV: getEnvVar("NEXT_PUBLIC_APP_ENV") || publicConfig.appEnv,
+    NEXT_PUBLIC_APP_URL: getEnvVar("NEXT_PUBLIC_APP_URL") || publicConfig.appUrl,
+    NEXT_PUBLIC_SUPABASE_URL: url,
+    NEXT_PUBLIC_SUPABASE_ANON_KEY: anonKey,
+    VYAPONE_STAGING_PROJECT_REF: getEnvVar("VYAPONE_STAGING_PROJECT_REF"),
+    VYAPONE_STAGING_MODE: getEnvVar("VYAPONE_STAGING_MODE"),
+  });
 
   if (!url || !anonKey) {
     const missing: string[] = [];

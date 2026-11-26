@@ -2,7 +2,7 @@ import "server-only";
 
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import { getServerConfig } from "@/config/server";
-import { ConfigurationError } from "@/config/env";
+import { assertStagingIsolation, ConfigurationError } from "@/config/env";
 import type { Database } from "./types";
 
 /**
@@ -36,9 +36,30 @@ import type { Database } from "./types";
 export function createAdminSupabaseClient(
   customEnv?: Record<string, string | undefined>,
 ): SupabaseClient<Database> {
+  if (customEnv) {
+    assertStagingIsolation(customEnv);
+  }
   const config = getServerConfig(customEnv);
   const url = config.supabase.url;
   const serviceRoleKey = config.supabase.serviceRoleKey;
+
+  assertStagingIsolation({
+    NEXT_PUBLIC_APP_ENV:
+      customEnv?.NEXT_PUBLIC_APP_ENV ??
+      (typeof process !== "undefined" ? process.env.NEXT_PUBLIC_APP_ENV : undefined),
+    NEXT_PUBLIC_APP_URL:
+      customEnv?.NEXT_PUBLIC_APP_URL ??
+      (typeof process !== "undefined" ? process.env.NEXT_PUBLIC_APP_URL : undefined),
+    NEXT_PUBLIC_SUPABASE_URL: url,
+    NEXT_PUBLIC_SUPABASE_ANON_KEY: config.supabase.anonKey,
+    SUPABASE_SERVICE_ROLE_KEY: serviceRoleKey,
+    VYAPONE_STAGING_PROJECT_REF:
+      customEnv?.VYAPONE_STAGING_PROJECT_REF ??
+      (typeof process !== "undefined" ? process.env.VYAPONE_STAGING_PROJECT_REF : undefined),
+    VYAPONE_STAGING_MODE:
+      customEnv?.VYAPONE_STAGING_MODE ??
+      (typeof process !== "undefined" ? process.env.VYAPONE_STAGING_MODE : undefined),
+  });
 
   if (!url || !serviceRoleKey) {
     throw new ConfigurationError([

@@ -1640,6 +1640,20 @@ export async function acceptBusinessInvitation(
     }
 
     if (rpcError) {
+      if (rpcError.code === "VY002") {
+        throw new BusinessError(
+          rpcError.message || "Business not found or archived",
+          "BUSINESS_NOT_FOUND",
+          404,
+        );
+      }
+      if (rpcError.code === "VY003" || rpcError.code === "28000" || rpcError.code === "42501") {
+        throw new BusinessError(
+          rpcError.message || "Unauthorized to accept business invitation",
+          "UNAUTHORIZED",
+          403,
+        );
+      }
       if (rpcError.code === "VY010") {
         throw new BusinessError("Invalid or nonexistent invitation token", "INVALID_TOKEN", 404);
       }

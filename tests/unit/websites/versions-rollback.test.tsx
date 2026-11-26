@@ -423,6 +423,39 @@ describe("VO-048 Website Versions & Rollback Suite", () => {
       ).rejects.toMatchObject({ code: "CONFLICT" });
     });
 
+    it("maps VY001 live website capacity limit exceeded error on rollback to CAPACITY_EXCEEDED (403)", async () => {
+      const mockSupabase = {
+        from: vi.fn((table: string) => {
+          if (table === "sites") {
+            return {
+              select: vi.fn().mockReturnThis(),
+              eq: vi.fn().mockReturnThis(),
+              maybeSingle: vi.fn().mockResolvedValue({
+                data: { ...sampleSite, status: "suspended" },
+                error: null,
+              }),
+            };
+          }
+          return {};
+        }),
+        rpc: vi.fn().mockResolvedValue({
+          data: null,
+          error: {
+            message: "Capacity limit reached for live_websites: current 3, limit 3",
+            code: "VY001",
+          },
+        }),
+      } as unknown as SupabaseClient<Database>;
+
+      await expect(
+        rollbackPublishedVersion(mockSupabase, mockUserId, {
+          siteId: mockSiteId,
+          targetVersionId: v1Id,
+          expectedCurrentPublishedVersionId: v2Id,
+        }),
+      ).rejects.toMatchObject({ code: "CAPACITY_EXCEEDED", statusCode: 403 });
+    });
+
     it("restores a historical version into a new working draft without touching published pointer", async () => {
       const restoredDraftRow: SiteVersionRow = {
         id: "44444444-0000-0000-0000-000000000004",

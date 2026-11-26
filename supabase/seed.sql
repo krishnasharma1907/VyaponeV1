@@ -59,11 +59,85 @@ VALUES
     ('21000000-0000-4000-a000-000000000002', '20000000-0000-4000-a000-000000000001', '00000000-0000-4000-a000-000000000004', 'staff', '30000000-0000-4000-a000-000000000001', '{"pos": true, "inventory": false}'::jsonb, 'active')
 ON CONFLICT (id) DO NOTHING;
 
--- 8. Sites
+-- 8. Sites (insert as draft per trg_check_site_insert_status, then seed v1 and publish atomically)
 INSERT INTO public.sites (id, business_id, primary_domain, subdomain, status)
 VALUES
-    ('40000000-0000-4000-a000-000000000001', '20000000-0000-4000-a000-000000000001', 'kaveri-silks.in', 'kaveri-silks', 'published')
+    ('40000000-0000-4000-a000-000000000001', '20000000-0000-4000-a000-000000000001', 'kaveri-silks.in', 'kaveri-silks', 'draft')
 ON CONFLICT (id) DO NOTHING;
+
+INSERT INTO public.site_versions (
+    id,
+    site_id,
+    business_id,
+    version_number,
+    schema_version,
+    configuration,
+    change_summary,
+    created_by
+)
+VALUES (
+    '41000000-0000-4000-a000-000000000001',
+    '40000000-0000-4000-a000-000000000001',
+    '20000000-0000-4000-a000-000000000001',
+    1,
+    'v1',
+    '{
+      "schemaVersion": "v1",
+      "siteId": "40000000-0000-4000-a000-000000000001",
+      "businessId": "20000000-0000-4000-a000-000000000001",
+      "metadata": {
+        "title": "Kaveri Silks & Sarees — Bengaluru",
+        "description": "Authentic Kanchipuram and handloom silk sarees in Bengaluru."
+      },
+      "theme": {
+        "presetId": "festive-silk",
+        "primaryColor": "#8B1E3F",
+        "accentColor": "#D4AF37",
+        "fontFamily": "serif"
+      },
+      "header": {
+        "brandName": "Kaveri Silks & Sarees",
+        "navigation": []
+      },
+      "pages": [
+        {
+          "slug": "/",
+          "title": "Home",
+          "sections": [
+            {
+              "id": "hero-seed-1",
+              "type": "hero",
+              "props": {
+                "headline": "Kaveri Silks & Sarees",
+                "subheadline": "Authentic handloom silk sarees from Bengaluru."
+              }
+            }
+          ]
+        }
+      ]
+    }'::jsonb,
+    'Initial seeded website configuration',
+    '00000000-0000-4000-a000-000000000003'
+)
+ON CONFLICT (id) DO NOTHING;
+
+DO $$
+BEGIN
+    IF EXISTS (
+        SELECT 1 FROM public.sites
+        WHERE id = '40000000-0000-4000-a000-000000000001'
+          AND status = 'draft'
+          AND published_version_id IS NULL
+    ) THEN
+        PERFORM public.publish_site_draft_atomic(
+            '40000000-0000-4000-a000-000000000001'::UUID,
+            '20000000-0000-4000-a000-000000000001'::UUID,
+            '00000000-0000-4000-a000-000000000003'::UUID,
+            '41000000-0000-4000-a000-000000000001'::UUID,
+            1
+        );
+    END IF;
+END $$;
 
 -- 9. Catalogue Items (Minor Units: 850000 = ₹8,500.00)
 INSERT INTO public.catalogue_items (id, business_id, location_id, title, description, price_minor, currency_code, sku, is_available)

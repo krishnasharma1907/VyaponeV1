@@ -930,5 +930,50 @@ describe("VO-040 Website Service Layer", () => {
         loadOwnerWebsiteWorkspace(mockSupabase, "99999999-9999-4999-8999-999999999999"),
       ).rejects.toThrow("Business not found or access denied");
     });
+
+    it("enforces business:update_profile permission before saveSiteDraftConfiguration", async () => {
+      const config = buildInitialWebsiteConfiguration({
+        siteId: mockSiteId,
+        businessId: mockBusinessId,
+        tradeName: "Sharma Sweets",
+        subdomain: "sharma-sweets",
+      });
+
+      const mockSupabase = {
+        from: vi.fn(() => ({
+          select: vi.fn(() => ({
+            eq: vi.fn(() => ({
+              maybeSingle: vi.fn(async () => ({ data: sampleSite, error: null })),
+            })),
+          })),
+        })),
+      } as unknown as SupabaseClient<Database>;
+
+      vi.mocked(assertBusinessAccess)
+        .mockResolvedValueOnce({
+          business: { id: mockBusinessId } as unknown as BusinessRow,
+          callerUserId: mockUserId,
+          isSovereignOwner: false,
+          effectiveRole: "staff",
+          member: null,
+          locationId: null,
+        })
+        .mockRejectedValueOnce(
+          new Error("Insufficient business permissions: requires business:update_profile"),
+        );
+
+      const input: SaveSiteDraftInput = {
+        siteId: mockSiteId,
+        configuration: config,
+        expectedBaseVersionNumber: null,
+      };
+
+      await expect(saveSiteDraftConfiguration(mockSupabase, mockUserId, input)).rejects.toThrow(
+        "Insufficient business permissions: requires business:update_profile",
+      );
+      expect(assertBusinessAccess).toHaveBeenNthCalledWith(2, mockSupabase, mockBusinessId, {
+        requiredPermission: "business:update_profile",
+      });
+    });
   });
 });

@@ -12,6 +12,12 @@
 export { publicConfig, getPublicConfig, type PublicConfig } from "./public";
 export {
   validateEnvironment,
+  assertStagingIsolation,
+  extractSupabaseRefFromJwt,
+  extractSupabaseProjectRef,
+  isProductionSupabaseReference,
+  isProductionAppUrl,
+  PRODUCTION_SUPABASE_PROJECT_REF,
   ConfigurationError,
   publicEnvSchema,
   serverCoreEnvSchema,
@@ -20,4 +26,5 @@ export {
   type PublicEnvInput,
   type ServerCoreEnvInput,
   type OptionalIntegrationsEnvInput,
+  type StagingIsolationOptions,
 } from "./env";

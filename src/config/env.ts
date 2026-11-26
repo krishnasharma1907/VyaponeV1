@@ -46,6 +46,274 @@ export function getEnvVar(name: string): string {
   return "";
 }
 
+export const PRODUCTION_SUPABASE_PROJECT_REF = "fjoezwoyowihbxacmoyp";
+
+const PRODUCTION_APP_HOSTS = new Set([
+  "vyapone.in",
+  "www.vyapone.in",
+  "app.vyapone.in",
+  "vyapone.kssharma2022krish.workers.dev",
+]);
+
+function readDictValue(rawEnv: Record<string, string | undefined>, key: string): string {
+  const val = rawEnv[key];
+  return typeof val === "string" ? val.trim() : "";
+}
+
+/**
+ * Safely decodes the JWT payload segment (browser, Node, and Workers compatible)
+ * to inspect the Supabase `ref` claim without throwing or exposing credentials.
+ */
+export function extractSupabaseRefFromJwt(token?: string | null): string | null {
+  if (!token || typeof token !== "string") {
+    return null;
+  }
+
+  const trimmed = token.trim();
+  const segments = trimmed.split(".");
+  if (segments.length !== 3 || !segments[1]) {
+    return null;
+  }
+
+  try {
+    if (typeof atob !== "function") {
+      return null;
+    }
+    const base64 = segments[1].replace(/-/g, "+").replace(/_/g, "/");
+    const padded = base64.padEnd(base64.length + ((4 - (base64.length % 4)) % 4), "=");
+    const decoded = atob(padded);
+    const parsed: unknown = JSON.parse(decoded);
+
+    if (
+      typeof parsed === "object" &&
+      parsed !== null &&
+      "ref" in parsed &&
+      typeof (parsed as { ref?: unknown }).ref === "string"
+    ) {
+      const ref = (parsed as { ref: string }).ref.trim().toLowerCase();
+      return ref.length > 0 ? ref : null;
+    }
+
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Extracts a Supabase project ref from a Supabase API URL, PostgreSQL DSN, JWT, or raw ref string.
+ */
+export function extractSupabaseProjectRef(
+  value?: string | null,
+  allowRawRef = false,
+): string | null {
+  if (!value || typeof value !== "string") {
+    return null;
+  }
+
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return null;
+  }
+
+  const jwtRef = extractSupabaseRefFromJwt(trimmed);
+  if (jwtRef) {
+    return jwtRef;
+  }
+
+  try {
+    const parsed = new URL(trimmed);
+    const hostname = parsed.hostname.toLowerCase();
+    if (hostname.endsWith(".supabase.co")) {
+      const parts = hostname.split(".");
+      if (parts[0] === "db" && parts.length >= 4 && parts[1]) {
+        return parts[1];
+      }
+      if (parts.length >= 3 && parts[0] && parts[0] !== "db") {
+        return parts[0];
+      }
+    }
+    if (hostname.endsWith(".supabase.com") && parsed.username.startsWith("postgres.")) {
+      const ref = parsed.username.slice("postgres.".length).trim().toLowerCase();
+      return ref.length > 0 ? ref : null;
+    }
+  } catch {
+    if (allowRawRef && /^[a-z0-9-]{6,40}$/i.test(trimmed)) {
+      return trimmed.toLowerCase();
+    }
+  }
+
+  return null;
+}
+
+/**
+ * Returns true if a URL, DSN, JWT, or project ref resolves to the production Supabase project.
+ */
+export function isProductionSupabaseReference(value?: string | null): boolean {
+  if (!value || typeof value !== "string") {
+    return false;
+  }
+
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return false;
+  }
+
+  if (trimmed.toLowerCase().includes(PRODUCTION_SUPABASE_PROJECT_REF)) {
+    return true;
+  }
+
+  const jwtRef = extractSupabaseRefFromJwt(trimmed);
+  if (jwtRef === PRODUCTION_SUPABASE_PROJECT_REF) {
+    return true;
+  }
+
+  const extractedRef = extractSupabaseProjectRef(trimmed);
+  return extractedRef === PRODUCTION_SUPABASE_PROJECT_REF;
+}
+
+/**
+ * Returns true if the URL targets a known VyapOne production origin.
+ */
+export function isProductionAppUrl(value?: string | null): boolean {
+  if (!value || typeof value !== "string") {
+    return false;
+  }
+
+  try {
+    const parsed = new URL(value.trim());
+    return PRODUCTION_APP_HOSTS.has(parsed.hostname.toLowerCase());
+  } catch {
+    return false;
+  }
+}
+
+export interface StagingIsolationOptions {
+  requireCredentials?: boolean;
+}
+
+/**
+ * Runtime & startup staging guard.
+ *
+ * When staging mode is active (`NEXT_PUBLIC_APP_ENV === "staging"` or
+ * `VYAPONE_STAGING_MODE === "1"` / `"true"`), verifies that no URL, database DSN,
+ * project ref, or JWT points to the production Supabase project (`fjoezwoyowihbxacmoyp`)
+ * or production app host, and checks project reference consistency across variables.
+ * Never embeds credential values in thrown error messages.
+ */
+export function assertStagingIsolation(
+  rawEnv: Record<string, string | undefined> = process.env,
+  options: StagingIsolationOptions = {},
+): void {
+  const stagingModeFlag = readDictValue(rawEnv, "VYAPONE_STAGING_MODE").toLowerCase();
+  const appEnv = readDictValue(rawEnv, "NEXT_PUBLIC_APP_ENV").toLowerCase();
+  const isStrictModeFlag = stagingModeFlag === "1" || stagingModeFlag === "true";
+  const isStaging = appEnv === "staging" || isStrictModeFlag;
+
+  if (!isStaging) {
+    return;
+  }
+
+  const issues: Array<{ path: string; message: string }> = [];
+
+  if (isStrictModeFlag && appEnv !== "staging") {
+    issues.push({
+      path: "NEXT_PUBLIC_APP_ENV",
+      message: "Must be set to 'staging' when VYAPONE_STAGING_MODE is active.",
+    });
+  }
+
+  const appUrl = readDictValue(rawEnv, "NEXT_PUBLIC_APP_URL");
+  if (appUrl && isProductionAppUrl(appUrl)) {
+    issues.push({
+      path: "NEXT_PUBLIC_APP_URL",
+      message:
+        "Refusing to run in staging mode: NEXT_PUBLIC_APP_URL targets a production VyapOne origin.",
+    });
+  }
+
+  const refCheckedKeys = [
+    "VYAPONE_STAGING_PROJECT_REF",
+    "NEXT_PUBLIC_SUPABASE_URL",
+    "SUPABASE_URL",
+    "DATABASE_URL",
+    "DATABASE_DIRECT_URL",
+    "NEXT_PUBLIC_SUPABASE_ANON_KEY",
+    "SUPABASE_ANON_KEY",
+    "SUPABASE_SERVICE_ROLE_KEY",
+    "STORAGE_ENDPOINT",
+  ] as const;
+
+  const discoveredRefs = new Map<string, string>();
+
+  for (const key of refCheckedKeys) {
+    const val = readDictValue(rawEnv, key);
+    if (!val) {
+      continue;
+    }
+
+    if (isProductionSupabaseReference(val)) {
+      issues.push({
+        path: key,
+        message:
+          "Refusing to start in staging mode: configuration resolves to the production Supabase project reference.",
+      });
+      continue;
+    }
+
+    if (key !== "STORAGE_ENDPOINT") {
+      const ref = extractSupabaseProjectRef(val, key === "VYAPONE_STAGING_PROJECT_REF");
+      if (ref) {
+        discoveredRefs.set(key, ref);
+      }
+    }
+  }
+
+  const uniqueRefs = new Set(discoveredRefs.values());
+  if (uniqueRefs.size > 1) {
+    const keyList = Array.from(discoveredRefs.keys()).join(", ");
+    issues.push({
+      path: keyList,
+      message:
+        "Staging Supabase project references do not match across environment variables. Check staging project configuration.",
+    });
+  }
+
+  if (options.requireCredentials) {
+    const requiredKeys = [
+      "NEXT_PUBLIC_SUPABASE_URL",
+      "NEXT_PUBLIC_SUPABASE_ANON_KEY",
+      "DATABASE_URL",
+      "SUPABASE_SERVICE_ROLE_KEY",
+    ] as const;
+
+    for (const key of requiredKeys) {
+      if (!readDictValue(rawEnv, key)) {
+        issues.push({
+          path: key,
+          message: "Required in isolated staging mode.",
+        });
+      }
+    }
+
+    const sessionSecret = readDictValue(rawEnv, "SESSION_SECRET");
+    if (
+      !sessionSecret ||
+      sessionSecret.length < 32 ||
+      sessionSecret === "dev-only-secret-do-not-use-in-production-min-32-chars"
+    ) {
+      issues.push({
+        path: "SESSION_SECRET",
+        message: "Must be a unique 32+ character random secret in isolated staging mode.",
+      });
+    }
+  }
+
+  if (issues.length > 0) {
+    throw new ConfigurationError(issues);
+  }
+}
+
 /**
  * Public Environment Schema (safe for client bundles).
  * All keys MUST be prefixed with NEXT_PUBLIC_.
@@ -74,7 +342,10 @@ export type PublicEnvInput = z.infer<typeof publicEnvSchema>;
  */
 export const serverCoreEnvSchema = z.object({
   NODE_ENV: z.enum(["development", "production", "test"]).default("development"),
-  PORT: z.coerce.number().int().min(1).max(65535).default(3000),
+  PORT: z.preprocess(
+    (val) => (typeof val === "string" && val.trim() === "" ? undefined : val),
+    z.coerce.number().int().min(1).max(65535).default(3000),
+  ),
   SESSION_SECRET: z
     .string()
     .min(32, "Must be at least 32 characters long for session security")
@@ -114,7 +385,10 @@ export const optionalIntegrationsEnvSchema = z.object({
   // Storage (Cloudflare R2 / S3 / Supabase Storage)
   STORAGE_ENDPOINT: z.string().url("Must be a valid URL").optional().or(z.literal("")),
   STORAGE_BUCKET: z.string().optional().or(z.literal("")),
-  STORAGE_REGION: z.string().default("ap-south-1"),
+  STORAGE_REGION: z.preprocess(
+    (val) => (typeof val === "string" && val.trim() === "" ? undefined : val),
+    z.string().default("ap-south-1"),
+  ),
   STORAGE_ACCESS_KEY_ID: z.string().optional().or(z.literal("")),
   STORAGE_SECRET_ACCESS_KEY: z.string().optional().or(z.literal("")),
 
@@ -259,6 +533,14 @@ export function validateEnvironment(
   const isProduction = nodeEnv === "production";
   const isDevelopment = nodeEnv === "development";
   const isTest = nodeEnv === "test";
+
+  // 3b. Staging Isolation Guard (blocks production refs/origins in staging mode)
+  const stagingModeFlag = readDictValue(rawEnv, "VYAPONE_STAGING_MODE").toLowerCase();
+  const isStrictStaging = stagingModeFlag === "1" || stagingModeFlag === "true";
+  assertStagingIsolation(rawEnv, {
+    requireCredentials:
+      publicData.NEXT_PUBLIC_APP_ENV === "staging" && (isProduction || isStrictStaging),
+  });
 
   // 4. Strict Production Invariants: Enforce required server credentials
   if (isProduction) {

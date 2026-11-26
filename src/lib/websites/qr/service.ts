@@ -136,8 +136,10 @@ export async function updateQrDestination(
     throw new WebsiteError("QR code not found", "QR_NOT_FOUND", 404);
   }
 
-  // 2. Assert tenant access
-  const { business } = await assertBusinessAccess(supabase, qr.business_id);
+  // 2. Assert tenant access & management permission
+  const { business } = await assertBusinessAccess(supabase, qr.business_id, {
+    requiredPermission: "business:update_profile",
+  });
 
   // 3. Sanitize destination config
   const sanitizedConfig: QrDestinationConfig = {

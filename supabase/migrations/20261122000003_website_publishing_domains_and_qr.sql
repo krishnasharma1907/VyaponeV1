@@ -3,15 +3,17 @@
 -- Migration: 20261122000003_website_publishing_domains_and_qr.sql
 -- Invariants:
 --   1. Atomic publication of site draft versions via public.publish_site_draft_atomic.
---   2. Enforces live_websites plan capacity on transition from draft to published.
---   3. Strict row locking (FOR UPDATE OF s) serializing concurrent publishing operations.
---   4. Authenticated session caller verification and business authorization check.
---   5. Optimistic concurrency check preventing publish of stale drafts.
---   6. Historical versions are strictly immutable; published_at timestamp is stamped.
---   7. public.site_domains table for custom domain verification lifecycle.
---   8. public.qr_codes table for permanent dynamic QR redirects.
---   9. Automatic provisioning of stable main storefront QR on publish.
---  10. Logs audit event: site.published.
+--   2. Consistent lock ordering (workspaces -> businesses -> sites FOR UPDATE OF s) preventing deadlocks.
+--   3. Enforces canonical live_websites workspace plan capacity on draft-to-published transition
+--      (subscriptions -> workspaces.plan + capacity_overrides.additional_capacity + distinct non-archived business count).
+--   4. Sets transaction-local vyapone.in_atomic_site_transition = 'true' for trigger compliance.
+--   5. Authenticated session caller verification and business/sovereign/workspace authorization check.
+--   6. Optimistic concurrency check preventing publish of stale drafts (VY049).
+--   7. Historical versions are strictly immutable; published_at timestamp is stamped.
+--   8. public.site_domains table for custom domain verification lifecycle.
+--   9. public.qr_codes table for permanent dynamic QR redirects with canonical { type: "storefront" } config.
+--  10. Automatic provisioning of stable main storefront QR on publish returning mainQrCode row.
+--  11. Logs audit event: site.published.
 
 -- ------------------------------------------------------------------------------
 -- 1. Site Domains Table (Custom Domain Verification Lifecycle)
@@ -55,10 +57,19 @@ CREATE POLICY site_domains_select_policy ON public.site_domains
               AND bm.status = 'active'
         ) OR EXISTS (
             SELECT 1 FROM public.businesses b
+            WHERE b.id = site_domains.business_id
+              AND b.sovereign_owner_id = auth.uid()
+        ) OR EXISTS (
+            SELECT 1 FROM public.businesses b
             JOIN public.workspace_members wm ON wm.workspace_id = b.workspace_id
             WHERE b.id = site_domains.business_id
               AND wm.user_id = auth.uid()
               AND wm.status = 'active'
+        ) OR EXISTS (
+            SELECT 1 FROM public.businesses b
+            JOIN public.workspaces w ON w.id = b.workspace_id
+            WHERE b.id = site_domains.business_id
+              AND w.owner_user_id = auth.uid()
         )
     );
 
@@ -66,18 +77,33 @@ CREATE POLICY site_domains_insert_policy ON public.site_domains
     FOR INSERT TO authenticated
     WITH CHECK (
         EXISTS (
-            SELECT 1 FROM public.business_members bm
-            WHERE bm.business_id = site_domains.business_id
-              AND bm.user_id = auth.uid()
-              AND bm.role IN ('owner', 'manager')
-              AND bm.status = 'active'
-        ) OR EXISTS (
-            SELECT 1 FROM public.businesses b
-            JOIN public.workspace_members wm ON wm.workspace_id = b.workspace_id
-            WHERE b.id = site_domains.business_id
-              AND wm.user_id = auth.uid()
-              AND wm.role IN ('workspace_owner', 'agency_admin')
-              AND wm.status = 'active'
+            SELECT 1 FROM public.sites s
+            WHERE s.id = site_domains.site_id
+              AND s.business_id = site_domains.business_id
+        ) AND (
+            EXISTS (
+                SELECT 1 FROM public.business_members bm
+                WHERE bm.business_id = site_domains.business_id
+                  AND bm.user_id = auth.uid()
+                  AND bm.role IN ('owner', 'manager')
+                  AND bm.status = 'active'
+            ) OR EXISTS (
+                SELECT 1 FROM public.businesses b
+                WHERE b.id = site_domains.business_id
+                  AND b.sovereign_owner_id = auth.uid()
+            ) OR EXISTS (
+                SELECT 1 FROM public.businesses b
+                JOIN public.workspace_members wm ON wm.workspace_id = b.workspace_id
+                WHERE b.id = site_domains.business_id
+                  AND wm.user_id = auth.uid()
+                  AND wm.role IN ('workspace_owner', 'workspace_admin', 'reseller_admin')
+                  AND wm.status = 'active'
+            ) OR EXISTS (
+                SELECT 1 FROM public.businesses b
+                JOIN public.workspaces w ON w.id = b.workspace_id
+                WHERE b.id = site_domains.business_id
+                  AND w.owner_user_id = auth.uid()
+            )
         )
     );
 
@@ -92,11 +118,51 @@ CREATE POLICY site_domains_update_policy ON public.site_domains
               AND bm.status = 'active'
         ) OR EXISTS (
             SELECT 1 FROM public.businesses b
+            WHERE b.id = site_domains.business_id
+              AND b.sovereign_owner_id = auth.uid()
+        ) OR EXISTS (
+            SELECT 1 FROM public.businesses b
             JOIN public.workspace_members wm ON wm.workspace_id = b.workspace_id
             WHERE b.id = site_domains.business_id
               AND wm.user_id = auth.uid()
-              AND wm.role IN ('workspace_owner', 'agency_admin')
+              AND wm.role IN ('workspace_owner', 'workspace_admin', 'reseller_admin')
               AND wm.status = 'active'
+        ) OR EXISTS (
+            SELECT 1 FROM public.businesses b
+            JOIN public.workspaces w ON w.id = b.workspace_id
+            WHERE b.id = site_domains.business_id
+              AND w.owner_user_id = auth.uid()
+        )
+    )
+    WITH CHECK (
+        EXISTS (
+            SELECT 1 FROM public.sites s
+            WHERE s.id = site_domains.site_id
+              AND s.business_id = site_domains.business_id
+        ) AND (
+            EXISTS (
+                SELECT 1 FROM public.business_members bm
+                WHERE bm.business_id = site_domains.business_id
+                  AND bm.user_id = auth.uid()
+                  AND bm.role IN ('owner', 'manager')
+                  AND bm.status = 'active'
+            ) OR EXISTS (
+                SELECT 1 FROM public.businesses b
+                WHERE b.id = site_domains.business_id
+                  AND b.sovereign_owner_id = auth.uid()
+            ) OR EXISTS (
+                SELECT 1 FROM public.businesses b
+                JOIN public.workspace_members wm ON wm.workspace_id = b.workspace_id
+                WHERE b.id = site_domains.business_id
+                  AND wm.user_id = auth.uid()
+                  AND wm.role IN ('workspace_owner', 'workspace_admin', 'reseller_admin')
+                  AND wm.status = 'active'
+            ) OR EXISTS (
+                SELECT 1 FROM public.businesses b
+                JOIN public.workspaces w ON w.id = b.workspace_id
+                WHERE b.id = site_domains.business_id
+                  AND w.owner_user_id = auth.uid()
+            )
         )
     );
 
@@ -111,11 +177,20 @@ CREATE POLICY site_domains_delete_policy ON public.site_domains
               AND bm.status = 'active'
         ) OR EXISTS (
             SELECT 1 FROM public.businesses b
+            WHERE b.id = site_domains.business_id
+              AND b.sovereign_owner_id = auth.uid()
+        ) OR EXISTS (
+            SELECT 1 FROM public.businesses b
             JOIN public.workspace_members wm ON wm.workspace_id = b.workspace_id
             WHERE b.id = site_domains.business_id
               AND wm.user_id = auth.uid()
-              AND wm.role = 'workspace_owner'
+              AND wm.role IN ('workspace_owner', 'workspace_admin', 'reseller_admin')
               AND wm.status = 'active'
+        ) OR EXISTS (
+            SELECT 1 FROM public.businesses b
+            JOIN public.workspaces w ON w.id = b.workspace_id
+            WHERE b.id = site_domains.business_id
+              AND w.owner_user_id = auth.uid()
         )
     );
 
@@ -129,7 +204,7 @@ CREATE TABLE IF NOT EXISTS public.qr_codes (
     type TEXT NOT NULL DEFAULT 'main_storefront' CHECK (type IN ('main_storefront', 'page', 'catalogue', 'table', 'booking', 'offer', 'custom')),
     public_slug TEXT NOT NULL UNIQUE,
     title TEXT NOT NULL DEFAULT 'Main Storefront QR',
-    destination_configuration JSONB NOT NULL DEFAULT '{"targetType":"storefront"}'::jsonb,
+    destination_configuration JSONB NOT NULL DEFAULT '{"type":"storefront"}'::jsonb,
     status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'inactive', 'archived')),
     scan_count INTEGER NOT NULL DEFAULT 0 CHECK (scan_count >= 0),
     last_scanned_at TIMESTAMPTZ,
@@ -164,10 +239,19 @@ CREATE POLICY qr_codes_business_select ON public.qr_codes
               AND bm.status = 'active'
         ) OR EXISTS (
             SELECT 1 FROM public.businesses b
+            WHERE b.id = qr_codes.business_id
+              AND b.sovereign_owner_id = auth.uid()
+        ) OR EXISTS (
+            SELECT 1 FROM public.businesses b
             JOIN public.workspace_members wm ON wm.workspace_id = b.workspace_id
             WHERE b.id = qr_codes.business_id
               AND wm.user_id = auth.uid()
               AND wm.status = 'active'
+        ) OR EXISTS (
+            SELECT 1 FROM public.businesses b
+            JOIN public.workspaces w ON w.id = b.workspace_id
+            WHERE b.id = qr_codes.business_id
+              AND w.owner_user_id = auth.uid()
         )
     );
 
@@ -182,11 +266,51 @@ CREATE POLICY qr_codes_business_manage ON public.qr_codes
               AND bm.status = 'active'
         ) OR EXISTS (
             SELECT 1 FROM public.businesses b
+            WHERE b.id = qr_codes.business_id
+              AND b.sovereign_owner_id = auth.uid()
+        ) OR EXISTS (
+            SELECT 1 FROM public.businesses b
             JOIN public.workspace_members wm ON wm.workspace_id = b.workspace_id
             WHERE b.id = qr_codes.business_id
               AND wm.user_id = auth.uid()
-              AND wm.role IN ('workspace_owner', 'agency_admin')
+              AND wm.role IN ('workspace_owner', 'workspace_admin', 'reseller_admin')
               AND wm.status = 'active'
+        ) OR EXISTS (
+            SELECT 1 FROM public.businesses b
+            JOIN public.workspaces w ON w.id = b.workspace_id
+            WHERE b.id = qr_codes.business_id
+              AND w.owner_user_id = auth.uid()
+        )
+    )
+    WITH CHECK (
+        EXISTS (
+            SELECT 1 FROM public.sites s
+            WHERE s.id = qr_codes.site_id
+              AND s.business_id = qr_codes.business_id
+        ) AND (
+            EXISTS (
+                SELECT 1 FROM public.business_members bm
+                WHERE bm.business_id = qr_codes.business_id
+                  AND bm.user_id = auth.uid()
+                  AND bm.role IN ('owner', 'manager')
+                  AND bm.status = 'active'
+            ) OR EXISTS (
+                SELECT 1 FROM public.businesses b
+                WHERE b.id = qr_codes.business_id
+                  AND b.sovereign_owner_id = auth.uid()
+            ) OR EXISTS (
+                SELECT 1 FROM public.businesses b
+                JOIN public.workspace_members wm ON wm.workspace_id = b.workspace_id
+                WHERE b.id = qr_codes.business_id
+                  AND wm.user_id = auth.uid()
+                  AND wm.role IN ('workspace_owner', 'workspace_admin', 'reseller_admin')
+                  AND wm.status = 'active'
+            ) OR EXISTS (
+                SELECT 1 FROM public.businesses b
+                JOIN public.workspaces w ON w.id = b.workspace_id
+                WHERE b.id = qr_codes.business_id
+                  AND w.owner_user_id = auth.uid()
+            )
         )
     );
 
@@ -216,6 +340,7 @@ DECLARE
     v_override INT := 0;
     v_effective_limit INT := 0;
     v_current_live_count INT := 0;
+    v_business_has_published BOOLEAN := FALSE;
     v_main_qr RECORD;
     v_qr_slug TEXT;
 BEGIN
@@ -242,9 +367,26 @@ BEGIN
         RAISE EXCEPTION 'Caller user record not found' USING ERRCODE = 'VY020';
     END IF;
 
-    -- 3. Lock site row FOR UPDATE (Serializes concurrent publish/rollback operations)
+    -- 3. Acquire locks in canonical workspace -> business -> site order (serializes concurrent operations)
+    SELECT b.workspace_id
+    INTO v_workspace_id
+    FROM public.sites s
+    JOIN public.businesses b ON b.id = s.business_id
+    WHERE s.id = p_site_id;
+
+    IF NOT FOUND THEN
+        RAISE EXCEPTION 'Site not found: %', p_site_id USING ERRCODE = 'VY040';
+    END IF;
+
+    IF v_workspace_id IS NOT NULL THEN
+        PERFORM 1 FROM public.workspaces WHERE id = v_workspace_id FOR UPDATE;
+    END IF;
+
+    PERFORM 1 FROM public.businesses WHERE id = p_business_id FOR UPDATE;
+
     SELECT s.id, s.business_id, s.subdomain, s.primary_domain, s.status, s.published_version_id,
-           s.current_draft_version_id, s.created_at, s.updated_at, b.workspace_id
+           s.current_draft_version_id, s.created_at, s.updated_at,
+           b.workspace_id, b.status AS business_status
     INTO v_site
     FROM public.sites s
     JOIN public.businesses b ON b.id = s.business_id
@@ -261,19 +403,27 @@ BEGIN
 
     v_workspace_id := v_site.workspace_id;
 
-    -- 4. Verify Authorization (Owner or Workspace Admin/Owner)
+    IF v_site.business_status = 'archived' THEN
+        RAISE EXCEPTION 'Cannot publish site for an archived business' USING ERRCODE = 'VY002';
+    END IF;
+
+    -- 4. Verify Authorization (Business Owner/Manager, Sovereign Owner, or Workspace Admin/Owner)
     IF NOT EXISTS (
         SELECT 1 FROM public.business_members
         WHERE business_id = p_business_id
           AND user_id = p_caller_user_id
-          AND role = 'owner'
+          AND role IN ('owner', 'manager')
           AND status = 'active'
     ) AND NOT EXISTS (
         SELECT 1 FROM public.workspace_members wm
         WHERE wm.workspace_id = v_workspace_id
           AND wm.user_id = p_caller_user_id
-          AND wm.role IN ('workspace_owner', 'agency_admin')
+          AND wm.role IN ('workspace_owner', 'workspace_admin', 'reseller_admin')
           AND wm.status = 'active'
+    ) AND NOT EXISTS (
+        SELECT 1 FROM public.workspaces w
+        WHERE w.id = v_workspace_id
+          AND w.owner_user_id = p_caller_user_id
     ) AND NOT EXISTS (
         SELECT 1 FROM public.businesses b
         WHERE b.id = p_business_id
@@ -297,52 +447,99 @@ BEGIN
         RAISE EXCEPTION 'Target version does not belong to this site or business' USING ERRCODE = 'VY020';
     END IF;
 
-    -- Optimistic concurrency check on draft version
+    -- Optimistic concurrency check on draft version (reject NULL bypass)
+    IF p_expected_draft_version_number IS NULL THEN
+        RAISE EXCEPTION 'Publish conflict: expected draft version number is required'
+            USING ERRCODE = 'VY049';
+    END IF;
     IF p_expected_draft_version_number IS NOT NULL AND
        v_target_version.version_number <> p_expected_draft_version_number THEN
-        RAISE EXCEPTION 'Publish conflict: target draft version (% ) does not match expected version (%)',
+        RAISE EXCEPTION 'Publish conflict: target draft version (%) does not match expected version (%)',
             v_target_version.version_number, p_expected_draft_version_number USING ERRCODE = 'VY049';
     END IF;
 
-    -- 6. Enforce Plan Capacity (if transitioning from draft to published)
+    -- 6. Enforce Plan Capacity (if transitioning from draft/non-published to published)
     -- If site is ALREADY published (republishing updated draft), capacity was already accounted for.
-    IF v_site.status <> 'published' THEN
-        -- Lock workspace row FOR UPDATE to serialize capacity accounting
-        SELECT w.plan_id INTO v_plan_id
-        FROM public.workspaces w
-        WHERE w.id = v_workspace_id
-        FOR UPDATE;
+    IF v_site.status <> 'published' AND v_workspace_id IS NOT NULL THEN
+        -- Resolve canonical plan from active/trialing/grace subscription or workspace fallback
+        SELECT s.plan_id INTO v_plan_id
+        FROM public.subscriptions s
+        WHERE s.workspace_id = v_workspace_id
+          AND (
+              s.status = 'active'
+              OR (s.status = 'trialing' AND (s.current_period_end IS NULL OR s.current_period_end > v_now))
+              OR (s.status = 'past_due' AND s.grace_period_end IS NOT NULL AND s.grace_period_end > v_now)
+              OR (s.status = 'grace_period' AND (s.grace_period_end IS NULL OR s.grace_period_end > v_now))
+          )
+        ORDER BY s.created_at DESC
+        LIMIT 1;
 
         IF v_plan_id IS NULL THEN
-            v_plan_id := 'free';
+            SELECT w.plan INTO v_plan_id
+            FROM public.workspaces w
+            WHERE w.id = v_workspace_id;
         END IF;
 
-        -- Determine base limit
         IF v_plan_id = 'starter' THEN v_base_limit := 3;
-        ELSIF v_plan_id = 'growth' THEN v_base_limit := 8;
-        ELSIF v_plan_id = 'scale' THEN v_base_limit := 20;
-        ELSIF v_plan_id = 'enterprise' THEN v_base_limit := 50;
-        ELSE v_base_limit := 1;
+        ELSIF v_plan_id IN ('growth', 'pro') THEN v_base_limit := 8;
+        ELSIF v_plan_id = 'agency' THEN v_base_limit := 20;
+        ELSIF v_plan_id = 'scale' THEN v_base_limit := 50;
+        ELSE
+            RAISE EXCEPTION 'Unknown or unsupported plan identifier: %', pg_catalog.coalesce(v_plan_id, 'none')
+                USING ERRCODE = 'VY005';
         END IF;
 
-        -- Check capacity override
-        SELECT COALESCE(co.limit_override, 0) INTO v_override
-        FROM public.capacity_overrides co
-        WHERE co.workspace_id = v_workspace_id
-          AND co.metric = 'live_websites';
+        -- Null-safe capacity override lookup (0 rows must resolve to 0, never NULL)
+        v_override := pg_catalog.coalesce(
+            (
+                SELECT co.additional_capacity
+                FROM public.capacity_overrides co
+                WHERE co.workspace_id = v_workspace_id
+                  AND co.metric = 'live_websites'
+                  AND (co.expires_at IS NULL OR co.expires_at > v_now)
+                LIMIT 1
+            ),
+            0
+        );
 
         v_effective_limit := v_base_limit + v_override;
 
-        -- Count current live websites in workspace
-        SELECT COUNT(s2.id) INTO v_current_live_count
+        -- Count distinct non-archived live businesses in workspace (PRD §9.2)
+        SELECT pg_catalog.count(DISTINCT s2.business_id)::INT INTO v_current_live_count
         FROM public.sites s2
         JOIN public.businesses b2 ON b2.id = s2.business_id
         WHERE b2.workspace_id = v_workspace_id
+          AND b2.status <> 'archived'
           AND s2.status = 'published';
 
-        IF v_current_live_count >= v_effective_limit THEN
-            RAISE EXCEPTION 'Capacity limit reached for live_websites: workspace exceeds plan allowance (% max)', v_effective_limit
-                USING ERRCODE = 'VY049';
+        -- Account for whether this business already has another published site (slot replacement)
+        SELECT EXISTS (
+            SELECT 1
+            FROM public.sites s2
+            WHERE s2.business_id = p_business_id
+              AND s2.status = 'published'
+              AND s2.id <> p_site_id
+        ) INTO v_business_has_published;
+
+        IF v_business_has_published THEN
+            IF v_current_live_count > v_effective_limit THEN
+                RAISE EXCEPTION 'Capacity limit reached for live_websites: workspace exceeds plan allowance (% max)', v_effective_limit
+                    USING ERRCODE = 'VY001';
+            END IF;
+
+            -- Demote prior published site of this business atomically before publishing target site
+            PERFORM pg_catalog.set_config('vyapone.in_atomic_site_transition', 'true', true);
+            UPDATE public.sites
+            SET status = 'draft',
+                updated_at = v_now
+            WHERE business_id = p_business_id
+              AND status = 'published'
+              AND id <> p_site_id;
+        ELSE
+            IF (v_current_live_count + 1) > v_effective_limit THEN
+                RAISE EXCEPTION 'Capacity limit reached for live_websites: workspace exceeds plan allowance (% max)', v_effective_limit
+                    USING ERRCODE = 'VY001';
+            END IF;
         END IF;
     END IF;
 
@@ -354,7 +551,9 @@ BEGIN
         RETURNING * INTO v_target_version;
     END IF;
 
-    -- 8. Update Site Record (Point published_version_id to target version)
+    -- 8. Set transaction-scoped trigger guard and update Site Record
+    PERFORM pg_catalog.set_config('vyapone.in_atomic_site_transition', 'true', true);
+
     UPDATE public.sites
     SET published_version_id = p_target_version_id,
         current_draft_version_id = p_target_version_id,
@@ -366,7 +565,7 @@ BEGIN
     INTO v_updated_site;
 
     -- 9. Ensure Stable Main Storefront QR Code Exists [PRD §5.6, §8.9, §17.3 FR-08]
-    SELECT id, public_slug, destination_configuration, status
+    SELECT *
     INTO v_main_qr
     FROM public.qr_codes
     WHERE site_id = p_site_id
@@ -391,33 +590,31 @@ BEGIN
             'main_storefront',
             v_qr_slug,
             'Main Storefront QR',
-            pg_catalog.jsonb_build_object(
-                'targetType', 'storefront',
-                'subdomain', v_site.subdomain
-            ),
+            pg_catalog.jsonb_build_object('type', 'storefront'),
             'active',
             v_now,
             v_now
         )
-        RETURNING id, public_slug, destination_configuration, status
+        RETURNING *
         INTO v_main_qr;
     END IF;
 
     -- 10. Audit Log Entry
     INSERT INTO public.audit_logs (
         business_id,
+        workspace_id,
         user_id,
         action,
-        resource_type,
-        resource_id,
-        metadata,
+        resource,
+        metadata_json,
+        ip_address,
         created_at
     ) VALUES (
         p_business_id,
+        v_workspace_id,
         p_caller_user_id,
         'site.published',
         'site',
-        p_site_id,
         pg_catalog.jsonb_build_object(
             'site_id', p_site_id,
             'version_id', v_target_version.id,
@@ -426,13 +623,14 @@ BEGIN
             'primary_domain', v_updated_site.primary_domain,
             'qr_slug', v_main_qr.public_slug
         ),
+        NULL,
         v_now
     );
 
     RETURN pg_catalog.jsonb_build_object(
         'site', pg_catalog.row_to_json(v_updated_site),
         'publishedVersion', pg_catalog.row_to_json(v_target_version),
-        'mainQrSlug', v_main_qr.public_slug
+        'mainQrCode', pg_catalog.row_to_json(v_main_qr)
     );
 END;
 $$;

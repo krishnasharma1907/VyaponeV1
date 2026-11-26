@@ -146,9 +146,19 @@ describe("Database Migration Framework [VO-020]", () => {
       expect(seedContent).not.toContain("eyJhbGciOi");
       expect(seedContent).not.toContain("live_secret");
     });
+
+    it("seeds sites starting in draft and publishes atomically without trigger bypasses", () => {
+      const seedContent = fs.readFileSync(seedPath, "utf-8");
+
+      expect(seedContent).toContain("'kaveri-silks', 'draft'");
+      expect(seedContent).not.toContain("'kaveri-silks', 'published'");
+      expect(seedContent).toContain("INSERT INTO public.site_versions");
+      expect(seedContent).toContain("public.publish_site_draft_atomic(");
+      expect(seedContent).not.toMatch(/session_replication_role|DISABLE TRIGGER/i);
+    });
   });
 
-  describe("pgTAP Test Suite (00001_schema_test.sql)", () => {
+  describe("pgTAP Test Suites (00001_schema_test.sql & 00002_security_and_rpc_integration_test.sql)", () => {
     it("verifies pgTAP test file exists and contains valid test assertions", () => {
       expect(fs.existsSync(pgTapTestPath)).toBe(true);
       const pgTapContent = fs.readFileSync(pgTapTestPath, "utf-8");
@@ -160,6 +170,28 @@ describe("Database Migration Framework [VO-020]", () => {
       expect(pgTapContent).toContain("row_level_security_is_active(");
       expect(pgTapContent).toContain("SELECT * FROM finish();");
       expect(pgTapContent).toContain("ROLLBACK;");
+    });
+
+    it("verifies CLOUD-009 pgTAP integration suite covers invitation, capacity, concurrency, and RLS invariants", () => {
+      const securityPgTapPath = path.join(
+        rootDir,
+        "supabase",
+        "tests",
+        "00002_security_and_rpc_integration_test.sql",
+      );
+      expect(fs.existsSync(securityPgTapPath)).toBe(true);
+      const content = fs.readFileSync(securityPgTapPath, "utf-8");
+
+      expect(content).toContain("BEGIN;");
+      expect(content).toContain("SELECT plan(42);");
+      expect(content).toContain("accept_workspace_invitation_atomic");
+      expect(content).toContain("accept_business_invitation_atomic");
+      expect(content).toContain("publish_site_draft_atomic");
+      expect(content).toContain("rollback_published_site_version_atomic");
+      expect(content).toContain("create_business_with_setup_atomic");
+      expect(content).toContain("confirm_business_import_atomic");
+      expect(content).toContain("SELECT * FROM finish();");
+      expect(content).toContain("ROLLBACK;");
     });
   });
 });

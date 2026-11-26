@@ -5,8 +5,14 @@
   "type": "module",
   "scripts": {
     "dev": "next dev",
+    "dev:staging": "node scripts/run-staging.mjs dev",
     "build": "next build",
+    "build:staging": "node scripts/run-staging.mjs build",
     "start": "next start",
+    "start:staging": "node scripts/run-staging.mjs start",
+    "staging:check": "node scripts/staging-preflight.mjs",
+    "preview:cloudflare": "opennextjs-cloudflare build && opennextjs-cloudflare preview",
+    "deploy:cloudflare": "opennextjs-cloudflare build && opennextjs-cloudflare deploy",
     "typecheck": "tsc --noEmit",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
@@ -29,15 +35,19 @@
   "dependencies": {
     "@supabase/ssr": "^0.12.7",
     "@supabase/supabase-js": "^2.119.0",
+    "@swc/helpers": "0.5.15",
+    "client-only": "0.0.1",
     "next": "^15.5.29",
     "qrcode": "^1.5.4",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "server-only": "^0.0.1",
+    "styled-jsx": "5.1.6",
     "zod": "^4.6.7"
   },
   "devDependencies": {
     "@eslint/eslintrc": "^3.2.0",
+    "@opennextjs/cloudflare": "1.20.18",
     "@playwright/test": "^1.65.0",
     "@testing-library/react": "^16.3.3",
     "@testing-library/user-event": "^14.6.9",
@@ -54,7 +64,8 @@
     "pg": "^8.23.1",
     "prettier": "^3.4.2",
     "typescript": "^5.7.3",
-    "vitest": "^3.2.7"
+    "vitest": "^3.2.7",
+    "wrangler": "4.166.0"
   },
   "packageManager": "pnpm@11.21.0",
   "engines": {

@@ -18,6 +18,7 @@ import {
   addCustomDomain,
   formatDnsInstructions,
   removeCustomDomain,
+  resolveSiteByDomain,
   verifyCustomDomain,
 } from "@/lib/websites/domains/service";
 import { MockCustomDomainAdapter } from "@/lib/websites/domains/adapter";
@@ -691,6 +692,143 @@ describe("VO-049 Pre-publish Validation, Domains, and QR Test Suite", () => {
       );
     });
 
+    it("denies direct business manager from removeCustomDomain before touching DNS provider", async () => {
+      const mockDomainRow = {
+        id: mockDomainId,
+        site_id: mockSiteId,
+        business_id: mockBusinessId,
+        domain: "shop.roasters.in",
+        status: "verified" as const,
+        verification_method: "dns_txt" as const,
+        verification_token: "vyapone-verify=xyz",
+        verification_target: "cname.vyapone.in",
+        verified_at: "2026-11-22T01:00:00Z",
+        last_checked_at: null,
+        ssl_status: "active" as const,
+        error_message: null,
+        created_at: "2026-11-22T00:00:00Z",
+        updated_at: "2026-11-22T01:00:00Z",
+      };
+
+      const adapterSpy = {
+        providerName: "MockCustomDomainAdapter",
+        createDnsChallenge: vi.fn(),
+        verifyDomain: vi.fn(),
+        removeDomain: vi.fn(),
+      };
+
+      const mockSupabase = {
+        from: (table: string) => {
+          if (table === "site_domains") {
+            return {
+              select: () => ({
+                eq: () => ({
+                  eq: () => ({
+                    maybeSingle: vi.fn().mockResolvedValue({ data: mockDomainRow, error: null }),
+                  }),
+                }),
+              }),
+            };
+          }
+          return {};
+        },
+      } as unknown as SupabaseClient<Database>;
+
+      const { assertBusinessAccess } = await import("@/lib/auth/tenant-access");
+      vi.mocked(assertBusinessAccess).mockResolvedValueOnce({
+        ...mockBusinessAccess(),
+        isSovereignOwner: false,
+        effectiveRole: "manager",
+        member: {
+          id: "bm-manager-1",
+          business_id: mockBusinessId,
+          user_id: mockUserId,
+          role: "manager",
+          location_id: null,
+          permissions: {},
+          status: "active",
+          created_at: "2026-11-20T00:00:00Z",
+        },
+      });
+
+      await expect(
+        removeCustomDomain(
+          mockSupabase,
+          { siteId: mockSiteId, domainId: mockDomainRow.id },
+          adapterSpy,
+        ),
+      ).rejects.toMatchObject({ code: "FORBIDDEN", statusCode: 403 });
+
+      expect(assertBusinessAccess).toHaveBeenCalledWith(mockSupabase, mockBusinessId, {
+        requiredPermission: "business:update_profile",
+      });
+      expect(adapterSpy.removeDomain).not.toHaveBeenCalled();
+    });
+
+    it("fails closed in resolveSiteByDomain when published version crosses site or lacks published_at", async () => {
+      const mockSupabase = {
+        from: (table: string) => {
+          if (table === "site_domains") {
+            return {
+              select: () => ({
+                eq: () => ({
+                  in: () => ({
+                    maybeSingle: vi.fn().mockResolvedValue({
+                      data: {
+                        site_id: mockSiteId,
+                        business_id: mockBusinessId,
+                        status: "verified",
+                      },
+                      error: null,
+                    }),
+                  }),
+                }),
+              }),
+            };
+          }
+          if (table === "sites") {
+            return {
+              select: () => ({
+                eq: () => ({
+                  eq: () => ({
+                    maybeSingle: vi.fn().mockResolvedValue({
+                      data: {
+                        ...sampleSite,
+                        status: "published",
+                        published_version_id: mockDraftVersionId,
+                      },
+                      error: null,
+                    }),
+                  }),
+                }),
+              }),
+            };
+          }
+          if (table === "site_versions") {
+            return {
+              select: () => ({
+                eq: () => ({
+                  maybeSingle: vi.fn().mockResolvedValue({
+                    data: {
+                      id: mockDraftVersionId,
+                      site_id: "99999999-9999-4999-8999-999999999999",
+                      business_id: mockBusinessId,
+                      published_at: "2026-11-22T01:00:00Z",
+                    },
+                    error: null,
+                  }),
+                }),
+              }),
+            };
+          }
+          return {};
+        },
+      } as unknown as SupabaseClient<Database>;
+
+      const resolved = await resolveSiteByDomain(mockSupabase, "shop.roasters.in:443");
+      expect(resolved).toBeNull();
+    });
+
     it("formats DNS instructions correctly", () => {
       const domainRow = {
         id: "d1",
@@ -1028,6 +1166,7 @@ describe("VO-049 Pre-publish Validation, Domains, and QR Test Suite", () => {
 
       expect(result.site.status).toBe("published");
       expect(result.publishedVersion.published_at).toBe("2026-11-22T12:00:00Z");
+      expect(result.mainQrCode?.public_slug).toBe("qr_1234567890abcdef");
       expect(result.platformUrl).toBe("https://artisan-roasters.vyapone.in");
       expect(mockSupabase.rpc).toHaveBeenCalledWith(
         "publish_site_draft_atomic",
@@ -1036,6 +1175,33 @@ describe("VO-049 Pre-publish Validation, Domains, and QR Test Suite", () => {
           p_expected_draft_version_number: 1,
         }),
       );
+    });
+
+    it("maps canonical VY001 capacity limit errors to CAPACITY_EXCEEDED rather than CONFLICT", async () => {
+      const mockSupabase = {
+        ...createValidationSupabaseMock(),
+        rpc: vi.fn().mockResolvedValue({
+          data: null,
+          error: {
+            message:
+              "Capacity limit reached for live_websites: workspace exceeds plan allowance (3 max)",
+            code: "VY001",
+          },
+        }),
+      } as unknown as SupabaseClient<Database>;
+
+      const { assertBusinessAccess } = await import("@/lib/auth/tenant-access");
+      vi.mocked(assertBusinessAccess).mockResolvedValue(mockBusinessAccess());
+
+      await expect(
+        publishSiteDraft(mockSupabase, mockUserId, {
+          siteId: mockSiteId,
+          expectedDraftVersionNumber: 1,
+        }),
+      ).rejects.toMatchObject({
+        code: "CAPACITY_EXCEEDED",
+        statusCode: 403,
+      });
     });
 
     it("rejects publishing when optimistic concurrency conflict occurs (VY049)", async () => {

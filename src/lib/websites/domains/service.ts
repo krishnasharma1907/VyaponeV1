@@ -68,7 +68,9 @@ export async function addCustomDomain(
     throw new WebsiteError("Site not found or inaccessible", "SITE_NOT_FOUND", 404);
   }
 
-  const { business } = await assertBusinessAccess(supabase, site.business_id);
+  const { business } = await assertBusinessAccess(supabase, site.business_id, {
+    requiredPermission: "business:update_profile",
+  });
 
   // 2. Check if domain is already registered anywhere
   const { data: existingDomain } = await supabase
@@ -169,8 +171,10 @@ export async function verifyCustomDomain(
     throw new WebsiteError("Domain record not found", "DOMAIN_NOT_FOUND", 404);
   }
 
-  // 2. Tenant access assertion
-  const { business } = await assertBusinessAccess(supabase, domainRow.business_id);
+  // 2. Tenant access & management permission assertion
+  const { business } = await assertBusinessAccess(supabase, domainRow.business_id, {
+    requiredPermission: "business:update_profile",
+  });
 
   // 3. Run verification check via adapter
   const verification = await adapter.verifyDomain(domainRow.domain, domainRow.verification_token);
@@ -281,8 +285,18 @@ export async function removeCustomDomain(
     throw new WebsiteError("Domain record not found", "DOMAIN_NOT_FOUND", 404);
   }
 
-  // 2. Tenant access assertion
-  const { business } = await assertBusinessAccess(supabase, domainRow.business_id);
+  // 2. Tenant access & deletion role assertion (mirrors site_domains_delete_policy)
+  const access = await assertBusinessAccess(supabase, domainRow.business_id, {
+    requiredPermission: "business:update_profile",
+  });
+  const { business } = access;
+  if (!access.isSovereignOwner && access.effectiveRole !== "owner" && access.member !== null) {
+    throw new WebsiteError(
+      "Only business owners or workspace administrators can remove custom domains",
+      "FORBIDDEN",
+      403,
+    );
+  }
 
   // 3. Remove from external provider
   await adapter.removeDomain(domainRow.domain);
@@ -409,7 +423,13 @@ export async function resolveSiteByDomain(
     .eq("id", site.published_version_id)
     .maybeSingle();
 
-  if (versionError || !version) {
+  if (
+    versionError ||
+    !version ||
+    version.site_id !== site.id ||
+    version.business_id !== site.business_id ||
+    !version.published_at
+  ) {
     return null;
   }
 

@@ -4,6 +4,99 @@ Record implementation changes by task ID. Do not record planned work as complete
 
 ## Unreleased
 
+### [STAGING-001] — Prepare Complete VyapOne End-to-End Staging Environment (2026-11-25)
+
+- **Staging Environment Template & `.gitignore` Safeguards**: Updated [`.gitignore`](file:///f:/VyaponeV2/.gitignore) to ignore `.env.staging` and `.env.staging.local` while tracking [`.env.staging.local.example`](file:///f:/VyaponeV2/.env.staging.local.example) with complete staging variables (`NEXT_PUBLIC_APP_ENV=staging`, `VYAPONE_STAGING_PROJECT_REF`, core database/Supabase keys, and sandbox/test integrations).
+- **Isolated Staging Runner & `.env` Non-Fallback Protection**: Added [`scripts/staging/env-loader.mjs`](file:///f:/VyaponeV2/scripts/staging/env-loader.mjs), [`scripts/run-staging.mjs`](file:///f:/VyaponeV2/scripts/run-staging.mjs), and `dev:staging` / `build:staging` / `start:staging` / `staging:check` scripts in [`package.json`](file:///f:/VyaponeV2/package.json). Enforces `.env.staging.local`, rejects placeholders and `.env` targets, scrubs sibling `.env*` / inherited credential prefixes (`__NEXT_PROCESSED_ENV=true` + empty-string shadowing) so Next.js `@next/env` cannot hydrate production values from `.env`, and validates `.next/.vyapone-staging-manifest.json` on `start:staging`.
+- **Startup & Runtime Production-Ref Guards**: Added `PRODUCTION_SUPABASE_PROJECT_REF` (`fjoezwoyowihbxacmoyp`), JWT `ref` decoding, URL/DSN ref extraction, and `assertStagingIsolation` across [`src/config/env.ts`](file:///f:/VyaponeV2/src/config/env.ts), [`src/config/public.ts`](file:///f:/VyaponeV2/src/config/public.ts), [`src/lib/supabase/client.ts`](file:///f:/VyaponeV2/src/lib/supabase/client.ts), [`src/lib/supabase/server.ts`](file:///f:/VyaponeV2/src/lib/supabase/server.ts), [`src/lib/supabase/middleware.ts`](file:///f:/VyaponeV2/src/lib/supabase/middleware.ts), and [`src/lib/supabase/admin.ts`](file:///f:/VyaponeV2/src/lib/supabase/admin.ts), while keeping browser client exposure restricted to the 4 `NEXT_PUBLIC_*` keys in `public.ts`.
+- **Staging Migration, Seed, Auth & Storage Tooling**: Created [`scripts/staging-preflight.mjs`](file:///f:/VyaponeV2/scripts/staging-preflight.mjs), staging-only Migration #13 compatibility helper [`scripts/staging/clean-db-bootstrap-compat.sql`](file:///f:/VyaponeV2/scripts/staging/clean-db-bootstrap-compat.sql) (preserving immutable historical migrations 1–25), [`scripts/staging-bootstrap.mjs`](file:///f:/VyaponeV2/scripts/staging-bootstrap.mjs) (`vyapone-public-media`, `vyapone-private-media`, optional deterministic Auth personas), and [`docs/STAGING_ENVIRONMENT_SETUP.md`](file:///f:/VyaponeV2/docs/STAGING_ENVIRONMENT_SETUP.md) (including `supabase/seed.sql` / `publish_site_draft_atomic` `auth.uid()` review).
+- **Staging Isolation Tests**: Added [`tests/unit/config/staging-isolation.test.ts`](file:///f:/VyaponeV2/tests/unit/config/staging-isolation.test.ts) and [`tests/unit/supabase/staging-guards.test.ts`](file:///f:/VyaponeV2/tests/unit/supabase/staging-guards.test.ts).
+
+### [Fast-Track Test Readiness & VO-050 Handoff] (2026-11-25)
+
+- **Added fast-track verification & VO-050 handoff report**: Created [`docs/VYAPONE_FAST_TRACK_TEST_READINESS.md`](file:///f:/VyaponeV2/docs/VYAPONE_FAST_TRACK_TEST_READINESS.md) documenting live PostgREST OpenAPI production check (`200 OK`, migrations 26–29 still absent, IPv6 direct PostgreSQL `EHOSTUNREACH`), GitHub/Cloudflare build verification blockers preventing unsafe branch push, clean `next build` (`40/40 routes`) & local `next start` fallback 10-route smoke probe, `workerd.exe` / `@ast-grep/napi` Windows blockers, Phase 4 disposable compatibility-overlay analysis, exact remaining owner actions, and the ready-to-use `VO-050` prompt. Release remains **NO-GO**.
+
+### [CLOUD-009] — Invitation RPC Security, Seed Compatibility & PostgreSQL Test Remediation (2026-11-25)
+
+- **Remediated invitation acceptance RPCs (`20261125000001`)**: Replaced the `PERFORM assert_and_lock_workspace_capacity(...)` defect in `accept_workspace_invitation_atomic` with canonical `workspaces -> workspace_invitations` locking, authenticated `auth.uid()` caller + verified account email verification (`VY013`), and locked `team_seats` enforcement raising `VY001` (preserving `already_member` and zero `workspace_members.updated_at`). Remediated `accept_business_invitation_atomic` identically with caller session, verified email, archived-business guard (`VY002`), and `businesses -> business_invitations` lock order.
+- **Fixed `supabase/seed.sql` trigger compatibility**: Seeded `'40000000-0000-4000-a000-000000000001'` as `'draft'`, inserted `v1` in `public.site_versions`, and published idempotently via `public.publish_site_draft_atomic(...)` without bypassing security triggers.
+- **Hardened concurrency, RLS, and TypeScript role parity**: Closed `NULL` optimistic-lock bypasses in `rollback_published_site_version_atomic` (`20261122000002`) and `publish_site_draft_atomic` (`20261122000003`); added same-business `site_id` verification to `site_domains` & `qr_codes` `WITH CHECK` policies (`20261122000003`); aligned `src/lib/websites/*` (`business:update_profile`, direct-manager `removeCustomDomain` pre-check before DNS adapter call, and fail-closed `resolveSiteByDomain`) and invitation error mappings in `src/lib/workspaces/service.ts` and `src/lib/businesses/service.ts`.
+- **Expanded PostgreSQL & CI test coverage**: Added pgTAP suite `supabase/tests/00002_security_and_rpc_integration_test.sql` (`plan(42)`), expanded `scripts/ci/verify-supabase-migrations.mjs` (all 9 critical RPCs + behavioral assertions), wired `supabase test db` into `.github/workflows/cloudflare-validation.yml`, and updated unit/static Vitest suites. Documented results in `docs/CLOUD-009_INVITATION_AND_DATABASE_TEST_REMEDIATION.md`; updated `ADR-027` in `docs/DECISION_REGISTER.md`, `docs/CLOUDFLARE_DEPLOYMENT.md`, `docs/PROGRESS.md`. Real PostgreSQL & Linux CI remain `NOT RUN`; release remains **NO-GO**.
+
+### [CLOUD-008] — Clean Database Recovery Strategy & Linux CI / PostgreSQL Verification Readiness (2026-11-25)
+
+- **Added recovery architecture & runbook report**: Created `docs/CLOUD-008_RECOVERY_AND_CI_READINESS.md` with full 29-migration inventory reconciled against `CLOUD-002` OpenAPI evidence (resolving `CLOUD-004` #25 filename discrepancy vs actual `20261120000003`), exact DDL diagnosis of `20261117000002` (`public.update_updated_at_column()`), comparison of recovery Options A/B/C/D, Linux CI workflow validation, PostgreSQL test-coverage audit across all 26 DB/isolation Vitest suites + pgTAP + `verify-supabase-migrations.mjs`, and an approved-only production migration runbook.
+- **Disclosed additional CI & runtime readiness blockers**: Documented `supabase/seed.sql` inserting `'published'` directly into `public.sites` (fails `VY003` during `supabase start` / `db reset`), `accept_workspace_invitation_atomic` -> `assert_and_lock_workspace_capacity` rejecting invited non-members (`VY003`) and ignoring `allowed = false` (`20261125000001`), and GitHub Actions default-branch / unverified Cloudflare branch-build constraints blocking unapproved branch pushes to `VyaponeV1.git`.
+- **Updated governance docs**: Updated `ADR-027` and `ADR-028` (`REQUIRES_APPROVAL`) in `docs/DECISION_REGISTER.md` recommending Option D pre-check; updated `docs/CLOUDFLARE_DEPLOYMENT.md` and `docs/PROGRESS.md`. Release remains **NO-GO**.
+
+### [CLOUD-007] — Comprehensive SQL Defect Remediation & Schema Contract Alignment (2026-11-25)
+
+- **Classified migration history safety**: Kept production-applied historical migrations 1–25 (`20261112000001`–`20261120000003`) strictly immutable, verified pending `20261122000001` unchanged, remediated pending `20261122000002` and `20261122000003`, and added forward corrective migration `20261125000001_remediate_historical_schema_and_rpc_defects.sql`.
+- **Remediated pending publishing & rollback RPCs**: Corrected `20261122000003` (`qr_codes.destination_configuration`, `'mainQrCode'` payload, `subscriptions`/`workspaces.plan`, scalar-coalesced `capacity_overrides.additional_capacity`, distinct non-archived business counting, `workspaces -> businesses -> sites` lock ordering, `VY001`/`VY002`, RLS/RPC parity, GUC flag) and `20261122000002` (lock ordering, `VY002` guard, capacity-neutral vs capacity-increasing rollback checks, `VY001`, GUC flag).
+- **Remediated historical runtime defects via forward migration (`20261125000001`)**: Re-pointed `trg_notifications_updated_at` on `public.notifications` to `public.set_updated_at()`; fixed `accept_workspace_invitation_atomic` (removed `workspace_members.updated_at`), `create_business_with_setup_atomic` & `confirm_business_import_atomic` (`JOIN public.niche_groups`), `check_site_publish_capacity_trigger()` (`IS DISTINCT FROM 'true'`), 0-row `capacity_overrides` NULL bypasses, `transition_site_status_atomic` (removed `sites.published_at`), and `scale.locations_per_business := 50`.
+- **Aligned app error mapping, CI verification script, and tests**: Updated `src/lib/websites/service.ts` (`VY001`/`VY042` checked before `CONFLICT`, plus `VY002` and `VY005`), expanded `scripts/ci/verify-supabase-migrations.mjs`, strengthened existing database/website/CI unit tests, and added `tests/unit/database/schema-remediation-migration.test.ts`.
+- **Documented remediation & clean-DB recovery gate**: Added `docs/SUPABASE_SCHEMA_REMEDIATION_CLOUD-007.md` and `ADR-028` in `docs/DECISION_REGISTER.md`; updated `docs/CLOUDFLARE_DEPLOYMENT.md` and `docs/PROGRESS.md`. Real PostgreSQL execution remains `NOT RUN` locally; release remains **NO-GO**.
+
+### [CLOUD-006] — Linux CI, OpenNext Runtime & Isolated Supabase Migration Verification (2026-11-25)
+
+- **Added manual-only Linux CI validation workflow**: Created `.github/workflows/cloudflare-validation.yml` (`workflow_dispatch` only, `contents: read`, Node 24, `pnpm install --frozen-lockfile`, 40-char SHA-pinned GitHub Actions) covering `quality-gates`, `opennext-build-and-runtime`, and `supabase-migration-verification` without automatic deployment, remote flags, or linked Supabase commands.
+- **Added Cloudflare runtime and PostgreSQL verification scripts**: Created `scripts/ci/verify-opennext-runtime.mjs` (11-route `workerd` runtime probe with sanitized dummy env vars) and `scripts/ci/verify-supabase-migrations.mjs` (loopback-enforced PostgreSQL catalog, privilege, and rollback-scoped RLS/RPC behavioral verification).
+- **Added workflow test suite & audit report**: Created `tests/unit/ci/cloudflare-validation.test.ts` (9 unit tests) and `docs/CLOUDFLARE_LINUX_CI_CLOUD-006.md`; updated `docs/CLOUDFLARE_DEPLOYMENT.md` and `docs/PROGRESS.md`.
+- **Disclosed newly identified SQL blockers**: Documented `20261117000002` (`public.update_updated_at_column()` missing on clean DB) and runtime column/contract errors in `20261122000003` (`workspaces.plan_id`, `capacity_overrides.limit_override`, JSON payload/GUC mismatches) and earlier migrations (`20261117000001`, `20261119000001`/`02`, `20261115000001`/`20261116000001`). Release remains **NO-GO**.
+
+### [CLOUD-005] — Correct Supabase Publishing & Rollback Migration Defects (2026-11-24)
+- Corrected confirmed SQL schema reference defects in pending Supabase migrations for website rollback and publishing:
+  - **Migration 2 (`20261122000002_website_rollback_rpc.sql`):**
+    - Corrected non-existent table references `public.business_memberships` and `public.workspace_memberships` by utilizing canonical security helper `public.can_manage_business(p_business_id, p_caller_user_id)`.
+    - Explicitly assigned `v_workspace_id := v_site.workspace_id;`.
+    - Corrected non-existent `audit_logs` columns (`resource_type`, `resource_id`, `metadata`) to canonical schema (`workspace_id`, `resource`, `metadata_json`, `ip_address`).
+  - **Migration 3 (`20261122000003_website_publishing_domains_and_qr.sql`):**
+    - Corrected non-existent `audit_logs` columns inside `publish_site_draft_atomic` to canonical schema (`workspace_id`, `resource`, `metadata_json`, `ip_address`).
+    - Replaced non-existent workspace role `'agency_admin'` with canonical roles (`'workspace_owner', 'workspace_admin', 'reseller_admin'`).
+    - Added sovereign business owner authorization check (`b.sovereign_owner_id = auth.uid()`) across RLS policies for `public.site_domains` and `public.qr_codes`.
+    - Guarded plan capacity check for direct DIY businesses (`v_workspace_id IS NOT NULL`).
+    - Corrected whitespace typo in exception string `(% )` -> `(%)`.
+  - **Migration 1 (`20261122000001_website_draft_concurrency_and_optimistic_lock.sql`):**
+    - Independently audited and verified 100% compliant with canonical schema and application RPC call.
+  - **Migration Test Strengthening:**
+    - Rewrote `tests/unit/database/website-rollback-migration.test.ts` (13 tests) and `tests/unit/database/website-publishing-migration.test.ts` (19 tests) with assertions validating real schema table names, actual audit log column names, error codes, and absence of invalid identifiers.
+  - **Quality Gates:**
+    - TypeScript typecheck (`tsc --noEmit`): 0 errors (PASS).
+    - ESLint 9 (`eslint .`): 0 errors, 0 warnings (PASS).
+    - Prettier (`prettier --check .`): 100% formatted (PASS).
+    - Vitest migration tests: 32/32 tests passing (PASS).
+  - **Safety Invariant:** Zero remote database writes, zero Git pushes, and zero Cloudflare worker modifications executed.
+- Conducted final read-only release readiness and deployment safety audit:
+  - **Overall Decision:** **NO-GO (DEPLOYMENT BLOCKED)** pending migration fixes, manual database application, and Linux CI setup.
+  - **Dependency Reproducibility:** Audited pristine unpatched `node_modules`. Confirmed Next.js standalone file tracing fails on Windows NTFS due to unprivileged symlink permissions (`EPERM`). Confirmed manual package modification violates reproducibility invariants.
+  - **Database Migration Defects Identified:**
+    - Migration 2 (`20261122000002_website_rollback_rpc.sql`): References non-existent tables `public.business_memberships` and `public.workspace_memberships` (actual: `business_members`, `workspace_members`); references non-existent columns `resource_type`, `resource_id`, `metadata` on `audit_logs` (actual: `resource`, `metadata_json`).
+    - Migration 3 (`20261122000003_website_publishing_domains_and_qr.sql`): References non-existent columns `resource_type`, `resource_id`, `metadata` on `audit_logs`.
+    - Generated a comprehensive migration runbook with corrected SQL in `docs/CLOUDFLARE_RELEASE_READINESS_CLOUD-004.md`.
+  - **Host Hardware & Preview Limitation:** Documented that local `workerd.exe` crashes with `0xC000001D` due to the host Pentium E5800 CPU lacking AVX instructions. WSL is unavailable.
+  - **Git Remote Risk:** Documented that `main` is 11 commits ahead of `origin/main` (`67f9141`). Blindly pushing to `VyaponeV1.git` without manual migration execution poses high risk of production disruption.
+  - **Safety Invariant Enforced:** Zero Git pushes, zero database migrations or writes, and zero Cloudflare live worker modifications executed.
+
+### [CLOUD-003] — OpenNext Configuration Alignment & Local Cloudflare Preview (2026-11-23)
+- Aligned project configuration and dependencies for OpenNext Cloudflare deployment:
+  - **Tooling & Runtimes:** Bootstrapped standalone Node.js `v22.14.0` in `~/.gemini/antigravity/bin` to provide native worker-threads and child process management.
+  - **OpenNext & Wrangler Dependencies:** Installed and pinned `@opennextjs/cloudflare@1.20.18` and `wrangler@4.166.0` as explicit devDependencies in `package.json`.
+  - **Runtime Transitive Dependencies:** Explicitly declared `@swc/helpers@0.5.15`, `styled-jsx@5.1.6`, and `client-only@0.0.1` in `dependencies` for Next.js standalone file tracing and esbuild symbol bundling.
+  - **Wrangler Alignment:** Aligned `wrangler.jsonc` with `main: ".open-next/worker.js"`, `assets: { directory: ".open-next/assets", binding: "ASSETS" }`, `compatibility_date: "2024-12-30"`, while preserving worker identity `vyapone` and environments.
+  - **Build & Preview Scripts:** Added `preview:cloudflare` and `deploy:cloudflare` scripts using `opennextjs-cloudflare`.
+  - **Build Output Verification:** Executed `pnpm opennextjs-cloudflare build` (Exit code 0), generating `.open-next/worker.js` (2,216 bytes) and static assets in `.open-next/assets`.
+  - **Hardware & Local Preview Finding:** Identified that local `wrangler dev` (workerd) requires AVX/AVX2 instruction sets, which are unsupported on the host machine's Intel Pentium Dual-Core E5800 CPU (`0xC000001D STATUS_ILLEGAL_INSTRUCTION`). Verified all application production routes locally on port 3005 with 100% route success (`/` 200, `/login` 200, `/dashboard` 307 redirect, `/robots.txt` 200, `/sitemap.xml` 200, `/s/preview` 200).
+  - **Quality Gates:** 100% passing across TypeScript (`tsc --noEmit`), ESLint 9 (`eslint .`), Prettier (`prettier --check .`), Vitest (107 files, 1,345/1,345 tests), and OpenNext build.
+  - **Strict Safety:** Zero Git pushes, zero database migrations or writes, and zero Cloudflare dashboard modifications.
+
+### [CLOUD-002] — Existing VyapOne Worker Production Deployment Preflight (2026-11-23)
+- Conducted full production preflight audit for the existing Cloudflare Worker `vyapone` (`https://vyapone.kssharma2022krish.workers.dev/`):
+  - **Supabase Production Database Audit:** Inspected live remote database via read-only PostgREST OpenAPI discovery. Confirmed migrations 1–25 applied (29 tables, 20 RPC functions). Identified 3 unapplied migrations: `20261122000001` (draft optimistic locking), `20261122000002` (rollback RPC), `20261122000003` (`site_domains`, `qr_codes`, publishing RPC). Marked deployment as BLOCKED pending manual execution.
+  - **Live Worker Audit:** Confirmed worker is live and deployed with OpenNext (`x-opennext: 1` header) running commit `67f9141` (`origin/main`). Local branch `main` is 11 commits ahead at `7c61842`.
+  - **OpenNext Configuration:** Prepared `open-next.config.ts`, added `.open-next/` to `.gitignore`, added `preview:cloudflare` and `deploy:cloudflare` scripts to `package.json`, and added type declarations in `src/types/opennext.d.ts`.
+  - **Quality Gates:** 100% passing across TypeScript (`tsc --noEmit`), ESLint 9 (`pnpm lint`), Prettier (`pnpm format:check`), Vitest (107 test files, 1,345 tests), and Next.js production build (`pnpm build`).
+  - **Safety Invariants:** No production changes, no Git pushes, no database writes executed.
+
 ### [VO-049] — Implement Pre-publish Validation, Domains and QR (2026-11-22)
 - Implemented server-authoritative pre-publish validation, custom domain provider adapter boundary, permanent dynamic QR redirect route, and atomic site publishing workflow (PRD FINAL v2 §5.5, §6.14, §15.3, §16, §17.3 FR-08, §17.3 FR-09, §17.3 FR-10, §21 item 11):
   - **Database Migration & Atomic Publishing RPC (`20261122000003_website_publishing_domains_and_qr.sql`):**

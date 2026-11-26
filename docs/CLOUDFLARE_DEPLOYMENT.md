@@ -1,6 +1,11 @@
-# Cloudflare Workers Preview Deployment Guide (CLOUD-001)
+# Cloudflare Workers Deployment Guide (CLOUD-001 - CLOUD-009)
 
-This document specifies the deployment architecture, configuration, security boundaries, and step-by-step procedures for deploying **VyapOne** to **Cloudflare Workers** using **vinext** for isolated preview testing.
+> [!WARNING]
+> **Release Status: NO-GO (DEPLOYMENT BLOCKED)**  
+> 1. In **CLOUD-007**, **CLOUD-008**, & **CLOUD-009**, local SQL remediation (`20261122000002`, `20261122000003`, `20261125000001`), `supabase/seed.sql`, website role parity, pgTAP integration suite `00002_security_and_rpc_integration_test.sql`, and Linux CI `supabase test db` wiring were completed (see [`docs/CLOUD-008_RECOVERY_AND_CI_READINESS.md`](file:///f:/VyaponeV2/docs/CLOUD-008_RECOVERY_AND_CI_READINESS.md) and [`docs/CLOUD-009_INVITATION_AND_DATABASE_TEST_REMEDIATION.md`](file:///f:/VyaponeV2/docs/CLOUD-009_INVITATION_AND_DATABASE_TEST_REMEDIATION.md)).  
+> 2. **Remaining Blockers:** (a) Historical migration `20261117000002` still prevents clean empty-DB `supabase db reset` until `ADR-028` (Option D pre-check + chosen recovery) is explicitly approved; (b) `.github/workflows/cloudflare-validation.yml` has not been pushed to `origin/main` (`VyaponeV1.git`) or triggered via `workflow_dispatch`; (c) pending migrations `20261122000001`–`20261125000001` have NOT been applied to production.  
+> 3. **PostgreSQL & Linux Runtime Execution:** `NOT RUN` locally on Windows (`docker`, `supabase`, `psql`, `git` absent); Vitest suites run locally with mocks/static SQL checks only.  
+> 4. **Production execution authorization: NOT AUTHORIZED.** Pushing to `origin/main` (`VyaponeV1.git`), running production DB writes, and deploying Cloudflare Workers remain blocked pending explicit approval.
 
 ---
 
@@ -25,35 +30,32 @@ This document specifies the deployment architecture, configuration, security bou
 
 VyapOne is a full-stack Next.js application leveraging React 19 Server Components (RSC), Server Actions, Next.js App Router, Route Handlers, and Supabase.
 
-Cloudflare recommends **`vinext`** (`@vinext/cloudflare`) for modern full-stack Next.js applications deploying to Cloudflare Workers.
+For production deployment on Cloudflare Workers, the project uses **OpenNext for Cloudflare** (`@opennextjs/cloudflare@1.20.18` and `wrangler@4.166.0`), aligning with the existing live worker `vyapone` (`https://vyapone.kssharma2022krish.workers.dev/`).
 
-### Compatibility Audit Results (`pnpm dlx vinext check`):
-- **Overall Compatibility:** **96% compatible** (12 supported, 1 partial, **0 issues**).
-- **Imports:** 6/6 fully supported (`next/link`, `next/navigation`, `next/server`, `server-only`, `next/cache`, `next/headers`).
-- **App Router:** 35 pages, 7 layouts, 4 route handlers, and `src/middleware.ts` fully supported.
-- **Node.js Built-ins:** Minimal usage (`node:crypto` in `src/lib/workspaces/tokens.ts` and `src/lib/websites/domains/adapter.ts`). Supported seamlessly via Cloudflare Workers' `nodejs_compat` flag.
-- **Filesystem Access:** Zero `node:fs` calls in application source code.
-- **Image Optimization:** Uses standard CDN `<img>` tags pointing to Supabase storage; no proprietary Next.js Image Optimization runtime dependency.
-- **Environment Resolution:** `src/config/env.ts` resolves environment variables from both `process.env` and `globalThis` (Cloudflare Workers global bindings).
-- **Partial Item:** `reactStrictMode` is noted as partial for Pages Router only; VyapOne is 100% App Router, so this has zero operational impact.
+### OpenNext Stack & Invariants:
+- **Adapter:** `@opennextjs/cloudflare@1.20.18`
+- **CLI / Runtime:** `wrangler@4.166.0`
+- **Worker Entry Point:** `.open-next/worker.js`
+- **Static Assets:** `.open-next/assets`
+- **App Router:** 35 pages, 7 layouts, 4 route handlers, and `src/middleware.ts` fully bundled.
+- **Node.js Built-ins:** Supported via Cloudflare Workers' `nodejs_compat` flag with compatibility date `2024-12-30`.
+- **Environment Resolution:** `src/config/env.ts` resolves environment variables from both `process.env` and global bindings.
 
 ---
 
-## 3. Cloudflare Configuration (`wrangler.jsonc`)
+## 3. Cloudflare Configuration (`wrangler.jsonc` & `open-next.config.ts`)
 
-The project uses an isolated `wrangler.jsonc` file at the repository root. This preserves existing Next.js local development scripts (`pnpm dev`, `pnpm build`) while enabling Cloudflare Workers preview deployments.
+The project uses an aligned `wrangler.jsonc` and `open-next.config.ts` at the repository root:
 
 ```jsonc
 {
-  "$schema": "https://raw.githubusercontent.com/cloudflare/workers-sdk/main/packages/wrangler/config-schema.json",
+  "$schema": "node_modules/wrangler/config-schema.json",
   "name": "vyapone",
-  "compatibility_date": "2024-11-01",
-  "compatibility_flags": [
-    "nodejs_compat"
-  ],
-  "main": "./dist/server/index.js",
+  "compatibility_date": "2024-12-30",
+  "compatibility_flags": ["nodejs_compat"],
+  "main": ".open-next/worker.js",
   "assets": {
-    "directory": "./public",
+    "directory": ".open-next/assets",
     "binding": "ASSETS"
   },
   "observability": {
@@ -75,6 +77,20 @@ The project uses an isolated `wrangler.jsonc` file at the repository root. This 
   }
 }
 ```
+
+### OpenNext Configuration (`open-next.config.ts`):
+```ts
+import { defineCloudflareConfig } from "@opennextjs/cloudflare";
+
+export default defineCloudflareConfig({
+  // OpenNext Cloudflare configuration
+  // Handles Next.js 15 App Router features, SSR, and assets
+});
+```
+
+### Dedicated Scripts:
+- `pnpm preview:cloudflare`: `opennextjs-cloudflare build && opennextjs-cloudflare preview`
+- `pnpm deploy:cloudflare`: `opennextjs-cloudflare build && opennextjs-cloudflare deploy`
 
 ---
 

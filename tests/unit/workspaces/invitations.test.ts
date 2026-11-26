@@ -583,11 +583,14 @@ describe("Workspace Team Invitations & Membership Lifecycle [VO-027]", () => {
       });
     });
 
-    it("translates PostgreSQL SQLSTATE VY001 to CAPACITY_EXCEEDED", async () => {
+    it("translates PostgreSQL SQLSTATE VY001 and Capacity limit messages to CAPACITY_EXCEEDED", async () => {
       const mockSupabase = {
         rpc: vi.fn(async () => ({
           data: null,
-          error: { code: "VY001", message: "Capacity exceeded for team_seats" },
+          error: {
+            code: "VY001",
+            message: "Capacity limit reached for team_seats: active 2, limit 2",
+          },
         })),
       } as unknown as SupabaseClient<Database>;
 

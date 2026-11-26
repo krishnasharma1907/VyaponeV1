@@ -2,7 +2,7 @@ import { createServerClient } from "@supabase/ssr";
 import type { User } from "@supabase/supabase-js";
 import { type NextRequest, NextResponse } from "next/server";
 import { publicConfig } from "@/config/public";
-import { getEnvVar } from "@/config/env";
+import { assertStagingIsolation, getEnvVar } from "@/config/env";
 import type { Database } from "./types";
 
 export interface SessionUpdateResult {
@@ -41,6 +41,15 @@ export async function updateSession(request: NextRequest): Promise<SessionUpdate
     getEnvVar("NEXT_PUBLIC_SUPABASE_ANON_KEY") ||
     getEnvVar("SUPABASE_ANON_KEY") ||
     publicConfig.supabaseAnonKey;
+
+  assertStagingIsolation({
+    NEXT_PUBLIC_APP_ENV: getEnvVar("NEXT_PUBLIC_APP_ENV") || publicConfig.appEnv,
+    NEXT_PUBLIC_APP_URL: getEnvVar("NEXT_PUBLIC_APP_URL") || publicConfig.appUrl,
+    NEXT_PUBLIC_SUPABASE_URL: url,
+    NEXT_PUBLIC_SUPABASE_ANON_KEY: anonKey,
+    VYAPONE_STAGING_PROJECT_REF: getEnvVar("VYAPONE_STAGING_PROJECT_REF"),
+    VYAPONE_STAGING_MODE: getEnvVar("VYAPONE_STAGING_MODE"),
+  });
 
   // If Supabase is unconfigured, allow request to proceed without auth mutation
   if (!url || !anonKey) {
