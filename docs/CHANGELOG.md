@@ -4,8 +4,10 @@ Record implementation changes by task ID. Do not record planned work as complete
 
 ## Unreleased
 
-### [CLOUD-010] — Build-Time Environment Validation Remediation & Dynamic Route Declarations (2026-11-26)
+### [CLOUD-010] — Build-Time Environment Validation Remediation, Dynamic Routes & Wrangler Previews Block (2026-11-26)
 
+- **Wrangler Previews Configuration (`wrangler.jsonc`)**: Added top-level `"previews": { "vars": { "NEXT_PUBLIC_APP_ENV": "preview" } }` block to resolve Cloudflare Workers continuous deployment preview failure (`npx wrangler preview requires previews block`).
+- **Cross-Platform Production Build Script (`scripts/build.mjs`, `package.json`)**: Added `scripts/build.mjs` coordinating Next.js compilation (`next build`) and conditional packaging with `opennextjs-cloudflare build --skipNextBuild` in Cloudflare Workers / Linux CI environments (`.open-next/worker.js`, `.open-next/assets`), while skipping OpenNext on Windows developer environments to prevent native `@ast-grep/napi` MSVC crashes.
 - **Lazy Server Configuration Proxy (`src/config/server.ts`)**: Replaced eager module-level `serverConfig = getServerConfig()` evaluation with a lazy `Proxy` that defers `validateEnvironment()` calls until explicit property access. Prevents Next.js compiler and page data collection from executing runtime environment checks at module evaluation time.
 - **Build-Time Invariant Guard (`src/config/env.ts`)**: Added `isBuildPhase` detection (`process.env.NEXT_PHASE === "phase-production-build"`, `npm_lifecycle_event === "build"` / `"build:staging"`). In `NODE_ENV=production`, permits static asset and route compilation to proceed in clean build machines (such as Cloudflare Workers Builds and CI runners) where runtime-only secrets (`SESSION_SECRET`, `DATABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`) are not injected, while strictly enforcing all credentials during runtime request handling.
 - **Dynamic Route Handlers (`export const dynamic = "force-dynamic"`)**: Added explicit dynamic segment declaration to dynamic public endpoints:

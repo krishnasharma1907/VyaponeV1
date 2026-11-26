@@ -11,6 +11,11 @@
   "observability": {
     "enabled": true,
   },
+  "previews": {
+    "vars": {
+      "NEXT_PUBLIC_APP_ENV": "preview",
+    },
+  },
   "env": {
     "preview": {
       "name": "vyapone-preview",

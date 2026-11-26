@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "next dev",
     "dev:staging": "node scripts/run-staging.mjs dev",
-    "build": "next build",
+    "build": "node scripts/build.mjs",
     "build:staging": "node scripts/run-staging.mjs build",
     "start": "next start",
     "start:staging": "node scripts/run-staging.mjs start",
